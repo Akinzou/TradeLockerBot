@@ -1,0 +1,3 @@
+git+https://github.com/bracta/tradelocker-python.git
+fastapi
+uvicorn
