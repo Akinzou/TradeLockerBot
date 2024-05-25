@@ -1,0 +1,27 @@
+# .github/workflows/deploy.yml
+
+name: Deploy to Server
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Ansible
+      run: sudo apt-get update && sudo apt-get install -y ansible
+
+    - name: Run Ansible Playbook
+      env:
+        ANSIBLE_HOST_KEY_CHECKING: "false"
+      run: |
+        ansible-playbook -i "${{ secrets.SERVER_IP }}," --user ${{ secrets.SERVER_USERNAME }} --private-key <(echo "${{ secrets.SSH_PRIVATE_KEY }}") deploy.yml
+
+      # Upewnij się, że dodałeś SSH_PRIVATE_KEY jako sekret w ustawieniach repozytorium na GitHubie
