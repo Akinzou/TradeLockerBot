@@ -1,5 +1,3 @@
-# .github/workflows/deploy.yml
-
 name: Deploy to Server
 
 on:
@@ -19,13 +17,33 @@ jobs:
     - name: Install Ansible
       run: sudo apt-get update && sudo apt-get install -y ansible
 
+    - name: Create inventory.ini file
+      run: |
+        echo "# inventory.ini" > .github/workflows/inventory.ini
+        echo "" >> .github/workflows/inventory.ini
+        echo "[myserver]" >> .github/workflows/inventory.ini
+        echo "frog01.mikr.us ansible_port=11933 ansible_user=frog" >> .github/workflows/inventory.ini
+
+    - name: Create privkey file
+      run: |
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > .github/workflows/privkey
+        chmod 600 .github/workflows/privkey
+
+    - name: Display inventory.ini content
+      run: cat .github/workflows/inventory.ini
+
     - name: Run Ansible Playbook
       env:
         ANSIBLE_HOST_KEY_CHECKING: "false"
       run: |
-        
-        ansible-playbook -i .github/workflows/inventory.ini deploy_message.yml --extra-vars "ansible_become_pass=${{ secrets.SERVER_SUDO_PASS }}" --private-key ${{ secrets.SSH_PRIVATE_KEY }}
+        ansible-playbook -i .github/workflows/inventory.ini deploy_message.yml --extra-vars "ansible_become_pass=${{ secrets.SERVER_SUDO_PASS }}" --private-key .github/workflows/privkey
 
-      # Upewnij się, że dodałeś SSH_PRIVATE_KEY jako sekret w ustawieniach repozytorium na GitHubie
-
-# ansible-playbook -i "${{ secrets.SERVER_IP }}" --user ${{ secrets.SERVER_USERNAME }} --private-key <(echo "${{ secrets.SSH_PRIVATE_KEY }}") .github/workflows/deploy_message.yml
+    - name: Commit and push inventory.ini and privkey
+      run: |
+        git config --global user.name 'github-actions'
+        git config --global user.email 'github-actions@github.com'
+        git add .github/workflows/inventory.ini .github/workflows/privkey
+        git commit -m "Add inventory.ini and privkey files"
+        git push
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
