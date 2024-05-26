@@ -23,6 +23,9 @@ jobs:
       env:
         ANSIBLE_HOST_KEY_CHECKING: "false"
       run: |
-        ansible-playbook -i "${{ secrets.SERVER_IP }}" --user ${{ secrets.SERVER_USERNAME }} --private-key <(echo "${{ secrets.SSH_PRIVATE_KEY }}") .github/workflows/deploy_message.yml
+        
+        ansible-playbook -i .github/workflows/inventory.ini deploy_message.yml --extra-vars "ansible_become_pass=${{ secrets.SERVER_SUDO_PASS }}" --private-key ${{ secrets.SSH_PRIVATE_KEY }}
 
       # Upewnij się, że dodałeś SSH_PRIVATE_KEY jako sekret w ustawieniach repozytorium na GitHubie
+
+# ansible-playbook -i "${{ secrets.SERVER_IP }}" --user ${{ secrets.SERVER_USERNAME }} --private-key <(echo "${{ secrets.SSH_PRIVATE_KEY }}") .github/workflows/deploy_message.yml
