@@ -31,14 +31,14 @@
         name:
           - python3
           - py3-pip
+          - py3-virtualenv
         state: present
       when: ansible_os_family == 'Alpine'
-
     - name: Ensure latest code is pulled from repository
       git:
-        repo: 'https://github.com/Akinzou/TradeLocker.git'
+        repo: 'git@github.com:Akinzou/TradeLocker.git'
         dest: /opt/tradelocker
-        version: main
+        version: master
         force: yes
 
     - name: Install application dependencies
