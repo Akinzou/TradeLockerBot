@@ -19,18 +19,13 @@ jobs:
 
     - name: Create inventory.ini file
       run: |
-        echo "# inventory.ini" > .github/workflows/inventory.ini
-        echo "" >> .github/workflows/inventory.ini
-        echo "[myserver]" >> .github/workflows/inventory.ini
-        echo "frog01.mikr.us ansible_port=11933 ansible_user=frog" >> .github/workflows/inventory.ini
+        echo "${{ secrets.INVENTORY_INI }}" > .github/workflows/inventory.ini
 
     - name: Create privkey file
       run: |
         echo "${{ secrets.SSH_PRIVATE_KEY }}" > .github/workflows/privkey
         chmod 600 .github/workflows/privkey
 
-    - name: Display inventory.ini content
-      run: cat .github/workflows/inventory.ini
 
     - name: Run Ansible Playbook
       env:
@@ -38,12 +33,7 @@ jobs:
       run: |
         ansible-playbook -i .github/workflows/inventory.ini .github/workflows/deploy_message.yml --extra-vars "ansible_become_pass=${{ secrets.SERVER_SUDO_PASS }}" --private-key .github/workflows/privkey
 
-    - name: Commit and push inventory.ini and privkey
+    - name: Clean
       run: |
-        git config --global user.name 'github-actions'
-        git config --global user.email 'github-actions@github.com'
-        git add .github/workflows/inventory.ini .github/workflows/privkey
-        git commit -m "Add inventory.ini and privkey files"
-        git push
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        rm inventory.ini
+        rm privkey
