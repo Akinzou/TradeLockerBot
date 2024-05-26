@@ -1,28 +1,38 @@
 ---
 - name: Deploy application
   hosts: all
-  become: true  # Uruchamiaj zadania jako użytkownik root
   tasks:
     - name: Ensure git is installed
+      become: true
       apt:
         name: git
         state: present
       when: ansible_os_family == 'Debian'
       
+    - name: Ensure python3 and pip are installed
+      become: true
+      apt:
+        name:
+          - python3
+          - python3-pip
+        state: present
+      when: ansible_os_family == 'Debian'
+      
     - name: Ensure latest code is pulled from repository
       git:
-        repo: 'https://github.com/your_user/your_repo.git'
-        dest: /path/to/your/app
+        repo: 'https://github.com/Akinzou/TradeLocker.git'
+        dest: /opt/tradelocker
         version: main
         force: yes
 
     - name: Install application dependencies
-      command: /path/to/your/app/install_dependencies.sh
-      args:
-        chdir: /path/to/your/app
+      pip:
+        requirements: /opt/tradelocker/requirements.txt
+        virtualenv: /opt/tradelocker/venv
 
     - name: Restart application service
+      become: true
       systemd:
-        name: your_application_service
+        name: tradelocker_service
         state: restarted
         enabled: yes
