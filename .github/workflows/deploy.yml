@@ -32,8 +32,3 @@ jobs:
         ANSIBLE_HOST_KEY_CHECKING: "false"
       run: |
         ansible-playbook -i .github/workflows/inventory.ini .github/workflows/deploy_message.yml --extra-vars "ansible_become_pass=${{ secrets.SERVER_SUDO_PASS }}" --private-key .github/workflows/privkey
-
-    - name: Clean
-      run: |
-        rm inventory.ini
-        rm privkey
