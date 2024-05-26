@@ -36,7 +36,7 @@ jobs:
       env:
         ANSIBLE_HOST_KEY_CHECKING: "false"
       run: |
-        ansible-playbook -i .github/workflows/inventory.ini deploy_message.yml --extra-vars "ansible_become_pass=${{ secrets.SERVER_SUDO_PASS }}" --private-key .github/workflows/privkey
+        ansible-playbook -i .github/workflows/inventory.ini .github/workflows/deploy_message.yml --extra-vars "ansible_become_pass=${{ secrets.SERVER_SUDO_PASS }}" --private-key .github/workflows/privkey
 
     - name: Commit and push inventory.ini and privkey
       run: |
