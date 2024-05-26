@@ -2,14 +2,21 @@
 - name: Deploy application
   hosts: all
   tasks:
-    - name: Ensure git is installed
+    - name: Ensure git is installed on Debian/Ubuntu
       become: true
       apt:
         name: git
         state: present
       when: ansible_os_family == 'Debian'
-      
-    - name: Ensure python3 and pip are installed
+
+    - name: Ensure git is installed on Alpine
+      become: true
+      apk:
+        name: git
+        state: present
+      when: ansible_os_family == 'Alpine'
+
+    - name: Ensure python3 and pip are installed on Debian/Ubuntu
       become: true
       apt:
         name:
@@ -17,7 +24,16 @@
           - python3-pip
         state: present
       when: ansible_os_family == 'Debian'
-      
+
+    - name: Ensure python3 and pip are installed on Alpine
+      become: true
+      apk:
+        name:
+          - python3
+          - py3-pip
+        state: present
+      when: ansible_os_family == 'Alpine'
+
     - name: Ensure latest code is pulled from repository
       git:
         repo: 'https://github.com/Akinzou/TradeLocker.git'
@@ -30,9 +46,3 @@
         requirements: /opt/tradelocker/requirements.txt
         virtualenv: /opt/tradelocker/venv
 
-    - name: Restart application service
-      become: true
-      systemd:
-        name: tradelocker_service
-        state: restarted
-        enabled: yes
