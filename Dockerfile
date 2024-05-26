@@ -10,12 +10,6 @@ WORKDIR /app
 # Skopiuj pliki projektu do kontenera
 COPY . /app
 
-# Utworzenie i aktywacja wirtualnego środowiska
-RUN python -m venv venv
-
-# Ustawienie zmiennej środowiskowej, aby używać wirtualnego środowiska
-ENV PATH="/app/venv/bin:$PATH"
-
 # Zainstaluj zależności wymagane przez Twój projekt
 RUN pip install --no-cache-dir -r requirements.txt
 
