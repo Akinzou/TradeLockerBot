@@ -10,11 +10,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Log in to Docker Hub
-        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+      - name: Log in to GitHub Container Registry
+        env:
+          CR_PAT: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "${CR_PAT}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       - name: Build the Docker image
-        run: docker build . --file Dockerfile --tag tradelocker
+        run: docker build . --file Dockerfile --tag ghcr.io/${{ github.repository_owner }}/tradelocker:latest
 
       - name: Push the Docker image
-        run: docker push tradelocker
+        run: docker push ghcr.io/${{ github.repository_owner }}/tradelocker:latest
