@@ -12,16 +12,6 @@ tl = TLAPI(environment="https://demo.tradelocker.com", username="sotoja9468@mfya
 invert = False
 
 
-def accept_user_input():
-    global invert
-    while True:
-        user_input = input()
-        print(f"Recived: {user_input}")
-        if user_input == 'invert':
-            invert = not invert
-            print("inverted: ", invert)
-
-
 def close(symbol_name):
     closed = False
     positions = tl.get_all_positions()
@@ -101,8 +91,6 @@ async def process_webhook(request: Request):
     normal_thread.start()
 
 
-thread_user_input = threading.Thread(target=accept_user_input)
-thread_user_input.start()
 
 # Uruchamianie serwera bez SSL
 uvicorn.run(app, host="0.0.0.0", port=21933)
