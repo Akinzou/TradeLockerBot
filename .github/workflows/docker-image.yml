@@ -16,8 +16,5 @@ jobs:
       - name: Build the Docker image
         run: docker build . --file Dockerfile --tag tradelocker
 
-      - name: Tag the Docker image
-        run: docker tag tradelocker ${{ secrets.DOCKER_USERNAME }}/tradelocker:1.0
-
       - name: Push the Docker image
         run: docker push tradelocker
