@@ -93,4 +93,4 @@ async def process_webhook(request: Request):
 
 
 # Uruchamianie serwera bez SSL
-uvicorn.run(app, host="0.0.0.0", port=21933)
+uvicorn.run(app, host="0.0.0.0", port=443)
