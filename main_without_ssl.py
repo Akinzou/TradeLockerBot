@@ -7,8 +7,8 @@ app = FastAPI()
 
 lock = threading.Lock()
 
-tl = TLAPI(environment="https://demo.tradelocker.com", username="sotoja9468@mfyax.com", password="%rV4yKSH",
-           server="24K-DEMO")
+tl = TLAPI(environment="https://demo.tradelocker.com", username="wiktorjn@gmail.com", password="fp2=(BR<e&%N",
+           server="FUTRAD")
 invert = False
 
 
