@@ -15,7 +15,7 @@ jobs:
 
       - name: Set repository owner to lowercase
         id: prep
-        run: echo "::set-output name=repository_owner_lower::${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]'
+        run: echo "::set-output name=repository_owner_lower::$(echo ${{ github.repository_owner }} | tr '[:upper:]' '[:lower:]')"
 
       - name: Log in to GitHub Container Registry
         run: echo "${{ secrets.PERSONAL_ACCESS_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
@@ -25,3 +25,23 @@ jobs:
 
       - name: Push the Docker image
         run: docker push ghcr.io/${{ steps.prep.outputs.repository_owner_lower }}/tradelocker:latest
+
+      - name: Make Docker image public
+        run: |
+          IMAGE_URL="https://api.github.com/user/packages/container/tradelocker/versions"
+          VERSION_ID=$(curl -s \
+            -H "Authorization: Bearer ${{ secrets.PERSONAL_ACCESS_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            $IMAGE_URL | jq -r '.[0].id')
+          
+          echo "Latest version ID is $VERSION_ID"
+
+          if [ "$VERSION_ID" != "null" ]; then
+            curl -X PATCH \
+              -H "Authorization: Bearer ${{ secrets.PERSONAL_ACCESS_TOKEN }}" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "$IMAGE_URL/$VERSION_ID" \
+              -d '{"visibility":"public"}'
+          else
+            echo "No version found to make public"
+          fi
