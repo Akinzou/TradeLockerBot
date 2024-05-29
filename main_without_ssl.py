@@ -42,7 +42,7 @@ def accept_user_input():
             print("inverted: ", invert)
 
 
-=======
+
 tl = TLAPI(environment="https://demo.tradelocker.com", username="wiktorjn@gmail.com", password="fp2=(BR<e&%N",
            server="FUTRAD")
 invert = False
