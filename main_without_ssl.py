@@ -7,6 +7,7 @@ import argparse
 app = FastAPI()
 lock = threading.Lock()
 
+
 parser = argparse.ArgumentParser(description="Add variables when starting")
 parser.add_argument('--username', type=str, required=True, help='username/email')
 parser.add_argument('--password', type=str, required=True, help='password')
@@ -39,6 +40,13 @@ def accept_user_input():
         if user_input == 'invert':
             invert = not invert
             print("inverted: ", invert)
+
+
+=======
+tl = TLAPI(environment="https://demo.tradelocker.com", username="wiktorjn@gmail.com", password="fp2=(BR<e&%N",
+           server="FUTRAD")
+invert = False
+
 
 
 def close(symbol_name):
@@ -120,8 +128,6 @@ async def process_webhook(request: Request):
     normal_thread.start()
 
 
-thread_user_input = threading.Thread(target=accept_user_input)
-thread_user_input.start()
 
 # Uruchamianie serwera bez SSL
-uvicorn.run(app, host="0.0.0.0", port=21933)
+uvicorn.run(app, host="0.0.0.0", port=443)
