@@ -2,14 +2,33 @@ from tradelocker import TLAPI
 import threading
 from fastapi import FastAPI, Request
 import uvicorn
+import argparse
 
 app = FastAPI()
-
 lock = threading.Lock()
 
-tl = TLAPI(environment="https://demo.tradelocker.com", username="sotoja9468@mfyax.com", password="%rV4yKSH",
-           server="24K-DEMO")
+parser = argparse.ArgumentParser(description="Add variables when starting")
+parser.add_argument('--username', type=str, required=True, help='username/email')
+parser.add_argument('--password', type=str, required=True, help='password')
+parser.add_argument('--server', type=str, required=True, help='server')
+parser.add_argument('--env', type=str, required=True, help='live/demo')
+args = parser.parse_args()
+
+username = args.username
+password = args.password
+server = args.server
+enviroment = args.env
+
+if enviroment == "demo":
+    enviroment = "https://demo.tradelocker.com"
+elif enviroment == "live":
+    enviroment = "https://live.tradelocker.com"
+
+
+tl = TLAPI(environment=enviroment, username=username, password=password,
+           server=server)
 invert = False
+
 
 
 def accept_user_input():
