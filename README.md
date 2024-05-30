@@ -58,7 +58,7 @@ You should see the following message on the site:
 ### Cahnge URL:
 Run Container with addtional argument
 ```sh
-docker run -p 443:443 -e username=your_username -e password=your_password -e server=your_server -e env=demo/live -e url=your_url --rm ghcr.io/akinzou/tradelocker_bot:latest
+-e url=your_url
 ```
 
 
