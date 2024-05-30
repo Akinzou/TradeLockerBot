@@ -44,15 +44,41 @@ After running the container, you should see green text indicating successful aut
 ###Access the Webhook Bot
 You can now access the webhook bot at:
 ```sh
-http://localhost:443/
+http://localhost:443/strategy
 ```
 or
 ```sh
-http://yourIP:443/
+http://yourIP:443/strategy
 ```
 You should see the following message on the site:
 ```sh
-{"detail":"Not Found"}
+{"detail":"Method Not Allowed"}
+```
+
+### Cahnge URL:
+Run Container with addtional argument
+```sh
+docker run -p 443:443 -e username=your_username -e password=your_password -e server=your_server -e env=demo/live -e url=your_url --rm ghcr.io/akinzou/tradelocker_bot:latest
+```
+
+
+## Adding webhook alert to your strategy:
+Use this format
+
+```ssh
+XAUUSD
+{{strategy.order.action}}
+0.01
+500
+1000
+{{strategy.order.alert_message}}
+
+XAUUSD -> name of tradable instrument
+{{strategy.order.action}} -> "buy"/"sell"
+0.01 -> lot
+500 -> take profit (offset mode)
+1000 -> stop loss (offset mode)
+{{strategy.order.alert_message}} -> "Open" for opening a position and closing the previous one, "Close" for only closing a position on the specific instrument
 ```
 
 ## Note:
