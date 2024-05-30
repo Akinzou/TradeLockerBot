@@ -14,4 +14,4 @@ COPY . /app
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Komenda uruchamiająca Twój skrypt Pythona
-CMD ["sh", "-c", "python main_without_ssl.py --username $username --password $password --server $server --env $env"]
+CMD ["sh", "-c", "python main_without_ssl.py --username $username --password $password --server $server --env $env --url $url"]
