@@ -85,6 +85,13 @@ XAUUSD -> name of tradable instrument
 {{strategy.order.alert_message}} -> "Open" for opening a position and closing the previous one, "Close" for only closing a position on the specific instrument
 ```
 
+## Remember 
+Remember to configure Nginx or another appropriate software to enable access to HTTPS. You will be able to use, for example
+
+```sh
+https://localhost/strategy
+```
+
 ## Note:
 This program is provided "as is" without any warranty. Use it at your own risk.
 Before using this program in a live trading environment, thoroughly test it on a demo account to ensure its correctness and reliability.
