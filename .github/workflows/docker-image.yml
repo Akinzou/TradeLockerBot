@@ -24,4 +24,4 @@ jobs:
         run: docker build . --file Dockerfile --tag ghcr.io/${{ env.repository_owner_lower }}/tradelocker:latest
 
       - name: Push the Docker image
-        run: docker push ghcr.io/${{ env.repository_owner_lower }}/tradelocker:latest
+        run: docker push ghcr.io/tradelocker/tradelocker:latest
