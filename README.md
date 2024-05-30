@@ -36,4 +36,4 @@ docker run -p 443:443 -e username=your_username -e password=your_password -e ser
 ```
 ### Verification
 After running the container, you should see green text indicating successful authentication:
-<p style="color:green;">To jest zielony tekst</p>
+![Green Text]("dupa")
