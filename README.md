@@ -1,5 +1,5 @@
 # TradeLocker 
-### Webhook TradingView Bot for Automated Position Management [Contribution guidelines for this project](docs/CONTRIBUTING.md)
+### Webhook TradingView Bot for Automated Position Management ![CI Passing]([URL_DO_OBRAZU](https://github.com/Akinzou/TradeLocker/pkgs/container/tradelocker_bot))
 TradeLocker is a webhook bot designed to seamlessly integrate with TradingView, enabling automated opening and closing of trading positions.
 
 ## Install
@@ -37,8 +37,8 @@ docker run -p 443:443 -e username=your_username -e password=your_password -e ser
 ```
 ### Verification
 After running the container, you should see green text indicating successful authentication:
-```html
-<p style="color:green;">To jest zielony tekst</p>
+```diff
++[INFO] tradelocker.tradelocker_api 2024-05-30 11:25:31,834 tradelocker_api _auth_with_password: 665 Successfully fetched authentication tokens
 ```
 
 ###Access the Webhook Bot
