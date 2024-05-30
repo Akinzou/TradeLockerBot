@@ -3,7 +3,7 @@ name: Docker Image CI
 on:
   workflow_dispatch:
   workflow_run:
-    workflows: ["Python Package"]
+    workflows: ["name: Python (3.11, 3.12) ,"]
     types:
       - completed
 jobs:
