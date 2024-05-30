@@ -13,7 +13,7 @@ parser.add_argument('--username', type=str, required=True, help='username/email'
 parser.add_argument('--password', type=str, required=True, help='password')
 parser.add_argument('--server', type=str, required=True, help='server')
 parser.add_argument('--env', type=str, required=True, help='live/demo')
-parser.add_argument('--url', type=str, default='/strategy', help='Opcjonalny URL, domyślnie /strategy')
+parser.add_argument('--url', type=str, default='/strategy', help='Optional URL, default is /strategy')
 args = parser.parse_args()
 
 username = args.username
