@@ -12,7 +12,7 @@ jobs:
         with:
           registry: ghcr.io
           username: tradelocker
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
       - uses: actions/checkout@v2
       - name: create image from repository
         run: docker build -t ghcr.io/tradelocker/tradelocker:latest .
