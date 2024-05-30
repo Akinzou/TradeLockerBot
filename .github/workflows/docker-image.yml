@@ -1,23 +1,24 @@
 name: Docker Image CI
 
 on:
-  workflow_dispatch:
   workflow_run:
-    workflows: ["name: Python (3.11, 3.12) ,"]
+    workflows: ["Python (3.11, 3.12) ,"]
     types:
       - completed
+
 jobs:
   dockerloginbuildpush:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
-      - name: login to GitHub Container Registry
+      - name: Login to GitHub Container Registry
         uses: docker/login-action@v1
         with:
           registry: ghcr.io
           username: akinzou
           password: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
       - uses: actions/checkout@v2
-      - name: create image from repository
+      - name: Create image from repository
         run: docker build -t ghcr.io/akinzou/tradelocker_bot:latest .
-      - name: push image to GitHub Container Registry
+      - name: Push image to GitHub Container Registry
         run: docker push ghcr.io/akinzou/tradelocker_bot:latest
