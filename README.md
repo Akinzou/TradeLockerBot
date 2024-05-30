@@ -38,7 +38,7 @@ docker run -p 443:443 -e username=your_username -e password=your_password -e ser
 ### Verification
 After running the container, you should see green text indicating successful authentication:
 ```diff
-+ [INFO] tradelocker.tradelocker_api 2024-05-30 11:25:31,834 tradelocker_api _auth_with_password: 665 Successfully fetched authentication tokens
+[INFO] tradelocker.tradelocker_api 2024-05-30 11:25:31,834 tradelocker_api _auth_with_password: 665 Successfully fetched authentication tokens
 ```
 
 ###Access the Webhook Bot
