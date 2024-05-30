@@ -72,7 +72,9 @@ XAUUSD
 500
 1000
 {{strategy.order.alert_message}}
-
+```
+where
+```ssh
 XAUUSD -> name of tradable instrument
 {{strategy.order.action}} -> "buy"/"sell"
 0.01 -> lot
