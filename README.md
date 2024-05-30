@@ -1,5 +1,5 @@
 # TradeLocker 
-### Webhook TradingView Bot for Automated Position Management
+### Webhook TradingView Bot for Automated Position Management [Contribution guidelines for this project](docs/CONTRIBUTING.md)
 TradeLocker is a webhook bot designed to seamlessly integrate with TradingView, enabling automated opening and closing of trading positions.
 
 ## Install
