@@ -13,12 +13,14 @@ parser.add_argument('--username', type=str, required=True, help='username/email'
 parser.add_argument('--password', type=str, required=True, help='password')
 parser.add_argument('--server', type=str, required=True, help='server')
 parser.add_argument('--env', type=str, required=True, help='live/demo')
+parser.add_argument('--url', type=str, default='/strategy', help='Opcjonalny URL, domyślnie /strategy')
 args = parser.parse_args()
 
 username = args.username
 password = args.password
 server = args.server
 enviroment = args.env
+url = args.url
 
 if enviroment == "demo":
     enviroment = "https://demo.tradelocker.com"
@@ -41,10 +43,6 @@ def accept_user_input():
             invert = not invert
             print("inverted: ", invert)
 
-
-
-tl = TLAPI(environment="https://demo.tradelocker.com", username="wiktorjn@gmail.com", password="fp2=(BR<e&%N",
-           server="FUTRAD")
 invert = False
 
 
@@ -118,7 +116,7 @@ def handle_position_normal(payload_list):
         print("Normal: Unlocked")
 
 
-@app.post("/strategynormal")
+@app.post(url)
 async def process_webhook(request: Request):
     payload_bytes = await request.body()
     payload_str = payload_bytes.decode()
