@@ -56,6 +56,5 @@ You should see the following message on the site:
 ```
 
 ## Note:
-It is important to have the MetaTrader 5 trading platform running and logged in with the provided credentials before using this library.
-This library is provided "as is" without any warranty. Use it at your own risk.
-Before using this library in a live trading environment, thoroughly test it on a demo account to ensure its correctness and reliability.
+This program is provided "as is" without any warranty. Use it at your own risk.
+Before using this program in a live trading environment, thoroughly test it on a demo account to ensure its correctness and reliability.
