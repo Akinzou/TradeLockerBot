@@ -58,7 +58,7 @@ You should see the following message on the site:
 ### Cahnge URL:
 Run Container with addtional argument
 ```sh
--e url=your_url
+-e url=/your_url
 ```
 
 
