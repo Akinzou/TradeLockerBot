@@ -47,6 +47,7 @@ if url == "generate":
 
 
 print(AsciiAlerts.ascii_art_hello)
+
 tl = TLAPI(environment=enviroment, username=username, password=password,
            server=server)
 invert = False
