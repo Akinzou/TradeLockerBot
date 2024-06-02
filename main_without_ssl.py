@@ -9,7 +9,6 @@ import AsciiAlerts
 
 app = FastAPI()
 lock = threading.Lock()
-init(autoreset=True)
 
 
 parser = argparse.ArgumentParser(description="Add variables when starting")
