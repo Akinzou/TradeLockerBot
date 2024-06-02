@@ -11,7 +11,7 @@ from colorama import Fore, Style, init
 app = FastAPI()
 lock = threading.Lock()
 
-init()
+init(autoreset=True)
 
 parser = argparse.ArgumentParser(description="Add variables when starting")
 parser.add_argument('--username', type=str, required=True, help='username/email')
