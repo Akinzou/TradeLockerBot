@@ -11,6 +11,8 @@ from colorama import Fore, Style, init
 app = FastAPI()
 lock = threading.Lock()
 
+init()
+
 parser = argparse.ArgumentParser(description="Add variables when starting")
 parser.add_argument('--username', type=str, required=True, help='username/email')
 parser.add_argument('--password', type=str, required=True, help='password')
@@ -45,6 +47,7 @@ if url == "generate":
 
 
 print(Fore.GREEN + AsciiAlerts.ascii_art_hello)
+print(Style.RESET_ALL)
 
 tl = TLAPI(environment=enviroment, username=username, password=password,
            server=server)
