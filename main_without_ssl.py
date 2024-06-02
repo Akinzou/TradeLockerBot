@@ -11,7 +11,6 @@ from colorama import Fore, Style, init
 app = FastAPI()
 lock = threading.Lock()
 
-
 parser = argparse.ArgumentParser(description="Add variables when starting")
 parser.add_argument('--username', type=str, required=True, help='username/email')
 parser.add_argument('--password', type=str, required=True, help='password')
@@ -31,7 +30,6 @@ if enviroment == "demo":
 elif enviroment == "live":
     enviroment = "https://live.tradelocker.com"
 
-
 def generate_random_url(min_length=10, max_length=20):
     length1 = random.randint(min_length, max_length)
     random_string1 = ''.join(random.choices(string.ascii_lowercase + string.digits, k=length1))
@@ -39,7 +37,6 @@ def generate_random_url(min_length=10, max_length=20):
     random_string2 = ''.join(random.choices(string.ascii_lowercase + string.digits, k=length2))
     url = f'/{random_string1}/{random_string2}'
     return url
-
 
 if url == "generate":
     url = generate_random_url()
@@ -53,7 +50,6 @@ tl = TLAPI(environment=enviroment, username=username, password=password,
            server=server)
 invert = False
 
-
 def accept_user_input():
     global invert
     while True:
@@ -64,8 +60,6 @@ def accept_user_input():
             print("inverted: ", invert)
 
 invert = False
-
-
 
 def close(symbol_name):
     closed = False
@@ -83,7 +77,6 @@ def close(symbol_name):
         positions = tl.get_all_positions()
         closed = not ((positions['tradableInstrumentId'] == instrument_id).any())
 
-
 def handle_position_normal(payload_list):
     global invert
     with lock:
@@ -97,7 +90,6 @@ def handle_position_normal(payload_list):
         if payload_list[5] == "Close":
             close(symbol_name)
 
-
         if payload_list[5] == "Open":
             close(symbol_name)
             if direction == 'buy':
@@ -105,11 +97,11 @@ def handle_position_normal(payload_list):
                 instrument_id = tl.get_instrument_id_from_symbol_name(symbol_name)
                 while not order_id:
                     if not invert:
-                        order_id = tl.create_order(instrument_id, quantity=lot, side="buy", type_="market", sl=stoploss, tp = takeprofit,
-                                               sl_type="offset")
+                        order_id = tl.create_order(instrument_id, quantity=lot, side="buy", type_="market", sl=stoploss, tp=takeprofit,
+                                                   sl_type="offset")
                     else:
-                        order_id = tl.create_order(instrument_id, quantity=lot, side="sell", type_="market", sl=stoploss, tp = takeprofit,
-                                               sl_type="offset")
+                        order_id = tl.create_order(instrument_id, quantity=lot, side="sell", type_="market", sl=stoploss, tp=takeprofit,
+                                                   sl_type="offset")
                     if not order_id:
                         print("Order was not successful, trying again...")
                     else:
@@ -120,11 +112,11 @@ def handle_position_normal(payload_list):
                 instrument_id = tl.get_instrument_id_from_symbol_name(symbol_name)
                 while not order_id:
                     if not invert:
-                        order_id = tl.create_order(instrument_id, quantity=lot, side="sell", type_="market", tp = takeprofit,
+                        order_id = tl.create_order(instrument_id, quantity=lot, side="sell", type_="market", tp=takeprofit,
                                                    sl=stoploss,
                                                    sl_type="offset")
                     else:
-                        order_id = tl.create_order(instrument_id, quantity=lot, side="buy", type_="market", tp = takeprofit,
+                        order_id = tl.create_order(instrument_id, quantity=lot, side="buy", type_="market", tp=takeprofit,
                                                    sl=stoploss,
                                                    sl_type="offset")
                     if not order_id:
@@ -132,9 +124,7 @@ def handle_position_normal(payload_list):
                     else:
                         print("Order placed successfully, order ID:", order_id)
 
-
         print("Normal: Unlocked")
-
 
 @app.post(url)
 async def process_webhook(request: Request):
@@ -144,6 +134,5 @@ async def process_webhook(request: Request):
 
     normal_thread = threading.Thread(target=handle_position_normal, args=(payload_list,))
     normal_thread.start()
-
 
 uvicorn.run(app, host="0.0.0.0", port=443)
