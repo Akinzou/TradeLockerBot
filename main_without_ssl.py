@@ -5,7 +5,6 @@ import uvicorn
 import argparse
 import random
 import string
-from colorama import Fore, Style, init
 import AsciiAlerts
 
 app = FastAPI()
@@ -44,11 +43,11 @@ def generate_random_url(min_length=10, max_length=20):
 
 if url == "generate":
     url = generate_random_url()
-    print(Fore.RED + AsciiAlerts.ascii_art_url)
-    print(Fore.RED + url)
-    print(Fore.RED + "Save URL!")
+    print(AsciiAlerts.ascii_art_url)
+    print(url)
 
 
+print(AsciiAlerts.ascii_art_hello)
 tl = TLAPI(environment=enviroment, username=username, password=password,
            server=server)
 invert = False
