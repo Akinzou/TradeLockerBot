@@ -61,6 +61,11 @@ Run Container with addtional argument
 -e url=/your_url
 ```
 
+You can use also
+```sh
+-e url=generate
+```
+For generate random URL
 
 
 
