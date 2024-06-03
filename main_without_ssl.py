@@ -41,7 +41,7 @@ print(AsciiAlerts.GREEN + AsciiAlerts.ascii_art_hello + AsciiAlerts.RESET)
 tl = TLAPI(environment=enviroment, username=username, password=password,
            server=server)
 
-
+#Close until closed
 def close(symbol_name):
     closed = False
     positions = tl.get_all_positions()
@@ -49,15 +49,16 @@ def close(symbol_name):
     while not closed:
         for i in range(len(positions)):
             id = positions.at[i, 'id']
-            tradableInstrumentId = positions.at[i, 'tradableInstrumentId']
+            tradable_instrument_id = positions.at[i, 'tradable_instrument_id']
             print(id)
-            print(tradableInstrumentId)
-            if tradableInstrumentId == instrument_id:
+            print(tradable_instrument_id)
+            if tradable_instrument_id == instrument_id:
                 tl.close_all_positions(instrument_id)
                 print("Closing: ", symbol_name)
         positions = tl.get_all_positions()
-        closed = not ((positions['tradableInstrumentId'] == instrument_id).any())
+        closed = not ((positions['tradable_instrument_id'] == instrument_id).any())
 
+#Execute webhook
 def handle_position_normal(payload_list):
     global invert
     with lock:
