@@ -2,6 +2,8 @@ GREEN = "\033[92m"
 RED = "\033[91m"
 RESET = "\033[0m"
 
+def resetStyle():
+    print(RESET)
 
 ascii_art_url = """
                                   _
