@@ -68,8 +68,8 @@ Run Container with addtional argument
 ```sh
 -e url=/your_url
 ```
-
-You can use also
+$\color{lime}{\textsf{For safety reasons, generating a random URL for the strategy}}$
+You can use also:
 ```sh
 -e url=generate
 ```
@@ -85,6 +85,8 @@ and you should see:
 
 /yourgenerated/url
 ```
+$\color{red}{\textsf{Save it, it is only shown once}}$
+This URL is for webhook execution in the trading environment.
 
 ## Adding webhook alert to your strategy:
 Use this format
