@@ -50,9 +50,6 @@ After running the container, you should see green text indicating successful aut
 +[INFO] tradelocker.tradelocker_api 2024-05-30 11:25:31,834 tradelocker_api _auth_with_password: 665 Successfully fetched authentication tokens
 ```
 
-
-
-
 ### Access the Webhook Bot
 You can now access the webhook bot at:
 ```sh
