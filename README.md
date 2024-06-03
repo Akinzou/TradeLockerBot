@@ -7,6 +7,7 @@ TradeLocker is a webhook bot designed to seamlessly integrate with TradingView, 
 ### Update Code
 
 If you update the code, run the following command to delete the previous image:
+$\color{red}{\textsf{Use only if you have already downloaded the image.}}$
 
 ```sh
 docker rmi -f ghcr.io/akinzou/tradelocker_bot:latest
@@ -32,6 +33,7 @@ ghcr.io/akinzou/tradelocker_bot   latest
 
 ### Run the Container
 Run the container with the following command:
+$\color{red}{\textsf{If you don't know Docker, don't change that command.}}$
 ```sh
 docker run -t -p 443:443 -e username=your_username -e password=your_password -e server=your_server -e env=demo/live --rm ghcr.io/akinzou/tradelocker_bot:latest
 ```
