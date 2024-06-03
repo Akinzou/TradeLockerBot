@@ -3,9 +3,8 @@ import threading
 from fastapi import FastAPI, Request
 import uvicorn
 import argparse
-import random
-import string
-import AsciiAlerts
+from libs import AsciiAlerts
+from libs.URLgenerator import *
 
 app = FastAPI()
 lock = threading.Lock()
@@ -30,13 +29,6 @@ if enviroment == "demo":
 elif enviroment == "live":
     enviroment = "https://live.tradelocker.com"
 
-def generate_random_url(min_length=10, max_length=20):
-    length1 = random.randint(min_length, max_length)
-    random_string1 = ''.join(random.choices(string.ascii_lowercase + string.digits, k=length1))
-    length2 = random.randint(min_length, max_length)
-    random_string2 = ''.join(random.choices(string.ascii_lowercase + string.digits, k=length2))
-    url = f'/{random_string1}/{random_string2}'
-    return url
 
 if url == "generate":
     url = generate_random_url()
@@ -48,18 +40,7 @@ print(AsciiAlerts.GREEN + AsciiAlerts.ascii_art_hello + AsciiAlerts.RESET)
 
 tl = TLAPI(environment=enviroment, username=username, password=password,
            server=server)
-invert = False
 
-def accept_user_input():
-    global invert
-    while True:
-        user_input = input()
-        print(f"Recived: {user_input}")
-        if user_input == 'invert':
-            invert = not invert
-            print("inverted: ", invert)
-
-invert = False
 
 def close(symbol_name):
     closed = False
@@ -96,33 +77,30 @@ def handle_position_normal(payload_list):
                 order_id = ""
                 instrument_id = tl.get_instrument_id_from_symbol_name(symbol_name)
                 while not order_id:
-                    if not invert:
-                        order_id = tl.create_order(instrument_id, quantity=lot, side="buy", type_="market", sl=stoploss, tp=takeprofit,
+                    order_id = tl.create_order(instrument_id, quantity=lot, side="buy", type_="market", sl=stoploss, tp=takeprofit,
                                                    sl_type="offset")
-                    else:
-                        order_id = tl.create_order(instrument_id, quantity=lot, side="sell", type_="market", sl=stoploss, tp=takeprofit,
-                                                   sl_type="offset")
+
                     if not order_id:
-                        print("Order was not successful, trying again...")
+                        print(AsciiAlerts.GREEN + "Order was not successful, trying again...")
+                        AsciiAlerts.resetStyle()
                     else:
-                        print("Order placed successfully, order ID:", order_id)
+                        print(AsciiAlerts.GREEN + "Order placed successfully, order ID:", order_id)
+                        AsciiAlerts.resetStyle()
 
             if direction == 'sell':
                 order_id = ""
                 instrument_id = tl.get_instrument_id_from_symbol_name(symbol_name)
                 while not order_id:
-                    if not invert:
-                        order_id = tl.create_order(instrument_id, quantity=lot, side="sell", type_="market", tp=takeprofit,
+                    order_id = tl.create_order(instrument_id, quantity=lot, side="sell", type_="market", tp=takeprofit,
                                                    sl=stoploss,
                                                    sl_type="offset")
-                    else:
-                        order_id = tl.create_order(instrument_id, quantity=lot, side="buy", type_="market", tp=takeprofit,
-                                                   sl=stoploss,
-                                                   sl_type="offset")
+
                     if not order_id:
-                        print("Order was not successful, trying again...")
+                        print(AsciiAlerts.RED + "Order was not successful, trying again..." )
+                        AsciiAlerts.resetStyle()
                     else:
-                        print("Order placed successfully, order ID:", order_id)
+                        print(AsciiAlerts.GREEN + "Order placed successfully, order ID:", order_id )
+                        AsciiAlerts.resetStyle()
 
         print("Normal: Unlocked")
 
