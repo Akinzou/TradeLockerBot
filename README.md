@@ -68,7 +68,7 @@ Run Container with addtional argument
 ```sh
 -e url=/your_url
 ```
-### $\color{lime}{\textsf{For safety reasons, generating a random URL for the strategy}}$  
+### $\color{lime}{\textsf{For safety reasons, generating a random URL for the strategy:}}$  
 Use:
 ```sh
 -e url=generate
