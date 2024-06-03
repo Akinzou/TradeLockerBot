@@ -45,9 +45,9 @@ After running the container, you should see green text indicating successful aut
   | || | | (_| | (_| |  __/ |__| (_) | (__|   <  __/ |  | |_) | (_) | |_
   |_||_|  \__,_|\__,_|\___|_____\___/ \___|_|\_\___|_|  |____/ \___/ \__|
 </pre>
-
+```math
 $\color{lime}{\textsf{[INFO] tradelocker.tradelocker_api 2024-05-30 11:25:31,834 tradelocker_api _auth_with_password: 665 Successfully fetched authentication tokens}}$
-
+```
 $\color{lime}{\textsf{lorem ipsum}}$
 
 
