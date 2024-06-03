@@ -45,7 +45,7 @@ After running the container, you should see green text indicating successful aut
 +  |_||_|  \__,_|\__,_|\___|_____\___/ \___|_|\_\___|_|  |____/ \___/ \__|
 +[INFO] tradelocker.tradelocker_api 2024-05-30 11:25:31,834 tradelocker_api _auth_with_password: 665 Successfully fetched authentication tokens
 ```
-<span style="color:red">lorem ipsum</span>
+$\color{red}{\textsf{lorem ipsum}}$
 
 ### Access the Webhook Bot
 You can now access the webhook bot at:
