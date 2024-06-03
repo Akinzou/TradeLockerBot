@@ -75,9 +75,18 @@ You can use also
 ```sh
 -e url=generate
 ```
-For generate random URL
 
+and you should see:
 
+```diff
+                                  _
+ ___  __ ___   _____   _   _ _ __| |
+/ __|/ _` \ \ / / _ \ | | | | '__| |
+\__ \ (_| |\ V /  __/ | |_| | |  | |
+|___/\__,_| \_/ \___|  \__,_|_|  |_|
+
+/yourgenerated/url
+```
 
 ## Adding webhook alert to your strategy:
 Use this format
