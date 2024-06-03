@@ -47,7 +47,7 @@ After running the container, you should see green text indicating successful aut
 ```
 $\color{red}{\textsf{lorem ipsum}}$
 ```math
-$\color{red}{\textsf{_____              _      _               _             ____        _}}$
+\textcolor{red}{\text{ _____              _      _               _             ____        _}} \\
 ```
 
 
