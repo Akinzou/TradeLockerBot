@@ -39,12 +39,13 @@ docker run -t -p 443:443 -e username=your_username -e password=your_password -e 
 After running the container, you should see green text indicating successful authentication:
 ```diff
 + _____              _      _               _             ____        _
-|_   _| __ __ _  __| | ___| |    ___   ___| | _____ _ __| __ )  ___ | |_
-  | || '__/ _` |/ _` |/ _ \ |   / _ \ / __| |/ / _ \ '__|  _ \ / _ \| __|
-  | || | | (_| | (_| |  __/ |__| (_) | (__|   <  __/ |  | |_) | (_) | |_
-  |_||_|  \__,_|\__,_|\___|_____\___/ \___|_|\_\___|_|  |____/ \___/ \__|
++|_   _| __ __ _  __| | ___| |    ___   ___| | _____ _ __| __ )  ___ | |_
++  | || '__/ _` |/ _` |/ _ \ |   / _ \ / __| |/ / _ \ '__|  _ \ / _ \| __|
++  | || | | (_| | (_| |  __/ |__| (_) | (__|   <  __/ |  | |_) | (_) | |_
++  |_||_|  \__,_|\__,_|\___|_____\___/ \___|_|\_\___|_|  |____/ \___/ \__|
 +[INFO] tradelocker.tradelocker_api 2024-05-30 11:25:31,834 tradelocker_api _auth_with_password: 665 Successfully fetched authentication tokens
 ```
+<span style="color:red">lorem ipsum</span>
 
 ### Access the Webhook Bot
 You can now access the webhook bot at:
