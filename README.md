@@ -33,7 +33,7 @@ ghcr.io/akinzou/tradelocker_bot   latest
 ### Run the Container
 Run the container with the following command:
 ```sh
-docker run -p 443:443 -e username=your_username -e password=your_password -e server=your_server -e env=demo/live --rm ghcr.io/akinzou/tradelocker_bot:latest
+docker run -t -p 443:443 -e username=your_username -e password=your_password -e server=your_server -e env=demo/live --rm ghcr.io/akinzou/tradelocker_bot:latest
 ```
 ### Verification
 After running the container, you should see green text indicating successful authentication:
