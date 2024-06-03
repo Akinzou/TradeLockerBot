@@ -37,12 +37,13 @@ docker run -t -p 443:443 -e username=your_username -e password=your_password -e 
 ```
 ### Verification
 After running the container, you should see green text indicating successful authentication:
+```math
  _____              _      _               _             ____        _
 |_   _| __ __ _  __| | ___| |    ___   ___| | _____ _ __| __ )  ___ | |_
   | || '__/ _` |/ _` |/ _ \ |   / _ \ / __| |/ / _ \ '__|  _ \ / _ \| __|
   | || | | (_| | (_| |  __/ |__| (_) | (__|   <  __/ |  | |_) | (_) | |_
   |_||_|  \__,_|\__,_|\___|_____\___/ \___|_|\_\___|_|  |____/ \___/ \__|
-
+```
 $\color{green}{\textsf{[INFO] tradelocker.tradelocker_api 2024-05-30 11:25:31,834 tradelocker_api _auth_with_password: 665 Successfully fetched authentication tokens}}$
 
 
