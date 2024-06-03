@@ -45,13 +45,15 @@ After running the container, you should see green text indicating successful aut
 +  |_||_|  \__,_|\__,_|\___|_____\___/ \___|_|\_\___|_|  |____/ \___/ \__|
 +[INFO] tradelocker.tradelocker_api 2024-05-30 11:25:31,834 tradelocker_api _auth_with_password: 665 Successfully fetched authentication tokens
 ```
-$\color{red}{\textsf{
- _____              _      _               _             ____        _
-|_   _| __ __ _  __| | ___| |    ___   ___| | _____ _ __| __ )  ___ | |_
-  | || '__/ _` |/ _` |/ _ \ |   / _ \ / __| |/ / _ \ '__|  _ \ / _ \| __|
-  | || | | (_| | (_| |  __/ |__| (_) | (__|   <  __/ |  | |_) | (_) | |_
-  |_||_|  \__,_|\__,_|\___|_____\___/ \___|_|\_\___|_|  |____/ \___/ \__|
-}}$
+$\color{red}{\textsf{  _____              _      _               _             ____        _}}$
+$\color{red}{\textsf{ |_   _| __ __ _  __| | ___| |    ___   ___| | _____ _ __| __ )  ___ | |_}}$
+$\color{red}{\textsf{   | || '__/ _` |/ _` |/ _ \ |   / _ \ / __| |/ / _ \ '__|  _ \ / _ \| __|}$
+$\color{red}{\textsf{   | || | | (_| | (_| |  __/ |__| (_) | (__|   <  __/ |  | |_) | (_) | |_}$
+$\color{red}{\textsf{   |_||_|  \__,_|\__,_|\___|_____\___/ \___|_|\_\___|_|  |____/ \___/ \__|}$
+
+
+
+
 
 ### Access the Webhook Bot
 You can now access the webhook bot at:
