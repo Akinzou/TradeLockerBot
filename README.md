@@ -5,7 +5,7 @@ TradeLocker is a webhook bot designed to seamlessly integrate with TradingView, 
 ## Install
 
 ### Update Code
-$\color{red}{\textsf{Use only if you have already downloaded the image.}}$
+$\color{red}{\textsf{Use only if you have already downloaded the image.}}$  
 If you update the code, run the following command to delete the previous image: 
 
 ```sh
@@ -31,7 +31,7 @@ ghcr.io/akinzou/tradelocker_bot   latest
 ```
 
 ### Run the Container
-$\color{red}{\textsf{If you don't know Docker, change only variables.}}$
+$\color{red}{\textsf{If you don't know Docker, change only variables.}}$  
 Run the container with the following command:
 ```sh
 docker run -t -p 443:443 -e username=your_username -e password=your_password -e server=your_server -e env=demo/live --rm ghcr.io/akinzou/tradelocker_bot:latest
@@ -68,7 +68,7 @@ Run Container with addtional argument
 ```sh
 -e url=/your_url
 ```
-$\color{lime}{\textsf{For safety reasons, generating a random URL for the strategy}}$
+$\color{lime}{\textsf{For safety reasons, generating a random URL for the strategy}}$  
 You can use also:
 ```sh
 -e url=generate
@@ -85,7 +85,7 @@ and you should see:
 
 /yourgenerated/url
 ```
-$\color{red}{\textsf{Save it, it is only shown once}}$
+$\color{red}{\textsf{Save it, it is only shown once}}$  
 This URL is for webhook execution in the trading environment.
 
 ## Adding webhook alert to your strategy:
