@@ -16,12 +16,16 @@ parser.add_argument('--password', type=str, required=True, help='password')
 parser.add_argument('--server', type=str, required=True, help='server')
 parser.add_argument('--env', type=str, required=True, help='live/demo')
 parser.add_argument('--url', type=str, default='/strategy', help='Optional URL, default is /strategy')
+parser.add_argument('--acc_num', type=str, default='0', help='Optional account number')
+parser.add_argument('--acc_id', type=str, default='0', help='Optional account number')
 args = parser.parse_args()
 
 username = args.username
 password = args.password
 server = args.server
 enviroment = args.env
+acc_num = int(args.acc_num)
+acc_id = int(args.acc_id)
 url = args.url
 
 if enviroment == "demo":
@@ -38,8 +42,19 @@ if url == "generate":
 
 print(AsciiAlerts.GREEN + AsciiAlerts.ascii_art_hello + AsciiAlerts.RESET)
 
-tl = TLAPI(environment=enviroment, username=username, password=password,
-           server=server)
+if acc_num != 0 and acc_id != 0:
+    raise ValueError("Please provide only the account number or ID (starting from 1).")
+
+if acc_num != 0:
+    tl = TLAPI(environment=enviroment, username=username, password=password,
+           server=server, acc_num=acc_num)
+
+elif acc_id != 0:
+    tl = TLAPI(environment=enviroment, username=username, password=password,
+           server=server, account_id=acc_id)
+else:
+    tl = TLAPI(environment=enviroment, username=username, password=password,
+               server=server)
 
 #Close until closed
 def close(symbol_name):
