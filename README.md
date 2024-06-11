@@ -34,7 +34,16 @@ ghcr.io/akinzou/tradelocker_bot   latest
 $\color{red}{\textsf{If you don't know Docker, change only variables.}}$  
 Run the container with the following command:
 ```sh
-docker run -t -p 443:443 -e username=your_username -e password=your_password -e server=your_server -e env=demo/live --rm ghcr.io/akinzou/tradelocker_bot:latest
+docker run -t -p 443:443 -e username = "your_username" -e password = "your_password" -e server = "your_server" -e env=demo/live --rm ghcr.io/akinzou/tradelocker_bot:latest
+```
+### Run a specific account
+If you have more than one trading account under your main account, you can specify which one to use by:
+```sh
+-e acc_id = your_acc_id
+```
+or
+```sh
+-e acc_num = your_acc_number
 ```
 ### Verification
 After running the container, you should see green text indicating successful authentication:
@@ -48,6 +57,7 @@ After running the container, you should see green text indicating successful aut
 
 +[INFO] tradelocker.tradelocker_api 2024-05-30 11:25:31,834 tradelocker_api _auth_with_password: 665 Successfully fetched authentication tokens
 ```
+Additionally, check on which account you are signed in; it will print the number and ID.
 
 ### Access the Webhook Bot
 You can now access the webhook bot at:
