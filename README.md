@@ -31,7 +31,6 @@ ghcr.io/akinzou/tradelocker_bot   latest
 ```
 
 ### Run the Container
-$\color{red}{\textsf{If you don't know Docker, change only variables.}}$  
 Run the container with the following command:
 ```sh
 docker run -t -p 443:443 -e username = "your_username" -e password = "your_password" -e server = "your_server" -e env=demo/live --rm ghcr.io/akinzou/tradelocker_bot:latest
