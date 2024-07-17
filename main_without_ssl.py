@@ -93,8 +93,8 @@ def handle_position_normal(payload_list):
                 order_id = ""
                 instrument_id = tl.get_instrument_id_from_symbol_name(symbol_name)
                 while not order_id:
-                    order_id = tl.create_order(instrument_id, quantity=lot, side="buy", type_="market", sl=stoploss, tp=takeprofit,
-                                                   sl_type="offset")
+                    order_id = tl.create_order(instrument_id, quantity=lot, side="buy", type_="market", stop_loss=stoploss,
+                                               take_profit=takeprofit, stop_loss_type="offset", take_profit_type = "offset")
 
                     if not order_id:
                         print(AsciiAlerts.GREEN + "Order was not successful, trying again...")
@@ -107,9 +107,8 @@ def handle_position_normal(payload_list):
                 order_id = ""
                 instrument_id = tl.get_instrument_id_from_symbol_name(symbol_name)
                 while not order_id:
-                    order_id = tl.create_order(instrument_id, quantity=lot, side="sell", type_="market", tp=takeprofit,
-                                                   sl=stoploss,
-                                                   sl_type="offset")
+                    order_id = tl.create_order(instrument_id, quantity=lot, side="sell", type_="market", take_profit=takeprofit,
+                                                   stop_loss=stoploss, stop_loss_type="offset", take_profit_type = "offset")
 
                     if not order_id:
                         print(AsciiAlerts.RED + "Order was not successful, trying again..." )
