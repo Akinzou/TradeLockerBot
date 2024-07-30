@@ -37,9 +37,7 @@ docker run -t -p 443:443 --name prod -e username='your_username' -e password='yo
 ```
 The use of the --name prod option in the docker run command assigns the name prod to the running container. As a result, after executing the command, the container named prod will be visible in the output of the docker ps command.
 
-Do not forget to select the environment as either demo or live.
-
-$\color{red}{\textsf{Do not forget to select the environment as either demo or live.}}$  
+Do not forget to select the environment as either demo or live. 
 ### Run a specific account
 If you have more than one trading account under your main account, you can specify which one to use by:
 ```sh
