@@ -33,8 +33,11 @@ ghcr.io/akinzou/tradelocker_bot   latest
 ### Run the Container
 Run the container with the following command:
 ```sh
-docker run -t -p 443:443 -e username = "your_username" -e password = "your_password" -e server = "your_server" -e env=demo/live --rm ghcr.io/akinzou/tradelocker_bot:latest
+docker run -t -p 443:443 --name prod -e username='your_username' -e password='your_password' -e server='your_server' -e env=demo/live --rm ghcr.io/akinzou/tradelocker_bot:latest
 ```
+The use of the --name prod option in the docker run command assigns the name prod to the running container. As a result, after executing the command, the container named prod will be visible in the output of the docker ps command.
+$\color{lime}{\textsf{Do not forget select env demo or live}}$  
+
 ### Run a specific account
 If you have more than one trading account under your main account, you can specify which one to use by:
 ```sh
