@@ -68,6 +68,7 @@ def handle_position_normal(tl, payload_list, lock):
         mainLot = payload_list[2]
         takeprofit = int(payload_list[3])
         stoploss = int(payload_list[4])
+        isInvert = payload_list[6]
         balance = tl.get_account_state().get("projectedBalance")
 
         minilot, per = map(float, mainLot.split('/'))
@@ -80,11 +81,15 @@ def handle_position_normal(tl, payload_list, lock):
         if payload_list[5] == "open":
             close_positions(tl, symbol_name)
             instrument_id = tl.get_instrument_id_from_symbol_name(symbol_name)
-            if direction == 'buy':
-                place_order(tl, instrument_id, lot, 'buy', stoploss, takeprofit)
-            elif direction == 'sell':
-                place_order(tl, instrument_id, lot, 'sell', stoploss, takeprofit)
 
+            if isInvert == "NonInvert":
+                order_direction = direction
+            elif isInvert == "Invert":
+                order_direction = 'sell' if direction == 'buy' else 'buy'
+            else:
+                raise ValueError("Invalid value for isInvert. Expected 'NonInvert' or 'Invert'.")
+
+            place_order(tl, instrument_id, lot, order_direction, stoploss, takeprofit)
         print("Normal: Unlocked")
 
 def main():
