@@ -151,7 +151,8 @@ The position size is rounded to two decimal places.
 **Example calculation:**  
 Balance: 1000  
 Sent lot: 0.01/100  
-Calculation:  
+  
+**Calculation:**  
 ```
 lot = (balance / divider) * base_lot
 lot = (1000 / 100) * 0.01
@@ -167,7 +168,8 @@ sell to buy
 If the value is NonInvert, the direction remains unchanged.  
 **Example behavior:**  
 Webhook direction: buy.  
-isInvert value: Invert.  
+isInvert value: Invert. 
+  
 **Result: The bot will reverse buy to sell and open the corresponding position.**  
   
 **Use case:**  
