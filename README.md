@@ -57,7 +57,7 @@ argument specifies the port on which the FastAPI application will run. By defaul
 ```sh
 python tradelocker_bot.py --port 8080
 ```
-This will start the application on port 8080, making the webhook accessible at ** http://localhost:8080/strategy ** 
+This will start the application on port 8080, making the webhook accessible at **http://localhost:8080/strategy** 
 
 ### Verification
 After running the container, you should see green text indicating successful authentication:
