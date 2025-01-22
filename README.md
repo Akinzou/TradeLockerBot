@@ -139,9 +139,11 @@ where:
 
 ## Dynamic Lot
 Dynamic lot allows the position size to be calculated based on the available account balance.
+```ssh
 **Format: <lot>/<divider>**  
 <lot>: The base lot size.  
 <divider>: The balance divisor used for calculation.  
+```
 **How it works:**  
 Sending the value 0.01/100 will instruct the bot to open 0.01 lot for every 100 units of the account balance.  
 The position size is rounded to two decimal places.  
@@ -162,7 +164,7 @@ If the value is Invert, the bot will swap:
 buy to sell  
 sell to buy  
 If the value is NonInvert, the direction remains unchanged.  
-Example behavior:  
+**Example behavior:**  
 Webhook direction: buy.  
 isInvert value: Invert.  
 **Result: The bot will reverse buy to sell and open the corresponding position.**  
