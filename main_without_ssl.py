@@ -90,8 +90,6 @@ def handle_position_normal(tl, payload_list, lock):
                 raise ValueError("Invalid value for isInvert. Expected 'NonInvert' or 'Invert'.")
 
             place_order(tl, instrument_id, lot, order_direction, stoploss, takeprofit)
-
-
         print("Normal: Unlocked")
 
 def main():
