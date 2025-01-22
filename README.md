@@ -165,7 +165,8 @@ The Invert option allows reversing the trade direction:
 If the value is Invert, the bot will swap:  
 buy to sell  
 sell to buy  
-If the value is NonInvert, the direction remains unchanged.  
+If the value is NonInvert, the direction remains unchanged.   
+  
 **Example behavior:**  
 Webhook direction: buy.  
 isInvert value: Invert. 
