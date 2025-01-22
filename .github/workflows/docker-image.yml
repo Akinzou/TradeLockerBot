@@ -1,7 +1,5 @@
 name: Docker Image CI
 
-permissions: write-all
-
 on:
   workflow_run:
     workflows: ["Python (3.11, 3.12) ,"]
