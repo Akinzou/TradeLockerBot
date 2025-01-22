@@ -137,7 +137,7 @@ where:
 - **Invert**: If set to `Invert`, reverses the direction of the trade (`buy` becomes `sell`, and `sell` becomes `buy`).
 
 
-## Dynamic Lot
+### Dynamic Lot
 Dynamic lot allows the position size to be calculated based on the available account balance.
 ```ssh
 **Format: <lot>/<divider>**  
@@ -160,7 +160,7 @@ lot = 0.1
 The bot will open a position with a size of 0.1 lots.
 ```
 
-## Invert
+### Invert
 The Invert option allows reversing the trade direction:  
 If the value is Invert, the bot will swap:  
 buy to sell  
