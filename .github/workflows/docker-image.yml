@@ -1,6 +1,7 @@
 name: Docker Image CI
 
 permissions: write-all
+packages: write
 
 on:
   workflow_run:
