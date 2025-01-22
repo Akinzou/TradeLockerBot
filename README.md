@@ -139,16 +139,16 @@ where:
 
 ## Dynamic Lot
 Dynamic lot allows the position size to be calculated based on the available account balance.
-** Format: <lot>/<divider> **
-<lot>: The base lot size.
-<divider>: The balance divisor used for calculation.
-** How it works: **
-Sending the value 0.01/100 will instruct the bot to open 0.01 lot for every 100 units of the account balance.
-The position size is rounded to two decimal places.
-** Example calculation: **
-Balance: 1000
-Sent lot: 0.01/100
-Calculation:
+**Format: <lot>/<divider>**  
+<lot>: The base lot size.  
+<divider>: The balance divisor used for calculation.  
+**How it works:**  
+Sending the value 0.01/100 will instruct the bot to open 0.01 lot for every 100 units of the account balance.  
+The position size is rounded to two decimal places.  
+**Example calculation:**  
+Balance: 1000  
+Sent lot: 0.01/100  
+Calculation:  
 ```
 lot = (balance / divider) * base_lot
 lot = (1000 / 100) * 0.01
@@ -157,19 +157,19 @@ The bot will open a position with a size of 0.1 lots.
 ```
 
 ## Invert
-The Invert option allows reversing the trade direction:
-If the value is Invert, the bot will swap:
-buy to sell
-sell to buy
-If the value is NonInvert, the direction remains unchanged.
-Example behavior:
-Webhook direction: buy.
-isInvert value: Invert.
-Result: The bot will reverse buy to sell and open the corresponding position.
-
-** Use case: **
-This is useful for strategies that involve hedging or need to reverse trade directions as part of risk management.
-
+The Invert option allows reversing the trade direction:  
+If the value is Invert, the bot will swap:  
+buy to sell  
+sell to buy  
+If the value is NonInvert, the direction remains unchanged.  
+Example behavior:  
+Webhook direction: buy.  
+isInvert value: Invert.  
+**Result: The bot will reverse buy to sell and open the corresponding position.**  
+  
+**Use case:**  
+This is useful for strategies that involve hedging or need to reverse trade directions as part of risk management.  
+  
 ## Remember 
 Remember to configure Nginx or another appropriate software to enable access to HTTPS. You will be able to use, for example
 
