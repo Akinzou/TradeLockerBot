@@ -147,6 +147,7 @@ Dynamic lot allows the position size to be calculated based on the available acc
 **How it works:**  
 Sending the value 0.01/100 will instruct the bot to open 0.01 lot for every 100 units of the account balance.  
 The position size is rounded to two decimal places.  
+  
 **Example calculation:**  
 Balance: 1000  
 Sent lot: 0.01/100  
