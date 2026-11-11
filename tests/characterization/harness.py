@@ -77,11 +77,14 @@ class RecordingLock:
         return acquired
 
     def release(self):
-        # Release first: a double release must fail before it is logged, so
-        # the record never shows a release that did not happen.
-        self._lock.release()
+        # Record while still holding the lock, so no other thread's acquire can
+        # appear before this release; refuse first when not held, so a double
+        # release fails without leaving a false record.
+        if not self._lock.locked():
+            raise RuntimeError("release unlocked lock")
         self.events.append(("release", len(self._fake.calls)))
         print(LOCK_RELEASED)
+        self._lock.release()
 
     def locked(self):
         return self._lock.locked()

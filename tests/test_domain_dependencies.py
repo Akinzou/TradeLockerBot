@@ -17,6 +17,8 @@ import ast
 import symtable
 from pathlib import Path
 
+import pytest
+
 DOMAIN = Path(__file__).resolve().parent.parent / "tradelocker_bot" / "domain"
 DOMAIN_PACKAGE = "tradelocker_bot.domain"
 
@@ -33,13 +35,13 @@ PURE_STDLIB = {
 
 # Builtins that do I/O or stop the process (`open`, `print`, `input`, `help`,
 # `exit` and the other `site` helpers), run or import code by name, or hand
-# out the namespace or loader where the others live (`globals`, `vars`,
-# `locals`, `__loader__`, `__spec__`).
+# out the namespace where the others live (`globals`, `vars`, `locals`).
+# `__loader__` and `__spec__` are module globals rather than builtins, listed
+# because they read files themselves; `__file__` is only a string.
 IMPURE_BUILTINS = {
     "__builtins__", "__import__", "__loader__", "__spec__", "breakpoint",
-    "compile", "copyright",
-    "credits", "eval", "exec", "exit", "globals", "help", "input", "license",
-    "locals", "open", "print", "quit", "vars",
+    "compile", "copyright", "credits", "eval", "exec", "exit", "globals",
+    "help", "input", "license", "locals", "open", "print", "quit", "vars",
 }
 
 
@@ -75,30 +77,18 @@ def _scopes(table):
         yield from _scopes(child)
 
 
-def _module_binds(module, name):
-    try:
-        symbol = module.lookup(name)
-    except KeyError:
-        return False
-    return symbol.is_assigned() or symbol.is_imported()
-
-
 def _impure_builtins_read(source, path):
     # symtable rather than matching names in the syntax tree: OHLC code needs
-    # fields, parameters and locals called `open`, and only the compiler's own
-    # scope resolution tells those apart from a read of the builtin, which
-    # covers calls and aliasing (`read = open`) alike.
-    module = symtable.symtable(source, str(path), "exec")
-    for scope in _scopes(module):
+    # parameters and locals called `open`, and only the compiler's own scope
+    # resolution tells those apart from a read of the builtin, which covers
+    # calls and aliasing (`read = open`) alike. A read that resolves through
+    # module scope is flagged even when the module rebinds the name: shadowing
+    # these builtins at module level is itself out, which keeps the rule
+    # independent of statement order and dead branches.
+    for scope in _scopes(symtable.symtable(source, str(path), "exec")):
         for symbol in scope.get_symbols():
-            name = symbol.get_name()
-            if (
-                name in IMPURE_BUILTINS
-                and symbol.is_referenced()
-                and symbol.is_global()
-                and not _module_binds(module, name)
-            ):
-                yield name
+            if symbol.get_name() in IMPURE_BUILTINS and symbol.is_referenced() and symbol.is_global():
+                yield symbol.get_name()
 
 
 def _violations(rule):
@@ -117,3 +107,47 @@ def test_domain_imports_only_allow_listed_modules():
 
 def test_domain_reads_no_impure_builtins():
     assert _violations(_impure_builtins_read) == set()
+
+
+# The domain itself uses none of these, so the checks above would pass even if
+# the rules caught nothing. These sources prove each rule both fires and stays
+# quiet where it should.
+PROBE = DOMAIN / "probe.py"
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("import datetime", ["datetime"]),
+        ("from concurrent import futures", ["concurrent"]),
+        ("import pandas", ["pandas"]),
+        ("from .. import adapters", ["tradelocker_bot"]),
+        ("from ..application import x", ["tradelocker_bot.application"]),
+        ("import math\nfrom dataclasses import dataclass", []),
+        ("from . import lot_sizing\nfrom .lot_sizing import LotSizing", []),
+        ("import tradelocker_bot.domain.lot_sizing", []),
+    ],
+)
+def test_import_rule_on_probe_sources(source, expected):
+    assert list(_forbidden_imports(source, PROBE)) == expected
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("print(1)", ["print"]),
+        ("read = open", ["open"]),
+        ("def f():\n    def g():\n        return open\n    return g", ["open"]),
+        ("class C:\n    shown = print", ["print"]),
+        ("print(1)\nprint = None", ["print"]),
+        ("if False:\n    def open(): pass\nopen('x')", ["open"]),
+        ("__loader__.get_data('x')", ["__loader__"]),
+        ("exit()", ["exit"]),
+        ("class Candle:\n    open: float\n    close: float", []),
+        ("def body(open, close):\n    return abs(close - open)", []),
+        ("def f():\n    input = 2\n    return input", []),
+        ("def f(candle):\n    return candle.open", []),
+    ],
+)
+def test_builtin_rule_on_probe_sources(source, expected):
+    assert list(_impure_builtins_read(source, PROBE)) == expected
