@@ -8,9 +8,8 @@ other pin. Identity rather than type is asserted, because a restructure that cat
 the client's exception and raises a new one of the same type would pass a type
 check and still lose the original's attributes and traceback.
 
-The handler is called directly, so these pins end at its caller. Whether the
-webhook thread still receives the exception belongs to the inbound adapter
-(roadmap step 5).
+The handler is called directly, so these pins end at its caller. That the
+webhook thread receives the exception is pinned in ``test_webhook_route.py``.
 """
 
 import pytest

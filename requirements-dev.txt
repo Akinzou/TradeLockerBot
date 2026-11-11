@@ -5,3 +5,6 @@
 pytest==9.2.0
 flake8==7.5.0
 packaging==26.3
+# Starlette's TestClient, for the webhook route pins. httpx2 rather than httpx:
+# Starlette 1.10 deprecates httpx for its test client.
+httpx2==2.16.0
