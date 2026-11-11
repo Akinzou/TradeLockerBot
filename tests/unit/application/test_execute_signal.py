@@ -107,7 +107,7 @@ def test_close_closes_without_a_second_lookup_or_an_order():
     ]
 
 
-@pytest.mark.parametrize("action", ["hold", "Open", " open", ""])
+@pytest.mark.parametrize("action", ["hold", "Open", " open", "close ", " close", ""])
 def test_any_other_action_only_reads_the_balance(action):
     assert run(signal(action=action, invert="Sideways")) == [*START, ("unlocked",)]
 

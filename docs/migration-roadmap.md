@@ -19,8 +19,8 @@ migration pull request.
 | 2d | Pin exact call sequences and exception types on raising paths, and inputs legacy never validates                                                            | safety    | done                                 |
 | 2e | Pin whitespace variants of `open`/`close` and the retry line's inverted side                                                                             | safety    | done                                 |
 | 3  | Validate the whole signal before any broker call: strict direction, action, lot and inversion types, a Result at the boundary (own ADR). Expected pin updates: wrong-side and NonInvert-forwarding, invalid-invert-after-close, invalid invert ignored outside `open`, truncated payload, non-numeric take profit and stop loss, unknown action, malformed and nonsensical lot, missing balance, unknown symbol | behaviour | todo — merge only after 1a is unblocked |
-| 4  | Application: execute-signal use case behind a broker port; TradeLocker adapter implements the port                                                          | structure | next                                 |
-| 5  | Inbound HTTP adapter and composition root; `main_without_ssl.py` becomes a thin entrypoint                                                                  | structure | todo                                 |
+| 4  | Application: execute-signal use case behind broker and console ports; TradeLocker and console adapters implement them ([ADR 0005](adr/0005-execute-signal-use-case-and-ports.md)) | structure | done                                 |
+| 5  | Inbound HTTP adapter and composition root; `main_without_ssl.py` becomes a thin entrypoint                                                                  | structure | next                                 |
 | 6  | Remaining behaviour changes from the defect list below, one pull request and one ADR each                                                                   | behaviour | todo                                 |
 
 Structure steps must keep `tests/characterization/` green with **unchanged
