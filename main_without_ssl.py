@@ -5,7 +5,9 @@ import uvicorn
 import argparse
 from libs import AsciiAlerts
 from libs.URLgenerator import *
-from tradelocker_bot.domain.lot_sizing import LotSizing
+from tradelocker_bot.adapters.console import PrintingConsole
+from tradelocker_bot.adapters.tradelocker_broker import TradeLockerBroker
+from tradelocker_bot.application.execute_signal import ExecuteSignal, TradeSignal
 
 app = FastAPI()
 lock = threading.Lock()
@@ -31,66 +33,22 @@ def create_tl_instance(env, username, password, server, acc_num, acc_id):
         return TLAPI(environment=env, username=username, password=password, server=server, account_id=acc_id)
     return TLAPI(environment=env, username=username, password=password, server=server)
 
-def close_positions(tl, symbol_name):
-    instrument_id = tl.get_instrument_id_from_symbol_name(symbol_name)
-    closed = False
-    while not closed:
-        positions = tl.get_all_positions()
-        relevant_positions = positions[positions['tradableInstrumentId'] == instrument_id]
-        for _, position in relevant_positions.iterrows():
-            tl.close_all_positions(instrument_id)
-            print(f"Closing: {symbol_name}")
-        closed = relevant_positions.empty
-
-def place_order(tl, instrument_id, lot, side, stoploss, takeprofit):
-    order_id = ""
-    while not order_id:
-        order_id = tl.create_order(
-            instrument_id,
-            quantity=lot,
-            side=side,
-            type_="market",
-            stop_loss=stoploss,
-            take_profit=takeprofit,
-            stop_loss_type="offset",
-            take_profit_type="offset"
-        )
-        if not order_id:
-            print(AsciiAlerts.RED + f"{side.capitalize()} order was not successful, trying again...")
-            AsciiAlerts.resetStyle()
-        else:
-            print(AsciiAlerts.GREEN + f"Order placed successfully, order ID: {order_id}")
-            AsciiAlerts.resetStyle()
-
 def handle_position_normal(tl, payload_list, lock):
     with lock:
-        symbol_name = payload_list[0]
-        direction = payload_list[1]
-        mainLot = payload_list[2]
-        takeprofit = int(payload_list[3])
-        stoploss = int(payload_list[4])
-        isInvert = payload_list[6]
-        balance = tl.get_account_state().get("projectedBalance")
-
-        lot = LotSizing.parse(mainLot).quantity_for(balance)
-
-        print("Normal: Locked")
-        if payload_list[5] == "close":
-            close_positions(tl, symbol_name)
-
-        if payload_list[5] == "open":
-            close_positions(tl, symbol_name)
-            instrument_id = tl.get_instrument_id_from_symbol_name(symbol_name)
-
-            if isInvert == "NonInvert":
-                order_direction = direction
-            elif isInvert == "Invert":
-                order_direction = 'sell' if direction == 'buy' else 'buy'
-            else:
-                raise ValueError("Invalid value for isInvert. Expected 'NonInvert' or 'Invert'.")
-
-            place_order(tl, instrument_id, lot, order_direction, stoploss, takeprofit)
-        print("Normal: Unlocked")
+        # Read here, inside the lock and in the legacy field order, rather than
+        # in the use case: a short or non-numeric payload must keep failing
+        # with the same exception, inside the critical section, before any
+        # broker call (ADR 0005). Parsing it into domain values is step 3.
+        signal = TradeSignal(
+            symbol=payload_list[0],
+            direction=payload_list[1],
+            lot=payload_list[2],
+            take_profit=int(payload_list[3]),
+            stop_loss=int(payload_list[4]),
+            invert=payload_list[6],
+            action=payload_list[5],
+        )
+        ExecuteSignal(TradeLockerBroker(tl), PrintingConsole()).execute(signal)
 
 def main():
     args = parse_args()

@@ -14,7 +14,7 @@ without installing the project as a package.
 
 New code lives in a top-level `tradelocker_bot/` package, split into layers:
 `domain/` now, with `application/` and `adapters/` as later roadmap steps
-create them. A fitness test (`tests/test_domain_dependencies.py`) allows the
+create them. A fitness test (`tests/test_layer_dependencies.py`, which now covers each inner layer) allows the
 domain to import only its own package and an explicitly named set of pure
 standard-library modules, and forbids the builtins that do I/O or load code
 (`open`, `print`, `input`, `exit`, `eval`, `__import__`, `globals` and

@@ -1,5 +1,6 @@
-"""Fitness function: the domain imports only pure standard-library modules and
-reads no builtin that reaches I/O, the interpreter or code by name.
+"""Fitness function: each inner layer imports only itself, the layers inside
+it and pure standard-library modules, and reads no builtin that reaches I/O,
+the interpreter or code by name.
 
 Imports are checked against a true allow-list. Filtering
 ``sys.stdlib_module_names`` through a deny-list of I/O modules let
@@ -19,8 +20,15 @@ from pathlib import Path
 
 import pytest
 
-DOMAIN = Path(__file__).resolve().parent.parent / "tradelocker_bot" / "domain"
-DOMAIN_PACKAGE = "tradelocker_bot.domain"
+PACKAGE = Path(__file__).resolve().parent.parent / "tradelocker_bot"
+
+# Layer -> the inner layers it may import. Adapters are outside this rule:
+# they exist to depend on third-party clients.
+LAYERS = {
+    "domain": (),
+    "application": ("domain",),
+}
+OUTER_LAYERS = {"adapters"}
 
 # Modules for values, types and arithmetic; whole modules that do I/O or read
 # the clock, randomness or concurrency stay out (`datetime` because of
@@ -47,7 +55,7 @@ IMPURE_BUILTINS = {
 
 def _package_of(path):
     # Both `domain/x.py` and `domain/__init__.py` live in package `...domain`.
-    return path.relative_to(DOMAIN.parent.parent).parts[:-1]
+    return path.relative_to(PACKAGE.parent).parts[:-1]
 
 
 def _imported_modules(tree, path):
@@ -55,19 +63,28 @@ def _imported_modules(tree, path):
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             yield from (alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.level:
-            # Resolve `from .. import x` against the real package, so a relative
-            # import cannot step outside the domain unnoticed.
-            base = package[: len(package) - (node.level - 1)]
-            yield ".".join(base + ((node.module,) if node.module else ()))
         elif isinstance(node, ast.ImportFrom):
-            yield node.module
+            # Resolve `from .. import x` against the real package, so a relative
+            # import cannot step outside its layer unnoticed.
+            base = package[: len(package) - (node.level - 1)] if node.level else ()
+            module = ".".join(base + ((node.module,) if node.module else ()))
+            # Check each imported name as a submodule: `from .. import domain`
+            # must pass for the application and `from .. import adapters` fail,
+            # though both come from the bare package.
+            for alias in node.names:
+                yield module if alias.name == "*" else f"{module}.{alias.name}"
+
+
+def _layer_of(path):
+    return path.relative_to(PACKAGE).parts[0]
 
 
 def _forbidden_imports(source, path):
+    layer = _layer_of(path)
+    allowed = [f"{PACKAGE.name}.{name}" for name in (layer, *LAYERS[layer])]
     for module in _imported_modules(ast.parse(source), path):
-        is_domain = module == DOMAIN_PACKAGE or module.startswith(DOMAIN_PACKAGE + ".")
-        if not is_domain and module.split(".")[0] not in PURE_STDLIB:
+        in_allowed_layer = any(module == p or module.startswith(p + ".") for p in allowed)
+        if not in_allowed_layer and module.split(".")[0] not in PURE_STDLIB:
             yield module
 
 
@@ -91,38 +108,51 @@ def _impure_builtins_read(source, path):
                 yield symbol.get_name()
 
 
-def _violations(rule):
-    files = sorted(DOMAIN.rglob("*.py"))
-    assert files, "no domain modules found - the path is wrong, not the rule"
+def _violations(rule, layer):
+    files = sorted((PACKAGE / layer).rglob("*.py"))
+    assert files, f"no {layer} modules found - the path is wrong, not the rule"
     return {
-        f"{path.relative_to(DOMAIN.parent.parent)}: {name}"
+        f"{path.relative_to(PACKAGE.parent)}: {name}"
         for path in files
         for name in rule(path.read_text(encoding="utf-8"), path)
     }
 
 
-def test_domain_imports_only_allow_listed_modules():
-    assert _violations(_forbidden_imports) == set()
+def test_every_package_entry_is_a_known_layer():
+    # A new top-level module or package would otherwise sit outside every rule.
+    entries = {path.name for path in PACKAGE.iterdir()} - {"__init__.py", "__pycache__"}
+    assert entries <= set(LAYERS) | OUTER_LAYERS
 
 
-def test_domain_reads_no_impure_builtins():
-    assert _violations(_impure_builtins_read) == set()
+@pytest.mark.parametrize("layer", LAYERS)
+def test_layer_imports_only_allow_listed_modules(layer):
+    assert _violations(_forbidden_imports, layer) == set()
 
 
-# The domain itself uses none of these, so the checks above would pass even if
-# the rules caught nothing. These sources prove each rule both fires and stays
+@pytest.mark.parametrize("layer", LAYERS)
+def test_layer_reads_no_impure_builtins(layer):
+    assert _violations(_impure_builtins_read, layer) == set()
+
+
+# The layers use none of these, so the checks above would pass even if the
+# rules caught nothing. These sources prove each rule both fires and stays
 # quiet where it should.
-PROBE = DOMAIN / "probe.py"
+PROBE = PACKAGE / "domain" / "probe.py"
+APPLICATION_PROBE = PACKAGE / "application" / "probe.py"
 
 
 @pytest.mark.parametrize(
     ("source", "expected"),
     [
         ("import datetime", ["datetime"]),
-        ("from concurrent import futures", ["concurrent"]),
+        ("from concurrent import futures", ["concurrent.futures"]),
         ("import pandas", ["pandas"]),
-        ("from .. import adapters", ["tradelocker_bot"]),
-        ("from ..application import x", ["tradelocker_bot.application"]),
+        ("from .. import adapters", ["tradelocker_bot.adapters"]),
+        ("from .. import domain", []),
+        ("from tradelocker_bot import *", ["tradelocker_bot"]),
+        ("from ..application import x", ["tradelocker_bot.application.x"]),
+        ("import tradelocker_bot.application.ports", ["tradelocker_bot.application.ports"]),
+        ("import tradelocker_bot.domainx", ["tradelocker_bot.domainx"]),
         ("import math\nfrom dataclasses import dataclass", []),
         ("from . import lot_sizing\nfrom .lot_sizing import LotSizing", []),
         ("import tradelocker_bot.domain.lot_sizing", []),
@@ -130,6 +160,25 @@ PROBE = DOMAIN / "probe.py"
 )
 def test_import_rule_on_probe_sources(source, expected):
     assert list(_forbidden_imports(source, PROBE)) == expected
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("from tradelocker_bot.domain.lot_sizing import LotSizing", []),
+        ("from ..domain.lot_sizing import LotSizing", []),
+        ("from .ports import Broker\nfrom typing import Protocol", []),
+        ("from ..adapters import console", ["tradelocker_bot.adapters.console"]),
+        ("from .. import domain", []),
+        ("from tradelocker_bot import domain, adapters", ["tradelocker_bot.adapters"]),
+        ("import tradelocker_bot.adapters.console", ["tradelocker_bot.adapters.console"]),
+        ("from tradelocker import TLAPI", ["tradelocker.TLAPI"]),
+        ("from libs import AsciiAlerts", ["libs.AsciiAlerts"]),
+        ("import datetime", ["datetime"]),
+    ],
+)
+def test_import_rule_on_application_probe_sources(source, expected):
+    assert list(_forbidden_imports(source, APPLICATION_PROBE)) == expected
 
 
 @pytest.mark.parametrize(
