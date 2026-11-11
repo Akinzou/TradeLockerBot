@@ -28,6 +28,7 @@ LAYERS = {
     "domain": (),
     "application": ("domain",),
 }
+OUTER_LAYERS = {"adapters"}
 
 # Modules for values, types and arithmetic; whole modules that do I/O or read
 # the clock, randomness or concurrency stay out (`datetime` because of
@@ -62,13 +63,16 @@ def _imported_modules(tree, path):
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             yield from (alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.level:
+        elif isinstance(node, ast.ImportFrom):
             # Resolve `from .. import x` against the real package, so a relative
             # import cannot step outside its layer unnoticed.
-            base = package[: len(package) - (node.level - 1)]
-            yield ".".join(base + ((node.module,) if node.module else ()))
-        elif isinstance(node, ast.ImportFrom):
-            yield node.module
+            base = package[: len(package) - (node.level - 1)] if node.level else ()
+            module = ".".join(base + ((node.module,) if node.module else ()))
+            # Check each imported name as a submodule: `from .. import domain`
+            # must pass for the application and `from .. import adapters` fail,
+            # though both come from the bare package.
+            for alias in node.names:
+                yield module if alias.name == "*" else f"{module}.{alias.name}"
 
 
 def _layer_of(path):
@@ -114,6 +118,12 @@ def _violations(rule, layer):
     }
 
 
+def test_every_package_entry_is_a_known_layer():
+    # A new top-level module or package would otherwise sit outside every rule.
+    entries = {path.name for path in PACKAGE.iterdir()} - {"__init__.py", "__pycache__"}
+    assert entries <= set(LAYERS) | OUTER_LAYERS
+
+
 @pytest.mark.parametrize("layer", LAYERS)
 def test_layer_imports_only_allow_listed_modules(layer):
     assert _violations(_forbidden_imports, layer) == set()
@@ -135,10 +145,12 @@ APPLICATION_PROBE = PACKAGE / "application" / "probe.py"
     ("source", "expected"),
     [
         ("import datetime", ["datetime"]),
-        ("from concurrent import futures", ["concurrent"]),
+        ("from concurrent import futures", ["concurrent.futures"]),
         ("import pandas", ["pandas"]),
-        ("from .. import adapters", ["tradelocker_bot"]),
-        ("from ..application import x", ["tradelocker_bot.application"]),
+        ("from .. import adapters", ["tradelocker_bot.adapters"]),
+        ("from .. import domain", []),
+        ("from tradelocker_bot import *", ["tradelocker_bot"]),
+        ("from ..application import x", ["tradelocker_bot.application.x"]),
         ("import tradelocker_bot.application.ports", ["tradelocker_bot.application.ports"]),
         ("import tradelocker_bot.domainx", ["tradelocker_bot.domainx"]),
         ("import math\nfrom dataclasses import dataclass", []),
@@ -156,10 +168,12 @@ def test_import_rule_on_probe_sources(source, expected):
         ("from tradelocker_bot.domain.lot_sizing import LotSizing", []),
         ("from ..domain.lot_sizing import LotSizing", []),
         ("from .ports import Broker\nfrom typing import Protocol", []),
-        ("from ..adapters import console", ["tradelocker_bot.adapters"]),
+        ("from ..adapters import console", ["tradelocker_bot.adapters.console"]),
+        ("from .. import domain", []),
+        ("from tradelocker_bot import domain, adapters", ["tradelocker_bot.adapters"]),
         ("import tradelocker_bot.adapters.console", ["tradelocker_bot.adapters.console"]),
-        ("from tradelocker import TLAPI", ["tradelocker"]),
-        ("from libs import AsciiAlerts", ["libs"]),
+        ("from tradelocker import TLAPI", ["tradelocker.TLAPI"]),
+        ("from libs import AsciiAlerts", ["libs.AsciiAlerts"]),
         ("import datetime", ["datetime"]),
     ],
 )

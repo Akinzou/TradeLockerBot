@@ -10,7 +10,7 @@ tracked in the [migration roadmap](migration-roadmap.md).
 |-------------|-------------------------------|--------------------|---------------------------------------------------------------|
 | Domain      | `tradelocker_bot.domain`      | standard library   | Trading rules as plain values and functions, with no I/O      |
 | Application | `tradelocker_bot.application` | domain             | Use cases and the ports they need                             |
-| Adapters    | `tradelocker_bot.adapters`    | application, domain | TradeLocker client, operator console; HTTP webhook in step 5 |
+| Adapters    | `tradelocker_bot.adapters`    | application, domain, third-party clients, legacy `libs/` until step 5 | TradeLocker client, operator console; HTTP webhook in step 5 |
 | Legacy      | `main_without_ssl.py`, `libs/` | anything          | Code not migrated yet; shrinks with every structure step      |
 
 Dependencies point inwards only. `tests/test_layer_dependencies.py` enforces

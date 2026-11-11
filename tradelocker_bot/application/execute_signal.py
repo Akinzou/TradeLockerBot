@@ -43,7 +43,7 @@ class ExecuteSignal:
             self._close_positions(signal.symbol)
             instrument_id = self._broker.instrument_id(signal.symbol)
             side = order_side(signal.direction, signal.invert)
-            self._place_order(instrument_id, quantity, side, signal)
+            self._place_order(instrument_id, quantity, side, signal.stop_loss, signal.take_profit)
         self._console.unlocked()
 
     def _close_positions(self, symbol: str) -> None:
@@ -55,11 +55,13 @@ class ExecuteSignal:
                 self._console.closing(symbol)
             rows = self._broker.open_position_count(instrument_id)
 
-    def _place_order(self, instrument_id: int, quantity: float, side: str, signal: TradeSignal) -> None:
+    def _place_order(
+        self, instrument_id: int, quantity: float, side: str, stop_loss: int, take_profit: int
+    ) -> None:
         order_id = None
         while not order_id:
             order_id = self._broker.place_market_order(
-                instrument_id, quantity, side, stop_loss=signal.stop_loss, take_profit=signal.take_profit
+                instrument_id, quantity, side, stop_loss=stop_loss, take_profit=take_profit
             )
             if order_id:
                 self._console.order_placed(order_id)

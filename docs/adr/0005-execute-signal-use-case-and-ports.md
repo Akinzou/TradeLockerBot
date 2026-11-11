@@ -67,9 +67,11 @@ close-and-confirm operation.
 ### Errors
 
 Ports raise the client's exceptions unchanged, and the use case lets them
-propagate. A Result at the use-case boundary arrives with input validation in
-roadmap step 3, under its own ADR. Introducing it here would change what the
-webhook thread raises, which a structure step may not do.
+propagate. A Result at the port and use-case boundary follows as its own
+structure step (roadmap 4b), in which the legacy delegate turns a failure
+back into the same exception, so the webhook thread behaves as before. It is
+kept out of this step so that this one stays a pure move, reviewable against
+the legacy handler line by line.
 
 ## Consequences
 

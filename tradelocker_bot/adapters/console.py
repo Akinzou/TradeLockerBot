@@ -19,7 +19,7 @@ class PrintingConsole:
         print(AsciiAlerts.RED + f"{side.capitalize()} order was not successful, trying again...")
         AsciiAlerts.resetStyle()
 
-    def order_placed(self, order_id: object) -> None:
+    def order_placed(self, order_id: int) -> None:
         print(AsciiAlerts.GREEN + f"Order placed successfully, order ID: {order_id}")
         AsciiAlerts.resetStyle()
 

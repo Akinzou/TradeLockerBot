@@ -11,7 +11,7 @@ class TradeLockerBroker:
     def __init__(self, client: TLAPI):
         self._client = client
 
-    def account_balance(self) -> object:
+    def account_balance(self) -> float | None:
         # `.get`, not `[...]`: the client builds the state from the broker's
         # column list, so a missing field must surface as `None`, as before.
         return self._client.get_account_state().get("projectedBalance")
@@ -28,7 +28,7 @@ class TradeLockerBroker:
 
     def place_market_order(
         self, instrument_id: int, quantity: float, side: str, stop_loss: int, take_profit: int
-    ) -> object:
+    ) -> int | None:
         return self._client.create_order(
             instrument_id,
             quantity=quantity,

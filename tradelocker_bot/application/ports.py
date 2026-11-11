@@ -1,14 +1,14 @@
 """What the execute-signal use case needs from the outside world (ADR 0005).
 
-Ports raise the client's own exceptions for now; a Result at the boundary
-arrives with input validation in roadmap step 3.
+Ports raise the client's own exceptions for now; a Result at the boundary is
+roadmap step 4b.
 """
 
 from typing import Protocol
 
 
 class Broker(Protocol):
-    def account_balance(self) -> object:
+    def account_balance(self) -> float | None:
         """The account's projected balance exactly as the broker reports it.
 
         Returned uncoerced, possibly ``None``: the use case must fail where the
@@ -30,8 +30,8 @@ class Broker(Protocol):
 
     def place_market_order(
         self, instrument_id: int, quantity: float, side: str, stop_loss: int, take_profit: int
-    ) -> object:
-        """Order id, or a falsy value when the broker returned none."""
+    ) -> int | None:
+        """Order id, or ``None`` when the broker returned none."""
 
 
 class OperatorConsole(Protocol):
@@ -44,7 +44,7 @@ class OperatorConsole(Protocol):
     def order_retry(self, side: str) -> None:
         ...
 
-    def order_placed(self, order_id: object) -> None:
+    def order_placed(self, order_id: int) -> None:
         ...
 
     def unlocked(self) -> None:
