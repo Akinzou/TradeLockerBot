@@ -120,7 +120,7 @@ All settings are passed as environment variables (`-e name=value`).
 | `password` | yes      |             | TradeLocker password. Must not contain spaces or shell characters such as `*`, `?`, `$` or `;` (see below). |
 | `server`   | yes      |             | TradeLocker server name.                                                                            |
 | `env`      | yes      |             | `demo` or `live`.                                                                                   |
-| `url`      | no       | `/strategy` | Webhook path. Use a long secret path (see [Quick start](#quick-start)). It must start with `/`: without it the bot starts, but every alert gets `404 Not Found`. `generate` prints a new random path on every start, made the same way as in Quick start. |
+| `url`      | no       | `/strategy` | Webhook path. Use a long secret path (see [Quick start](#quick-start)). It must start with `/`: without it the bot starts, but every alert gets `404 Not Found`. Keep `{` and `}` out of it: `{name}` makes the path a pattern that also handles signals posted to other paths, and some brace forms stop the bot at startup. `generate` prints a new random path on every start, made the same way as in Quick start. |
 | `acc_id`   | no       | `0`         | Trade on the account with this ID. With both `acc_id` and `acc_num` at `0`, the first account listed for your login is used. |
 | `acc_num`  | no       | `0`         | Trade on the account with this number. Set either `acc_id` or `acc_num`, not both.                  |
 
@@ -281,7 +281,9 @@ alerts.
   serve answer `404 Not Found`. Its console log still shows the path of every
   request (a known defect), so treat the log as secret too.
 - **Use the exact path in your alerts, and forward only that path.** The bot
-  handles only the exact `url` path. A path that differs by a trailing `/`
+  handles only the exact `url` path, as long as `url` has no `{` or `}`: with
+  `{name}` in it, the path is a pattern and other paths open trades too (a
+  known defect). A path that differs by a trailing `/`
   gets `404 Not Found` like any other address, and the bot never redirects a
   sender elsewhere
   ([ADR 0013](docs/adr/0013-no-trailing-slash-redirect.md)). Images built

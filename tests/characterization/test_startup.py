@@ -154,6 +154,18 @@ def test_a_failed_login_raises_and_never_starts_the_server(monkeypatch, capsys):
     assert startup.served == []
 
 
+@pytest.mark.parametrize(("url", "error"), [("/{x:foo}", AssertionError), ("/{x}/{x}", ValueError)])
+def test_a_brace_pattern_starlette_cannot_compile_stops_after_the_login(startup, url, error):
+    # Known defect: the route is built after the login, so a pattern with an
+    # unknown convertor or a repeated name stops the bot with a traceback once
+    # it has already logged in to the account.
+    with pytest.raises(error):
+        startup.run(*DEMO, "--url", url)
+
+    assert startup.logins == [DEMO_LOGIN]
+    assert startup.served == []
+
+
 @pytest.mark.parametrize(
     "argv",
     [
