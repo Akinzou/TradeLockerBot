@@ -6,7 +6,8 @@ default arguments unless a test names its own path, so these pins cover the
 route as deployed: its path, its
 answer, how the body becomes payload lines, one thread per request, one lock
 for every request, and an exception that ends the thread rather than the
-response.
+response. A path one slash away from the webhook path is neither redirected
+nor handled (ADR 0013).
 """
 
 import threading
@@ -126,7 +127,7 @@ def test_a_body_that_is_not_utf8_fails_the_request_and_starts_no_thread(monkeypa
 @pytest.mark.parametrize(
     ("method", "path", "status"),
     [("GET", "/strategy", 405), ("PUT", "/strategy", 405), ("POST", "/", 404), ("POST", "/Strategy", 404),
-     ("POST", "/strategy/x", 404)],
+     ("POST", "/strategy/x", 404), ("GET", "/strategy/", 404)],
 )
 def test_only_post_on_the_exact_path_reaches_the_handler(monkeypatch, method, path, status):
     fake = broker()
@@ -140,17 +141,39 @@ def test_only_post_on_the_exact_path_reaches_the_handler(monkeypatch, method, pa
     assert fake.calls == []
 
 
-def test_a_trailing_slash_is_redirected_to_the_path_without_handling(monkeypatch):
-    # Starlette's slash redirect: 307 keeps the method and body, so a sender
-    # that follows redirects delivers the alert on its second request.
+@pytest.mark.parametrize("path", ["/strategy/", "/strategy//"])
+def test_a_trailing_slash_answers_like_an_unknown_address_and_redirects_nowhere(monkeypatch, path):
+    # ADR 0013: the slash redirect built its address from the request's
+    # scheme, http:// behind a TLS proxy, so a sender that followed it sent
+    # the secret path and the signal again in plain text. `post` follows
+    # redirects, as such a sender does, so a redirect back would be handled.
     fake = broker()
     app = serve(monkeypatch, fake)
+    unknown, unknown_threads = post(app, "/no-such-page", SIGNAL)
 
-    response = TestClient(app, follow_redirects=False).post("/strategy/", content=SIGNAL)
+    response, threads = post(app, path, SIGNAL)
 
-    assert response.status_code == 307
-    assert response.headers["location"] == "http://testserver/strategy"
+    assert (unknown.status_code, unknown_threads) == (404, [])
+    assert (response.status_code, response.content) == (404, b'{"detail":"Not Found"}')
+    assert response.headers == unknown.headers
+    assert response.history == []
+    assert threads == []
     assert fake.calls == []
+
+
+def test_a_path_set_with_a_trailing_slash_is_served_only_with_it(monkeypatch):
+    # The same redirect ran the other way: a request without the slash was
+    # sent on to the path with it.
+    fake = broker()
+    app = serve(monkeypatch, fake, "--url", "/hook/")
+
+    without, no_threads = post(app, "/hook", SIGNAL)
+    exact, threads = post(app, "/hook/", SIGNAL)
+    finish(threads)
+
+    assert (without.status_code, without.history, no_threads) == (404, [], [])
+    assert exact.status_code == 200
+    assert fake.calls == OPEN_CALLS
 
 
 def test_a_broker_failure_ends_the_handler_thread_with_the_clients_exception(monkeypatch):
