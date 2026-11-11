@@ -1,188 +1,246 @@
-# TradeLockerBot  [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC_BY--NC--SA_4.0-lightgrey.svg)] [![Python package](https://github.com/Akinzou/TradeLocker/actions/workflows/python-package.yml/badge.svg) ![Docker Image: Build and Upload](https://github.com/Akinzou/TradeLocker/actions/workflows/docker-image.yml/badge.svg)]
-[![Discord](https://img.shields.io/badge/Join_us_on-Discord-5865F2?logo=discord&logoColor=white&style=for-the-badge)](https://discord.gg/BARYa55KS8)
-### Webhook TradingView Bot for Automated Position Management
-TradeLocker is a webhook bot designed to seamlessly integrate with TradingView, enabling automated opening and closing of trading positions.
+<div align="center">
 
-## Install
+# TradeLockerBot
 
-### Update Code
-$\color{red}{\textsf{Use only if you have already downloaded the image.}}$  
-If you update the code, run the following command to delete the previous image: 
+**Automated TradeLocker position management driven by TradingView webhook alerts.**
 
-```sh
-docker rmi -f ghcr.io/akinzou/tradelocker_bot:latest
+[![CI](https://github.com/Akinzou/TradeLockerBot/actions/workflows/python-package.yml/badge.svg)](https://github.com/Akinzou/TradeLockerBot/actions/workflows/python-package.yml)
+[![Docker image](https://github.com/Akinzou/TradeLockerBot/actions/workflows/docker-image.yml/badge.svg)](https://github.com/Akinzou/TradeLockerBot/actions/workflows/docker-image.yml)
+[![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC_BY--NC--SA_4.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
+[![Discord](https://img.shields.io/badge/Join_us_on-Discord-5865F2?logo=discord&logoColor=white)](https://discord.gg/BARYa55KS8)
+
+</div>
+
+> [!WARNING]
+> This bot places real orders on the account you connect. Test every strategy
+> on a **demo** account first. The software is provided "as is", without any
+> warranty; you use it at your own risk.
+
+## Table of contents
+
+- [How it works](#how-it-works)
+- [Requirements](#requirements)
+- [Quick start](#quick-start)
+- [Configuration](#configuration)
+- [Connecting TradingView](#connecting-tradingview)
+  - [Alert message format](#alert-message-format)
+  - [Dynamic lot size](#dynamic-lot-size)
+  - [Inverting the direction](#inverting-the-direction)
+- [Verifying the setup](#verifying-the-setup)
+- [Updating](#updating)
+- [Security](#security)
+- [Troubleshooting](#troubleshooting)
+- [Development](#development)
+- [Community](#community)
+- [License](#license)
+
+## How it works
+
+```mermaid
+flowchart LR
+    TV[TradingView alert] -- "HTTP POST, plain text" --> BOT[TradeLockerBot]
+    BOT -- "close / open market order" --> TL[TradeLocker account]
 ```
 
-### Pull the Latest Image
-Download the latest image using the command:
+1. A TradingView strategy fires an alert with a seven-line message.
+2. The bot receives it on its webhook URL and replies immediately; the signal
+   is handled in the background.
+3. Signals are processed one at a time. For each one the bot reads the
+   account balance, closes any open position on the instrument, and, for
+   `open`, places a market order with the configured take profit and stop loss.
+
+## Requirements
+
+- A TradeLocker account (demo or live) and its username, password and server.
+- [Docker](https://docs.docker.com/get-docker/).
+- A host TradingView can reach, ideally behind an HTTPS reverse proxy (see
+  [Security](#security)).
+
+## Quick start
+
+Pull the image:
 
 ```sh
 docker pull ghcr.io/akinzou/tradelocker_bot:latest
 ```
 
-### Verify Download
-Check if the image has been downloaded:
+Create a secret webhook path once and keep it, for example:
 
 ```sh
-docker images
+python3 -c "import secrets; print('/' + secrets.token_urlsafe(24))"
 ```
-You should see:
+
+Start the bot in the background (replace the placeholders, and choose `demo`
+or `live`):
+
 ```sh
-ghcr.io/akinzou/tradelocker_bot   latest
+docker run -d -t --name prod --restart unless-stopped -p 443:443 \
+  -e username='your_username' \
+  -e password='your_password' \
+  -e server='your_server' \
+  -e env=demo \
+  -e url=/your_secret_path \
+  ghcr.io/akinzou/tradelocker_bot:latest
 ```
 
-### Run the Container
-Run the container with the following command:
-```sh
-docker run -t -p 443:443 --name prod -e username='your_username' -e password='your_password' -e server='your_server' -e env=demo/live --rm ghcr.io/akinzou/tradelocker_bot:latest
-```
-The use of the --name prod option in the docker run command assigns the name prod to the running container. As a result, after executing the command, the container named prod will be visible in the output of the docker ps command.
+Follow its output with `docker logs -f prod`. The container keeps running
+after you log out and comes back after a reboot, with the same webhook path.
 
-Do not forget to select the environment as either demo or live. 
-### Run a specific account
-If you have more than one trading account under your main account, you can specify which one to use by:
-```sh
--e acc_id = your_acc_id
-```
-or
-```sh
--e acc_num = your_acc_number
-```
-### Change port
-The
-```sh 
--port
-``` 
-argument specifies the port on which the FastAPI application will run. By default, it is set to 443, but the user can provide a custom port.
-** Example usage: **
-```sh
-python tradelocker_bot.py --port 8080
-```
-This will start the application on port 8080, making the webhook accessible at **http://localhost:8080/strategy** 
+## Configuration
 
-### Verification
-After running the container, you should see green text indicating successful authentication:
+All settings are passed as environment variables (`-e name=value`).
 
-```diff
- _____              _      _               _             ____        _   
-|_   _| __ __ _  __| | ___| |    ___   ___| | _____ _ __| __ )  ___ | |_ 
-  | || '__/ _` |/ _` |/ _ \ |   / _ \ / __| |/ / _ \ '__|  _ \ / _ \| __|
-  | || | | (_| | (_| |  __/ |__| (_) | (__|   <  __/ |  | |_) | (_) | |_ 
-  |_||_|  \__,_|\__,_|\___|_____\___/ \___|_|\_\___|_|  |____/ \___/ \__|
+| Variable   | Required | Default     | Description                                                                                         |
+|------------|----------|-------------|-----------------------------------------------------------------------------------------------------|
+| `username` | yes      |             | TradeLocker username or email.                                                                      |
+| `password` | yes      |             | TradeLocker password. Must not contain spaces or shell characters such as `*`, `?`, `$` or `;` (see below). |
+| `server`   | yes      |             | TradeLocker server name.                                                                            |
+| `env`      | yes      |             | `demo` or `live`.                                                                                   |
+| `url`      | no       | `/strategy` | Webhook path. Use a long secret path (see [Quick start](#quick-start)). `generate` prints a new random path on every start. |
+| `acc_id`   | no       | `0`         | Trade on the account with this ID. With both `acc_id` and `acc_num` at `0`, the first account listed for your login is used. |
+| `acc_num`  | no       | `0`         | Trade on the account with this number. Set either `acc_id` or `acc_num`, not both.                  |
 
-+[INFO] tradelocker.tradelocker_api 2024-05-30 11:25:31,834 tradelocker_api _auth_with_password: 665 Successfully fetched authentication tokens
-```
-Additionally, check on which account you are signed in; it will print the number and ID.
+The bot listens on port `443` inside the container. To expose it on another
+host port, change the left side of `-p`, for example `-p 8080:443`.
 
-### Access the Webhook Bot
-You can now access the webhook bot at:
-```sh
-http://localhost:443/strategy
-```
-or
-```sh
-http://yourIP:443/strategy
-```
-You should see the following message on the site:
-```sh
-{"detail":"Method Not Allowed"}
-```
+The image passes the credentials to the bot through an unquoted shell command,
+so a password with spaces or shell characters is split or expanded and the
+login fails. Until this is fixed (see the
+[migration roadmap](docs/migration-roadmap.md#known-defects-fixed-in-behaviour-steps-3-and-6-never-during-restructuring)),
+use a password without them.
 
-### Cahnge URL:
-Run Container with addtional argument
-```sh
--e url=/your_url
-```
-### $\color{lime}{\textsf{For safety reasons, generating a random URL for the strategy:}}$  
-Use:
-```sh
--e url=generate
-```
+## Connecting TradingView
 
-and you should see:
+In your strategy's alert, enable **Webhook URL** and point it at
+`https://your-domain/<your-url>` (or `http://your-ip:443/<your-url>` without a
+proxy). Paste the message below into the alert's message field.
 
-```diff
-                                  _
- ___  __ ___   _____   _   _ _ __| |
-/ __|/ _` \ \ / / _ \ | | | | '__| |
-\__ \ (_| |\ V /  __/ | |_| | |  | |
-|___/\__,_| \_/ \___|  \__,_|_|  |_|
+### Alert message format
 
-/yourgenerated/url
-```
-$\color{red}{\textsf{Save it, it is only shown once}}$  
-This URL is for webhook execution in the trading environment.
+The message is plain text, one value per line, in this exact order:
 
-## Adding webhook alert to your strategy:
-Use this format
-
-```ssh
+```text
 XAUUSD
 {{strategy.order.action}}
 0.01/100
 500
 1000
 {{strategy.order.alert_message}}
-Invert
-```
-where:
-
-- **XAUUSD**: Name of the tradable instrument.
-- **{{strategy.order.action}}**: The action to perform, either `"buy"` or `"sell"`.
-- **0.01/100**: Dynamic lot size. The format `<lot>/<divider>` calculates the lot size as `0.01` lots for every `100` units of balance.
-- **500**: Take profit value in offset mode.
-- **1000**: Stop loss value in offset mode.
-- **{{strategy.order.alert_message}}**:
-  - `"open"`: Opens a new position and closes any existing position on the same instrument.
-  - `"close"`: Closes the current position on the specific instrument.
-- **Invert**: If set to `Invert`, reverses the direction of the trade (`buy` becomes `sell`, and `sell` becomes `buy`).
-
-
-### Dynamic Lot
-Dynamic lot allows the position size to be calculated based on the available account balance.
-```ssh
-**Format: <lot>/<divider>**  
-<lot>: The base lot size.  
-<divider>: The balance divisor used for calculation.  
-```
-**How it works:**  
-Sending the value 0.01/100 will instruct the bot to open 0.01 lot for every 100 units of the account balance.  
-The position size is rounded to two decimal places.  
-  
-**Example calculation:**  
-Balance: 1000  
-Sent lot: 0.01/100  
-  
-**Calculation:**  
-```
-lot = (balance / divider) * base_lot
-lot = (1000 / 100) * 0.01
-lot = 0.1
-The bot will open a position with a size of 0.1 lots.
+NonInvert
 ```
 
-### Invert
-The Invert option allows reversing the trade direction:  
-If the value is Invert, the bot will swap:  
-buy to sell  
-sell to buy  
-If the value is NonInvert, the direction remains unchanged.   
-  
-**Example behavior:**  
-Webhook direction: buy.  
-isInvert value: Invert. 
-  
-**Result: The bot will reverse buy to sell and open the corresponding position.**  
-  
-**Use case:**  
-This is useful for strategies that involve hedging or need to reverse trade directions as part of risk management.  
-  
-## Remember 
-Remember to configure Nginx or another appropriate software to enable access to HTTPS. You will be able to use, for example
+| Line | Example                            | Meaning                                                                                                   |
+|------|------------------------------------|-----------------------------------------------------------------------------------------------------------|
+| 1    | `XAUUSD`                           | Instrument name exactly as TradeLocker lists it.                                                          |
+| 2    | `{{strategy.order.action}}`        | Direction: `buy` or `sell`, lowercase. TradingView fills this in.                                         |
+| 3    | `0.01/100`                         | Position size; see [Dynamic lot size](#dynamic-lot-size).                                                 |
+| 4    | `500`                              | Take profit as a whole-number offset from the entry price.                                                |
+| 5    | `1000`                             | Stop loss as a whole-number offset from the entry price.                                                  |
+| 6    | `{{strategy.order.alert_message}}` | Action: `open` or `close`, lowercase. Set it as the order's alert message in your Pine Script strategy.   |
+| 7    | `NonInvert`                        | `NonInvert` keeps the direction; `Invert` reverses it. See [Inverting the direction](#inverting-the-direction). |
+
+All seven lines must be present and valid for **every** signal, including
+`close`: the bot reads lines 3 to 5 and line 7 before it looks at the action.
+
+What each action does:
+
+- **`open`**: closes every open position on the instrument, then opens a new
+  market order in the given direction.
+- **`close`**: closes every open position on the instrument.
+
+> [!IMPORTANT]
+> Values are matched exactly: case and surrounding spaces count, so `Open` or
+> `open ` is ignored like any other unknown action. An invalid line 3, 4, 5 or
+> 7 stops the signal; with `open`, an invalid line 7 stops it **after**
+> existing positions were closed, so no new order is placed. The webhook still
+> answers `200 OK` in all these cases, so check the bot's log.
+
+### Dynamic lot size
+
+Line 3 uses the format `<lot>/<balance step>`: open `<lot>` lots for every
+`<balance step>` of account balance. The result is rounded to two decimals.
+Both parts are required, and the step must not be `0`.
+
+```text
+lot = round(balance / balance_step * base_lot, 2)
+
+balance 1000, message 0.01/100  ->  1000 / 100 * 0.01  =  0.10 lots
+balance 1234, message 0.01/100  ->  1234 / 100 * 0.01  =  0.12 lots
+```
+
+### Inverting the direction
+
+With `Invert` on line 7, `buy` becomes `sell` and `sell` becomes `buy`. This
+lets one strategy drive an account that trades against it, for example for
+hedging. With `NonInvert` the direction is used unchanged.
+
+## Verifying the setup
+
+After start-up the console shows the bot's banner, followed by a log line
+confirming the login:
+
+```text
+[INFO] tradelocker.tradelocker_api ... Successfully fetched authentication tokens
+```
+
+It also prints the account number and ID it signed in to. Check that this is
+the account you intend to trade on.
+
+Opening the webhook URL in a browser should return:
+
+```json
+{"detail":"Method Not Allowed"}
+```
+
+That is expected: the webhook accepts only `POST` requests, which is what
+TradingView sends.
+
+## Updating
 
 ```sh
-https://localhost/strategy
+docker pull ghcr.io/akinzou/tradelocker_bot:latest
+docker stop prod
 ```
+
+```sh
+docker rm prod
+```
+
+Then start the container again with the same `docker run` command. If you use
+`url=generate`, a new webhook path is generated, so update your TradingView
+alerts.
+
+## Security
+
+- **Keep the webhook path secret.** It is the only thing protecting the
+  endpoint: anyone who knows it can open and close trades on your account.
+  Create it with a cryptographically secure generator, as in
+  [Quick start](#quick-start). `url=generate` is weaker: it uses Python's
+  non-cryptographic `random` module (a known defect, tracked in the
+  [migration roadmap](docs/migration-roadmap.md#known-defects-fixed-in-behaviour-steps-3-and-6-never-during-restructuring)).
+- **Use HTTPS.** The bot serves plain HTTP, so without TLS anyone on the
+  network path can read the webhook path and send forged signals. Put the bot
+  behind a reverse proxy such as Nginx or Caddy that terminates TLS. The bot's
+  own connection to TradeLocker already uses HTTPS.
+- **Protect the host.** The password is passed to the process as a
+  command-line argument, so other users on the same machine can see it in the
+  process list. Run the bot on a host only you control. Moving credentials out
+  of the command line is tracked in the
+  [migration roadmap](docs/migration-roadmap.md).
+
+## Troubleshooting
+
+| Symptom                                     | Likely cause                                                                                   |
+|---------------------------------------------|------------------------------------------------------------------------------------------------|
+| No trade after an alert                     | Fewer than seven lines, a different line order, line 6 not exactly `open` or `close` (case and spaces count), a lot without `/` or with step `0`, or a take profit or stop loss that is not a whole number. The log shows the error. |
+| Position closed but no new one opened       | Line 7 is not exactly `Invert` or `NonInvert`, line 2 is not lowercase `buy` or `sell` with `NonInvert`, or the broker rejected the order (check the log). |
+| Trades on the wrong side                    | Line 2 is not lowercase `buy` or `sell` and line 7 is `Invert`: any other spelling becomes `buy`. |
+| Bot does not start, login fails             | Wrong credentials or `env`, or a password with spaces or shell characters (see [Configuration](#configuration)). |
+| `Method Not Allowed` in the browser         | Expected; see [Verifying the setup](#verifying-the-setup).                                     |
+| Error about account number and ID at start  | Both `acc_id` and `acc_num` are set; keep only one.                                            |
+
+Known defects and their planned fixes are listed in the
+[migration roadmap](docs/migration-roadmap.md#known-defects-fixed-in-behaviour-steps-3-and-6-never-during-restructuring).
 
 ## Development
 
@@ -194,12 +252,23 @@ python -m venv .venv
 .venv/bin/python -m pytest
 ```
 
-Every pull request to `master` must pass the CI gates described in
-[ADR 0002](docs/adr/0002-ci-quality-gates.md). Architecture decisions are
-recorded in [`docs/adr/`](docs/adr), the layering is described in
-[`docs/architecture.md`](docs/architecture.md), and the ongoing restructuring is tracked
-in the [migration roadmap](docs/migration-roadmap.md).
+- Every pull request to `master` must pass the CI gates described in
+  [ADR 0002](docs/adr/0002-ci-quality-gates.md): tests on Python 3.11 and
+  3.12, Semgrep, and a Docker build with a smoke run.
+- The codebase is being migrated, step by step, to a layered architecture; see
+  [`docs/architecture.md`](docs/architecture.md), the
+  [decision records](docs/adr) and the
+  [migration roadmap](docs/migration-roadmap.md).
+- The `tradelocker` client is pinned to the version the test suite's broker
+  fake mirrors. Moving to a newer release means updating the pin and
+  `TRADELOCKER_VERSION` in `tests/characterization/fake_tradelocker.py`, and
+  the fake itself if signatures or defaults changed, in one pull request.
 
-## Note:
-This program is provided "as is" without any warranty. Use it at your own risk.
-Before using this program in a live trading environment, thoroughly test it on a demo account to ensure its correctness and reliability.
+## Community
+
+Questions, ideas and strategy talk: join us on
+[Discord](https://discord.gg/BARYa55KS8).
+
+## License
+
+Licensed under [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/).
