@@ -21,18 +21,61 @@ jobs:
       (github.event.workflow_run.event == 'push' ||
        github.event.workflow_run.event == 'workflow_dispatch')
     runs-on: ubuntu-latest
+    # The workflow's own short-lived token publishes the image. GHCR rejected the
+    # long-lived personal token used before, and every publish after 2025-06-28
+    # failed unnoticed. Write access is granted to this job only.
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
-          username: akinzou
-          password: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       # Build the exact commit CI validated, not whatever master points to now.
-      - uses: actions/checkout@v4
+      # Checking out workflow_run.head_sha is safe only because the job-level
+      # `if` admits master push/dispatch runs alone: code from fork pull
+      # requests never reaches this privileged job.
+      # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
+      # The source label links the GHCR package to the repository that built
+      # it; deriving it here keeps forks and renames correct without editing
+      # the Dockerfile.
       - name: Create image from repository
-        run: docker build -t ghcr.io/akinzou/tradelocker_bot:latest .
+        run: >
+          docker build
+          --label "org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}"
+          --label "org.opencontainers.image.revision=${{ github.event.workflow_run.head_sha }}"
+          -t ghcr.io/akinzou/tradelocker_bot:latest .
       - name: Push image to GitHub Container Registry
         run: docker push ghcr.io/akinzou/tradelocker_bot:latest
+
+  # A failed publish used to be visible only as a red run nobody watched, which
+  # left users on a stale image for over a year. Failures now open (or update)
+  # one tracking issue, which notifies repository watchers.
+  report-publish-failure:
+    needs: dockerloginbuildpush
+    if: failure()
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - name: Open or update the publish-failure issue
+        run: |
+          title="Docker image publishing is failing"
+          body="Publishing \`ghcr.io/akinzou/tradelocker_bot:latest\` failed for ${HEAD_SHA}: ${RUN_URL}"
+          number=$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number')
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi

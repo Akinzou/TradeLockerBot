@@ -9,6 +9,8 @@ migration pull request.
 | # | Step                                                                                                             | Kind      | Status |
 |---|------------------------------------------------------------------------------------------------------------------|-----------|--------|
 | 1 | Characterization tests, CI gates, publish only from `master`                                                     | safety    | done   |
+| 1a | Restore image publishing with the workflow token and report publish failures ([ADR 0003](adr/0003-publish-with-workflow-token.md))       | safety    | blocked: owner grants package access |
+| 1b | Delete the `PERSONAL_ACCESS_TOKEN` secret after the first successful publish                                       | safety    | todo   |
 | 2 | Domain: trading signal parsed from the webhook payload, lot sizing, direction inversion as pure, tested code     | structure | next   |
 | 3 | Layer dependency check (import contract) once the domain package exists                                          | safety    | todo   |
 | 4 | Application: execute-signal use case behind a broker port; TradeLocker adapter implements the port              | structure | todo   |
