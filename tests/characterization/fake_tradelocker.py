@@ -18,6 +18,7 @@ rejections that production never performs.
 """
 
 import inspect
+from collections import Counter
 
 import pandas as pd
 from tradelocker import TLAPI
@@ -29,6 +30,12 @@ TRADELOCKER_VERSION = "0.56.2"
 # The real client builds the account state by zipping the broker's column
 # names with its values, so a field can be absent rather than None.
 NO_BALANCE_FIELD = object()
+
+# The client calls the handler makes, each of which can be scheduled to fail.
+BROKER_CALLS = frozenset({
+    "get_account_state", "get_instrument_id_from_symbol_name", "get_all_positions",
+    "close_all_positions", "create_order",
+})
 
 
 def _bind_to_real(method_name, *args, **kwargs):
@@ -55,11 +62,18 @@ class FakeTradeLocker:
         open_positions=(),
         order_results=(9001,),
         close_requests_to_fill=1,
+        failures=None,
     ):
         """``order_results`` items are order ids to return or exceptions to raise.
 
         ``close_requests_to_fill`` is how many close requests an instrument's
         positions need before the broker reports them gone.
+
+        ``failures`` maps ``(method name, nth call)``, counted from 1, to an
+        exception that call raises. The call is recorded, because the bot made
+        it, but has no effect: a close that fails is not counted towards
+        ``close_requests_to_fill``. A key the fake would never reach is
+        refused, so a misspelt injection cannot pass as a tested failure.
         """
         self._balance = balance
         self._instrument_ids = dict(instrument_ids)
@@ -67,30 +81,42 @@ class FakeTradeLocker:
         self._order_results = list(order_results)
         self._close_requests_to_fill = close_requests_to_fill
         self._close_requests = {}
+        self._failures = dict(failures or {})
+        unreachable = [key for key in self._failures if key[0] not in BROKER_CALLS or key[1] < 1]
+        if unreachable:
+            raise ValueError(f"failures the fake never reaches: {unreachable}")
+        self._call_counts = Counter()
         self.calls = []
+
+    def _record(self, *call):
+        self.calls.append(call)
+        self._call_counts[call[0]] += 1
+        failure = self._failures.get((call[0], self._call_counts[call[0]]))
+        if failure is not None:
+            raise failure
 
     def get_account_state(self):
         _bind_to_real("get_account_state")
-        self.calls.append(("get_account_state",))
+        self._record("get_account_state")
         if self._balance is NO_BALANCE_FIELD:
             return {}
         return {"projectedBalance": self._balance}
 
     def get_instrument_id_from_symbol_name(self, *args, **kwargs):
         symbol_name = _bind_to_real("get_instrument_id_from_symbol_name", *args, **kwargs)["symbol_name"]
-        self.calls.append(("get_instrument_id_from_symbol_name", symbol_name))
+        self._record("get_instrument_id_from_symbol_name", symbol_name)
         if symbol_name not in self._instrument_ids:
             raise ValueError(f"No instrument found with {symbol_name=}")
         return self._instrument_ids[symbol_name]
 
     def get_all_positions(self):
         _bind_to_real("get_all_positions")
-        self.calls.append(("get_all_positions",))
+        self._record("get_all_positions")
         return pd.DataFrame({"tradableInstrumentId": self._open_positions}, dtype="int64")
 
     def close_all_positions(self, *args, **kwargs):
         instrument_id = _bind_to_real("close_all_positions", *args, **kwargs)["instrument_id_filter"]
-        self.calls.append(("close_all_positions", instrument_id))
+        self._record("close_all_positions", instrument_id)
         requests = self._close_requests.get(instrument_id, 0) + 1
         self._close_requests[instrument_id] = requests
         if requests >= self._close_requests_to_fill:
@@ -99,7 +125,7 @@ class FakeTradeLocker:
 
     def create_order(self, *args, **kwargs):
         order = _bind_to_real("create_order", *args, **kwargs)
-        self.calls.append(("create_order", order.pop("instrument_id"), order))
+        self._record("create_order", order.pop("instrument_id"), order)
         result = self._order_results.pop(0)
         if isinstance(result, Exception):
             raise result

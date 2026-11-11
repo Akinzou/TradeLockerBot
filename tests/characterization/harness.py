@@ -5,6 +5,7 @@ structure step moves it, only this module changes, and the pull request calls
 that out (ADR 0001).
 """
 
+import re
 import threading
 from types import MappingProxyType
 
@@ -47,6 +48,18 @@ ORDER = ("create_order", XAUUSD_ID, DEFAULT_ORDER)
 LOCK_ACQUIRED = "[lock acquired]"
 LOCK_RELEASED = "[lock released]"
 
+ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def console_lines(capsys):
+    """The operator lines printed so far, without colour codes or blank lines.
+
+    Colour codes and the blank reset lines are presentation; the text, its
+    order and its position inside the critical section are what count.
+    """
+    out = ANSI_ESCAPE.sub("", capsys.readouterr().out)
+    return [line for line in out.splitlines() if line.strip()]
+
 
 def payload(action="open", direction="buy", lot="0.01/100", tp="500", sl="1000", invert="NonInvert", symbol="XAUUSD"):
     return [symbol, direction, lot, tp, sl, action, invert]
@@ -56,13 +69,14 @@ def order_rejection():
     return TLAPIOrderException({}, {"errmsg": "Not enough margin"})
 
 
-def broker(balance=1000.0, open_positions=(), order_results=(9001,), close_requests_to_fill=1):
+def broker(balance=1000.0, open_positions=(), order_results=(9001,), close_requests_to_fill=1, failures=None):
     return FakeTradeLocker(
         balance=balance,
         instrument_ids={"XAUUSD": XAUUSD_ID, "EURUSD": EURUSD_ID},
         open_positions=open_positions,
         order_results=order_results,
         close_requests_to_fill=close_requests_to_fill,
+        failures=failures,
     )
 
 
