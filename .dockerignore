@@ -5,3 +5,10 @@
 **/CLAUDE.md
 **/CLAUDE.local.md
 **/AGENTS.md
+
+# Local environments and caches would bloat the image and leak host paths
+.venv*
+**/__pycache__
+.pytest_cache
+.env
+.env.*
