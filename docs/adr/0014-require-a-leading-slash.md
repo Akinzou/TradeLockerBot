@@ -96,6 +96,9 @@ All four cases failed before the fix: the bot started and served.
   stops the bot with a traceback after the login. It starts with `/`, so
   this check lets it through. It is a known defect of its own in the
   [migration roadmap](../migration-roadmap.md#known-defects).
+
+  *Update:* step 6e ([ADR 0015](0015-refuse-braces-in-the-webhook-path.md))
+  refuses any `{` or `}` in `url` at startup, with the same exit status.
 - **uvicorn's access log** still writes the path of every request.
 - **The image's `sh -c` command** expands `url` unquoted, like the
   credentials. A path with spaces or shell characters is split before the

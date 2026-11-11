@@ -20,17 +20,25 @@ from tradelocker_bot.application.execute_signal import ExecuteSignal
 
 
 def webhook_url(value):
-    """The ``--url`` value: ``generate`` or a path that starts with ``/``.
+    """The ``--url`` value: ``generate`` or a path that starts with ``/`` and
+    has no ``{`` or ``}``.
 
     A route without the leading slash matches no request, so the bot would
-    look up while every alert got a 404 (ADR 0014). It stops instead, like any
-    invalid argument, before the banners and the login. The message leaves the
-    value out: it is the operator's secret path, give or take a slash.
+    look up while every alert got a 404 (ADR 0014). A route with ``{name}`` is
+    a pattern that also matches paths the operator never set (ADR 0015). Either
+    way the bot stops, like any invalid argument, before the banners and the
+    login. The message leaves the value out: it is the operator's secret path,
+    or close to it.
     """
     # ArgumentTypeError rather than ValueError: for a ValueError argparse
     # prints the rejected value, and stderr goes to the container's log.
     if value != "generate" and not value.startswith("/"):
         raise argparse.ArgumentTypeError("must start with / or be generate")
+    # Any brace rather than only the `{name}` forms Starlette reads as a
+    # parameter: mirroring its pattern syntax here would let a future version
+    # with a wider syntax turn a path that passed this check into a pattern.
+    if "{" in value or "}" in value:
+        raise argparse.ArgumentTypeError("must not contain { or }")
     return value
 
 
