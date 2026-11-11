@@ -117,6 +117,8 @@ PLACED = "Order placed successfully, order ID: 9001"
          [*LOCKED, CLOSING, CLOSING, PLACED, *UNLOCKED]),
         ("order placed again", {"order_results": (None, 9001)}, payload(), None,
          [*LOCKED, "Buy order was not successful, trying again...", PLACED, *UNLOCKED]),
+        ("inverted order placed again", {"order_results": (None, 9001)}, payload(invert="Invert"), None,
+         [*LOCKED, "Sell order was not successful, trying again...", PLACED, *UNLOCKED]),
         ("close re-requested until filled", {"open_positions": [XAUUSD_ID], "close_requests_to_fill": 3},
          payload(action="close"), None,
          [*LOCKED, CLOSING, CLOSING, CLOSING, *UNLOCKED]),

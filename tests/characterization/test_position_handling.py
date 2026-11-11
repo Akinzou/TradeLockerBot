@@ -77,7 +77,7 @@ def test_close_closes_positions_without_ordering():
     assert broker.orders() == []
 
 
-@pytest.mark.parametrize("action", ["hold", "Open", "OPEN", "Close", " open"])
+@pytest.mark.parametrize("action", ["hold", "Open", "OPEN", "Close", " open", "open ", " close", "close "])
 def test_unknown_action_neither_closes_nor_orders(action):
     broker = _broker(open_positions=[XAUUSD_ID])
 
