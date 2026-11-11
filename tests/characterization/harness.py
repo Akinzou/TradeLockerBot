@@ -13,9 +13,11 @@ from types import MappingProxyType
 
 from tradelocker.exceptions import TLAPIOrderException
 
-import main_without_ssl as bot
-from libs.URLgenerator import generate_random_url
+import main_without_ssl as entrypoint
 from tests.characterization.fake_tradelocker import FakeTradeLocker
+from tradelocker_bot import composition_root
+from tradelocker_bot.adapters import tradelocker_broker
+from tradelocker_bot.adapters.webhook_path import random_webhook_path
 
 XAUUSD_ID = 101
 EURUSD_ID = 202
@@ -127,12 +129,15 @@ class RecordingLock:
 
 
 def handle(fake, lines, lock=None):
-    bot.handle_position_normal(fake, lines, lock if lock is not None else threading.Lock())
+    # The wiring the bot serves, not one assembled here: built around the given
+    # client and lock, so the lock tests see the production lock handling.
+    handler = composition_root.build_signal_handler(fake, lock if lock is not None else threading.Lock())
+    handler.handle(lines)
 
 
 def generated_webhook_path():
     """One path as ``--url generate`` makes it."""
-    return generate_random_url()
+    return random_webhook_path()
 
 
 LOGIN = "[login]"
@@ -169,18 +174,13 @@ class Startup:
             self.served.append({"app": app, "host": host, "port": port, "options": options})
             print(SERVE)
 
-        monkeypatch.setattr(bot, "TLAPI", tl_api)
-        monkeypatch.setattr(bot.uvicorn, "run", run)
-        # Legacy registers the route on a module-level app, so a second
-        # startup in the same process adds a second route. The app itself is
-        # kept, so its own settings stay under test; its route list and cached
-        # schema are put back after each test instead.
-        monkeypatch.setattr(bot.app.router, "routes", list(bot.app.router.routes))
-        monkeypatch.setattr(bot.app, "openapi_schema", None)
+        monkeypatch.setattr(tradelocker_broker, "TLAPI", tl_api)
+        monkeypatch.setattr(composition_root.uvicorn, "run", run)
 
     def run(self, *argv):
         self._monkeypatch.setattr(sys, "argv", ["main_without_ssl.py", *argv])
-        bot.main()
+        # The container's entrypoint, so the thin script stays under test too.
+        entrypoint.main()
 
     @property
     def app(self):

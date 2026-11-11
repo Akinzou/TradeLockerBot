@@ -25,8 +25,8 @@ migration pull request.
 | 4  | Application: execute-signal use case behind broker and console ports; TradeLocker and console adapters implement them ([ADR 0005](adr/0005-execute-signal-use-case-and-ports.md)) | structure | done                                 |
 | 4b | Broker failures as a Result at the port and use-case boundary; the legacy delegate re-raises the client's own exception ([ADR 0006](adr/0006-result-at-the-broker-boundary.md))| structure | done                                 |
 | 5a | Pin the startup and the webhook route through the real entrypoint: argument checks, banners, login, server start, the HTTP answer, body decoding and line splitting, one thread per request, one lock for every request, the API docs the app serves | safety | done |
-| 5  | Inbound HTTP adapter and composition root; `main_without_ssl.py` becomes a thin entrypoint (ADR 0006's condition met by 3b)                                | structure | next                                 |
-| 6  | Remaining behaviour changes from the defect list below, one pull request and one ADR each                                                                   | behaviour | todo                                 |
+| 5  | Inbound HTTP adapter, signal handler and composition root; `libs/` moved into the adapters; `main_without_ssl.py` becomes a thin entrypoint ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)) | structure | done |
+| 6  | Remaining behaviour changes from the defect list below, one pull request and one ADR each                                                                   | behaviour | next                                 |
 
 ```mermaid
 flowchart LR
@@ -44,9 +44,9 @@ flowchart LR
     classDef done fill:#d4edda,stroke:#28a745,color:#155724
     classDef next fill:#fff3cd,stroke:#d39e00,color:#856404
     classDef todo fill:#f8f9fa,stroke:#6c757d,color:#383d41
-    class S1,S1abc,S2,S2af,S4,S4b,S3,S3b,S5a done
-    class S5 next
-    class S6,S2g todo
+    class S1,S1abc,S2,S2af,S4,S4b,S3,S3b,S5a,S5 done
+    class S6 next
+    class S2g todo
 ```
 
 Each arrow points from a step to one that builds on it. Green is done,
@@ -85,9 +85,17 @@ Fixed in behaviour steps, never during restructuring.
 | The webhook path with a trailing `/` is answered with a `307` redirect whose `Location` is built from the request's scheme; behind a TLS-terminating proxy that is `http://`, so a sender that follows it repeats the secret path and the signal in plain text | `test_a_trailing_slash_is_redirected_to_the_path_without_handling` |
 | A `url` without a leading `/` is accepted at startup, but the route can never match a request, so every alert gets `404` while the bot looks healthy | `test_a_path_without_a_leading_slash_starts_but_is_never_reachable` |
 | The account password is passed as a command-line argument, so it shows up in the process list                                                                      | `test_startup_greets_logs_in_and_serves_on_every_interface_at_port_443` (the argv the startup reads)                                                 |
-| `libs/AsciiAlerts.py` contains an invalid escape sequence (a `SyntaxWarning` today, an error in a future Python)                                                     | not pinned                                                                  |
 | Only `tradelocker` is pinned (#23); `pandas`, `fastapi`, `uvicorn` and the rest float, and the Dockerfile runs `apt-get update`, so a rebuilt image can change behaviour with no code change | step 2c: lock file |
 | The image's start command expands the credentials unquoted in `sh -c`, so a password with spaces or shell characters is split or glob-expanded and the login fails | not pinned (startup wiring) |
+
+## Fixed during restructuring
+
+- **The invalid escape sequences in the greeting banner** (`libs/AsciiAlerts.py`,
+  a `SyntaxWarning` on stderr, an error in a future Python). Step 5 moved the
+  banner into `tradelocker_bot/adapters/ascii_alerts.py` as a raw string with
+  the same bytes, which the startup tests pin byte for byte. Copying the
+  warning into the package would have gained nothing
+  ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
 
 ## Not covered by tests
 
@@ -96,3 +104,6 @@ Fixed in behaviour steps, never during restructuring.
   would record the test setup rather than production.
 - The real `TLAPI` login and `uvicorn` server. The tests replace both at
   their call, so they pin the arguments and the order, not the libraries.
+- The `if __name__ == "__main__"` guard in `main_without_ssl.py`. The tests
+  call its `main`; CI's image smoke run (`main_without_ssl.py --help`) runs
+  the script itself.

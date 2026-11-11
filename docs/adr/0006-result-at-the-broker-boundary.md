@@ -52,6 +52,11 @@ handler re-raises the client's own exception object.
    first or the second one. Logging the failure inside the use case would
    recover that, and belongs with failure reporting in step 5.
 
+   *Update:* step 5 ([ADR 0010](0010-webhook-adapter-and-composition-root.md))
+   was a structure step, so it moved the re-raise into
+   `SignalHandler.handle` unchanged. Failure logging and reporting moved to
+   step 6.
+
 ### Kept out of the Result in this step
 
 - **Lot and inversion errors** (`ValueError`, `ZeroDivisionError`, and the
@@ -76,6 +81,9 @@ handler re-raises the client's own exception object.
 - Behaviour is unchanged. The webhook thread still dies with the client's
   exception. Reporting failures to the operator instead is a behaviour change
   for step 5 or 6.
+
+  *Update:* step 6. Step 5 ([ADR 0010](0010-webhook-adapter-and-composition-root.md))
+  changed structure only.
 - `execute`'s return type covers broker failures only. Until step 3, invalid
   input (a malformed lot, an unknown `isInvert`, a missing balance) still
   raises from the use case, after any positions were already closed in the

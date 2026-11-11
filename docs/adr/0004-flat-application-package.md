@@ -26,6 +26,11 @@ stdlib module fails CI without anyone having to foresee it.
 
 - The image needs no change: `/app` is the working directory, so
   `tradelocker_bot` imports the same way the legacy `libs/` does.
+
+  *Update (step 5, [ADR 0010](0010-webhook-adapter-and-composition-root.md)):*
+  `libs/` is gone. Its modules moved into `tradelocker_bot/adapters/`, and
+  the composition root `tradelocker_bot/composition_root.py` sits next to the
+  layers as the package's outermost module.
 - CI smoke-runs the entrypoint inside the built image. The tests run from the
   repository root on the runner's Python, so they cannot detect a package
   that is missing from, or broken in, the image.
@@ -41,3 +46,8 @@ stdlib module fails CI without anyone having to foresee it.
   the project (`pip install .`). That changes the image build and the frozen
   container contract in a step that is meant to be structure-only. Revisit
   when the entrypoint is replaced (roadmap step 5).
+
+  *Update (step 5, [ADR 0010](0010-webhook-adapter-and-composition-root.md)):*
+  still deferred. Step 5 kept `main_without_ssl.py` as the container command,
+  because the frozen contract names it, so the image still runs the script
+  from `/app` and gains nothing from an installed package.

@@ -1,5 +1,5 @@
 """Exact broker call sequences and exact exception types on the raising paths
-of ``handle_position_normal``, and the lines ``close`` never reads.
+of the webhook's signal handler, and the lines ``close`` never reads.
 
 The success-path pins fix the order of broker calls, but a restructure could
 still change which calls happen before a failure: reading the balance on

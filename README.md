@@ -331,6 +331,17 @@ python -m venv .venv
   [`docs/architecture.md`](docs/architecture.md), the
   [decision records](docs/adr) and the
   [migration roadmap](docs/migration-roadmap.md).
+- `main_without_ssl.py` keeps its name because the image runs it, but it only
+  calls `main()` in `tradelocker_bot/composition_root.py`. That module reads
+  the arguments and wires the adapters to the use case
+  ([ADR 0010](docs/adr/0010-webhook-adapter-and-composition-root.md)).
+  Everything else lives in the `tradelocker_bot` package:
+
+  | Package       | Holds                                                               |
+  |---------------|---------------------------------------------------------------------|
+  | `domain`      | trading rules                                                       |
+  | `application` | the use case and its ports                                          |
+  | `adapters`    | the TradeLocker client and login, the webhook, the operator console |
 - The image installs `requirements-lock.txt`: every runtime package at one
   version, verified by hash ([ADR 0007](docs/adr/0007-locked-runtime-dependencies.md)).
   After changing `requirements.txt`, or to take dependency updates,
