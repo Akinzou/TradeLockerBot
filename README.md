@@ -348,6 +348,8 @@ python -m venv .venv
 The second install replaces the versions of PyJWT, requests and
 python-dotenv that the `tradelocker` client pins, as the image does
 ([ADR 0017](docs/adr/0017-override-the-clients-vulnerable-pins.md)).
+Installing `requirements.txt` again brings the pinned versions back, so run
+both installs again, in this order.
 
 - Every pull request to `master` must pass the CI gates described in
   [ADR 0002](docs/adr/0002-ci-quality-gates.md): tests on Python 3.11 and

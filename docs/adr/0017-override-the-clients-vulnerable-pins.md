@@ -33,11 +33,14 @@ How much of this the bot reaches:
   take the broker itself or someone who breaks TLS. The other advisories
   concern verification, key handling and `PyJWKClient`, which the client
   does not use.
-- **requests.** Every URL the client builds starts with the base URL of the
-  environment the operator picks (`demo` or `live`), and the image holds no
-  `.netrc`.
-- **python-dotenv.** The client only reads with `dotenv_values`, from a
-  helper the bot does not call; `set_key` is never used.
+- **requests.** For the `.netrc` leak: every URL the client builds starts
+  with the base URL of the environment the operator picks (`demo` or
+  `live`), and the image holds no `.netrc`. The temp-file advisory affects
+  only code that calls `extract_zipped_paths()` directly, which neither the
+  client nor the bot does.
+- **python-dotenv.** The client imports only `dotenv_values`, inside
+  `load_env_config`, a helper that neither the client nor the bot calls;
+  `set_key` is never used.
 
 None of this was shown to be exploitable. The alerts still stand, though,
 and an image that ships known-vulnerable code is harder to vouch for. Each
@@ -59,7 +62,8 @@ flowchart LR
     OVR[requirements-overrides.txt] -- "replaces the client's pins" --> UV
     UV --> LOCK[(requirements-lock.txt)]
     LOCK -- "pip install --require-hashes<br/>--only-binary :all: --no-deps" --> IMG[image]
-    LOCK --> CL{{"dependency_closure<br/>(CI tests job)"}}
+    LOCK --> CL{{"dependency_closure<br/>(CI: tests job, and inside the image)"}}
+    IMG --> CL
     OVR --> CL
     CL -- "every requirement locked,<br/>every override honoured and needed" --> OK[merge]
 ```
@@ -72,9 +76,11 @@ flowchart LR
   - **Ranges, not exact versions:** the lock already fixes one version.
     A range lets `--upgrade` move within it and still says why the floor is
     there.
-  - **No markers or extras.** Either would apply the override to only part
-    of what the lock is resolved for, which the check below cannot see.
-    `read_overrides` refuses both.
+  - **One line per package, with no markers, extras or pip options.**
+    `read_overrides` refuses anything else. A marker or an extra would apply
+    the override to only part of what the lock is resolved for, and a second
+    line or an option is something uv would read but the check below would
+    not.
 - **The lock** is compiled with `--override requirements-overrides.txt`; the
   command in its header says so. uv applies each override in place of every
   other requirement on that package. The new lock holds PyJWT 2.15.1,
@@ -82,20 +88,29 @@ flowchart LR
 - **The image and CI install with `--no-deps`.** pip then checks the hashes
   of what the lock names and installs nothing else. It no longer checks
   that each package's own requirements are met.
-- **`tests/dependency_closure.py` takes over that check**, in a new step of
-  the CI `tests` job:
+- **`tests/dependency_closure.py` takes over that check.** It runs in two
+  new CI steps: in the `tests` job on Python 3.11 and 3.12, and in the
+  `docker-build` job inside the built image.
   - It runs after the lock is installed. It first refuses an environment
     whose versions are not the locked ones, then reads each locked package's
     requirements from the installed metadata.
-  - It evaluates markers for the image's platform (Python 3.11 on Linux
-    x86_64), not for the runner's. A Windows-only requirement does not
-    count, and one for Python 3.11 does, even on the 3.12 runner.
+  - It evaluates markers with the interpreter that runs it. Inside the image
+    that is the image's own Python, whatever 3.11 patch release the base
+    tag holds, which is the one that matters. On the 3.12 runner it also
+    catches a requirement only 3.12 needs, which the 3.11 lock would lack.
+    The image's run uses the base image's own `packaging`, so the check adds
+    nothing to the image.
   - **Every applicable requirement must be locked, at a version it
-    allows.** An overridden package is held to its override instead.
+    allows.** The one exception is a `tradelocker` requirement on an
+    overridden package: that is the pin the override lifts, and the package
+    is held to its override instead. uv applies an override to every
+    requirement on the package, so this limit is what stops a needed
+    override from also hiding another package's requirement that the
+    locked version breaks.
   - **Every override must be honoured:** the lock holds the package at a
     version the override allows.
-  - **Every override must still be needed:** some applicable requirement
-    excludes the locked version. When a client release allows a fixed
+  - **Every override must still be needed:** some applicable `tradelocker`
+    requirement excludes the locked version. When a client release allows a fixed
     version, the check fails until the override is removed. Otherwise a
     leftover override would silently mask a later pin that matters.
   - **A requirement with extras fails** rather than being half-checked, as
@@ -118,7 +133,7 @@ flowchart LR
 | requests in the image | 2.32.2 | 2.34.2 |
 | python-dotenv in the image | 1.0.0 | 1.2.4 |
 | image and CI install | resolves dependencies | `--no-deps` |
-| lock completeness | checked by pip while installing | checked by `python -m tests.dependency_closure` in CI |
+| lock completeness | checked by pip while installing | checked by `python -m tests.dependency_closure` in CI and inside the image |
 | `requirements-dev.txt` | includes `requirements.txt` | dev tools only |
 | local setup | one `pip install` | three commands, in the README |
 
@@ -128,30 +143,39 @@ The tests changed with it:
   override at a version it allows. That test failed first, against the old
   lock's `pyjwt==2.8.0`. It also pins the rules the CI check applies:
   - requirements met, missing or outside their range;
-  - markers read for the image;
+  - markers read for the interpreter given;
   - extras refused;
-  - overrides honoured and needed;
-  - override lines limited to a name and a range.
+  - only the client's pins lifted, so another package's requirement on an
+    overridden package still counts;
+  - overrides honoured and needed, and an override the lock does not hold
+    reported as missing, not as stale;
+  - override lines limited to one name and a range per package, with no
+    pip options;
+  - a package not installed at its locked version reported.
 - **Each failure was checked against the real files:** each one below makes
   `python -m tests.dependency_closure` fail with a line naming it.
   - dropping the PyJWT override (`tradelocker needs PyJWT (==2.8.0)`);
-  - adding an override nothing needs (`override click lifts nothing`);
+  - adding an override nothing needs (`override click lifts none of
+    tradelocker's requirements`);
   - deleting `urllib3` from the lock (`requests needs urllib3`);
   - raising an override's floor above the locked version.
-- **The suite** passes against the new versions: 438 tests on Python 3.11
+- **The suite** passes against the new versions: 446 tests on Python 3.11
   after the CI install order, and on Python 3.12 after the README's local
   setup.
-- **The client's own code paths** that use the upgraded packages were run
-  with warnings as errors: `time_to_token_expiry` on an unsigned token,
-  the same unverified `jwt.decode`, and a `TLAPI` login attempt against a
-  closed port, which failed through `requests` as the client expects.
+- **The client's calls into the upgraded packages** were run with warnings
+  as errors:
+  - `time_to_token_expiry` and the same unverified `jwt.decode` on a
+    hand-made, unsigned token;
+  - a `TLAPI` login attempt against a closed port. It failed inside
+    `requests`, as the client expects, so `requests` sent nothing and
+    parsed no answer.
 
 ## What this does not cover
 
 - **A live login.** No test logs in to TradeLocker, before or after this
-  step. The client's calls into PyJWT and requests were run, but not
-  against the broker's real responses. If a login fails after this change,
-  look here first.
+  step. PyJWT 2.15.1 decoded only a hand-made token, and requests 2.34.2
+  was never answered, inside the client, by the broker or anything else.
+  If a login fails after this change, look here first.
 - **The client's own declared requirements.** `pip check` in the image now
   reports that `tradelocker` wants PyJWT 2.8.0, requests 2.32.2 and
   python-dotenv 1.0.0. That is expected, and nothing runs it.

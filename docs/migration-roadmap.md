@@ -178,6 +178,7 @@ Fixed in behaviour steps, never during restructuring.
   call its `main`; CI's image smoke run (`main_without_ssl.py --help`) runs
   the script itself.
 - A login against the real broker with the PyJWT and requests versions the
-  lock overrides (step 2h). The client's calls into both were run against
-  a hand-made token and a closed port, not against the broker's answers
+  lock overrides (step 2h). The client's PyJWT call was run on a hand-made
+  token, and its requests call only against a closed port, so no answer
+  was ever parsed
   ([ADR 0017](adr/0017-override-the-clients-vulnerable-pins.md)).

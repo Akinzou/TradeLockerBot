@@ -38,6 +38,8 @@ jobs:
         run: python -m tests.dependency_lock
       # What pip's resolver checked before --no-deps: every requirement of a
       # locked package is locked, and every override is honoured and needed.
+      # Markers are read for this leg's Python; the docker-build job checks
+      # the image itself.
       - name: Check the lock holds what its packages need
         run: python -m tests.dependency_closure
       - name: Lint (syntax errors and undefined names)
@@ -80,6 +82,12 @@ jobs:
       # (argparse --help exits before any login) catches packaging gaps the tests cannot.
       - name: Smoke-run the entrypoint inside the image
         run: docker run --rm --entrypoint python tradelocker_bot:ci main_without_ssl.py --help
+      # The image installs with --no-deps (ADR 0017), so check there, with the
+      # image's own interpreter reading the markers, that it holds what its
+      # packages need. It uses the base image's own packaging, so nothing
+      # outside the lock is added.
+      - name: Check the image holds what its packages need
+        run: docker run --rm --entrypoint python tradelocker_bot:ci -m tests.dependency_closure
       # The image must add exactly the locked set to its base; with the fitness tests tying
       # the lock to requirements.txt and to the broker fake's client version,
       # this also proves the image runs the characterized client.
