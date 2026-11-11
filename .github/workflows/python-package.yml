@@ -29,9 +29,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           # The lock first, as the image installs it, so the tests run against
-          # the image's versions; the dev tools share no package with it.
+          # the image's versions. The dev tools come after and may not move a
+          # locked package; the next step fails if one did.
           python -m pip install --require-hashes -r requirements-lock.txt
           python -m pip install -r requirements-dev.txt
+      - name: Check the locked versions survived the dev install
+        run: python -m tests.dependency_lock
       - name: Lint (syntax errors and undefined names)
         run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
       - name: Test
@@ -72,35 +75,13 @@ jobs:
       # (argparse --help exits before any login) catches packaging gaps the tests cannot.
       - name: Smoke-run the entrypoint inside the image
         run: docker run --rm --entrypoint python tradelocker_bot:ci main_without_ssl.py --help
-      # The fake the pins run against mirrors one client version, and
-      # tests/test_broker_client_version.py ties it to requirements.txt; check
-      # the image installs the pinned one, not just that the file names it.
-      - name: Check the image's broker client version
-        run: |
-          pinned="$(sed -n 's/^tradelocker==\([^ ;#]*\).*/\1/p' requirements.txt)"
-          installed="$(docker run --rm --entrypoint python tradelocker_bot:ci -c "import importlib.metadata as m; print(m.version('tradelocker'))")"
-          echo "pinned=${pinned} installed=${installed}"
-          test -n "$pinned" && test "$pinned" = "$installed"
-      # The install uses --require-hashes, so nothing unlocked can enter; this
-      # checks the converse, that the image holds exactly the locked set.
+      # The image must hold exactly the locked set; with the fitness tests tying
+      # the lock to requirements.txt and to the broker fake's client version,
+      # this also proves the image runs the characterized client.
       - name: Check the image's packages against the lock
         run: |
           docker run --rm --entrypoint python tradelocker_bot:ci -m pip freeze --all > installed.txt
-          python3 - <<'EOF'
-          import re
-          def pins(path):
-              found = set()
-              for line in open(path, encoding="utf-8"):
-                  match = re.match(r"([A-Za-z0-9][A-Za-z0-9._-]*)==([^\s;\\]+)", line)
-                  if match:
-                      found.add((re.sub(r"[-_.]+", "-", match[1]).lower(), match[2]))
-              return found
-          installed = {pin for pin in pins("installed.txt") if pin[0] not in {"pip", "setuptools", "wheel"}}
-          locked = pins("requirements-lock.txt")
-          print("installed, not locked:", sorted(installed - locked))
-          print("locked, not installed:", sorted(locked - installed))
-          raise SystemExit(installed != locked)
-          EOF
+          python3 -m tests.dependency_lock --freeze installed.txt --exact
 
   # Single required status check for master. Aggregating here means branch
   # protection does not need editing every time a job is added or renamed.

@@ -25,17 +25,32 @@ minutes later.
    that machine's markers (`colorama` on Windows) and its Python's newest
    versions. numpy 2.5 already dropped 3.11, so a 3.12 resolution would not
    install in the image.
-3. The Dockerfile installs `pip install --require-hashes -r
-   requirements-lock.txt`. Under `--require-hashes` pip refuses any package
-   that is not in the lock or does not match a hash.
+3. The Dockerfile installs `pip install --require-hashes --only-binary :all:
+   -r requirements-lock.txt`. Under `--require-hashes` pip refuses any package
+   that is not in the lock or does not match a hash. Wheels only, because a
+   source build would fetch build tools that are not hash-checked. Every
+   locked package has a wheel for the image. With nothing to compile, the
+   `apt-get install build-essential libssl-dev git` layer goes too: no code
+   uses them, and they were packages a rebuild could change unreviewed. The
+   lock is copied before the source, so a code change reuses the installed
+   layer.
 4. CI checks both directions:
-   - `tests/test_dependency_lock.py` checks the lock. Every package carries
-     hashes, every requirement in `requirements.txt` is satisfied by its pin,
-     and `tradelocker` is the version the broker fake mirrors.
-   - The `docker-build` job compares `pip freeze` inside the image with the
-     lock, excluding `pip` and `setuptools`. The sets must be equal.
-   - The `tests` job installs the lock first, on Python 3.11 and 3.12, so the
-     suite runs against the image's versions.
+   - `tests/test_dependency_lock.py` checks the lock against
+     `requirements.txt` in both directions. Every package carries hashes, the
+     lock marks exactly the direct requirements as direct, and each pin
+     satisfies its requirement. Extras and environment markers are refused,
+     because a single-platform lock cannot show they were honoured.
+     `tradelocker` is the version the broker fake mirrors.
+   - The `docker-build` job compares `pip freeze --all` inside the image with
+     the lock, excluding `pip`, `setuptools` and `wheel`. The sets must be
+     equal. Together with the fitness tests, this replaces the earlier
+     image check of the `tradelocker` version alone.
+   - The `tests` job installs the lock first, on Python 3.11 and 3.12, then
+     the dev tools. It then checks that every locked package is still at its
+     locked version, so the suite runs against the image's versions.
+   - `tests/dependency_lock.py` is the one parser all of these use. It is
+     standard-library only, so the runner can check the image without
+     installing anything.
 
 ## Consequences
 
