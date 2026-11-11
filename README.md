@@ -120,7 +120,7 @@ All settings are passed as environment variables (`-e name=value`).
 | `password` | yes      |             | TradeLocker password. Must not contain spaces or shell characters such as `*`, `?`, `$` or `;` (see below). |
 | `server`   | yes      |             | TradeLocker server name.                                                                            |
 | `env`      | yes      |             | `demo` or `live`.                                                                                   |
-| `url`      | no       | `/strategy` | Webhook path. Use a long secret path (see [Quick start](#quick-start)). `generate` prints a new random path on every start. |
+| `url`      | no       | `/strategy` | Webhook path. Use a long secret path (see [Quick start](#quick-start)). It must start with `/`: without it the bot starts, but every alert gets `404 Not Found`. `generate` prints a new random path on every start. |
 | `acc_id`   | no       | `0`         | Trade on the account with this ID. With both `acc_id` and `acc_num` at `0`, the first account listed for your login is used. |
 | `acc_num`  | no       | `0`         | Trade on the account with this number. Set either `acc_id` or `acc_num`, not both.                  |
 
@@ -273,6 +273,19 @@ alerts.
   [Quick start](#quick-start). `url=generate` is weaker: it uses Python's
   non-cryptographic `random` module (a known defect, tracked in the
   [migration roadmap](docs/migration-roadmap.md#known-defects)).
+- **Forward only the webhook path.** The bot also serves FastAPI's API
+  documentation at `/docs`, `/redoc` and `/openapi.json`, and that schema
+  names the webhook path. Anyone who can reach the bot can read the secret
+  path there. Until this is fixed (a known defect, tracked in the
+  [migration roadmap](docs/migration-roadmap.md#known-defects)), configure
+  your reverse proxy to forward only the webhook path and to answer every
+  other path itself.
+- **Use the exact path in your alerts.** The bot answers the webhook path
+  with a trailing `/` by a `307` redirect to the path without it. The
+  redirect's address starts with `http://` even behind an HTTPS proxy, so a
+  sender that follows it sends the secret path and the signal unencrypted
+  (a known defect). Forwarding only the exact path from the proxy, as above,
+  prevents this.
 - **Use HTTPS.** The bot serves plain HTTP, so without TLS anyone on the
   network path can read the webhook path and send forged signals. Put the bot
   behind a reverse proxy such as Nginx or Caddy that terminates TLS. The bot's
@@ -294,6 +307,7 @@ alerts.
 | Position closed but no new one opened       | The broker rejected the order; the log shows its error. |
 | Bot does not start, login fails             | Wrong credentials or `env`, or a password with spaces or shell characters (see [Configuration](#configuration)). |
 | `Method Not Allowed` in the browser         | Expected; see [Verifying the setup](#verifying-the-setup).                                     |
+| Every alert gets `404 Not Found`            | The alert's URL does not match the `url` setting exactly (case included), or `url` does not start with `/`. A URL with a trailing `/` gets a `307` redirect to an `http://` address instead; see [Security](#security). |
 | Error about account number and ID at start  | Both `acc_id` and `acc_num` are set; keep only one.                                            |
 
 Known defects and their planned fixes are listed in the

@@ -1,17 +1,20 @@
 """Shared seam for characterization tests.
 
-This is the only place that knows where the handler under test lives. When a
-structure step moves it, only this module changes, and the pull request calls
-that out (ADR 0001).
+This is the only place that knows where the code under test lives: the
+handler, the startup, the client login and the webhook path generator. When a
+structure step moves any of them, only this module changes, and the pull
+request calls that out (ADR 0001).
 """
 
 import re
+import sys
 import threading
 from types import MappingProxyType
 
 from tradelocker.exceptions import TLAPIOrderException
 
 import main_without_ssl as bot
+from libs.URLgenerator import generate_random_url
 from tests.characterization.fake_tradelocker import FakeTradeLocker
 
 XAUUSD_ID = 101
@@ -125,3 +128,68 @@ class RecordingLock:
 
 def handle(fake, lines, lock=None):
     bot.handle_position_normal(fake, lines, lock if lock is not None else threading.Lock())
+
+
+def generated_webhook_path():
+    """One path as ``--url generate`` makes it."""
+    return generate_random_url()
+
+
+LOGIN = "[login]"
+SERVE = "[serve]"
+
+# The required arguments, for the demo server; tests add the optional ones.
+DEMO = ("--username", "u", "--password", "p", "--server", "s", "--env", "demo")
+
+
+class Startup:
+    """Runs the bot's startup with a recorded login and a recorded server start.
+
+    The login hands back ``client``, or raises it when it is an exception, and
+    the server start returns at once with the app it was given, so a test can
+    send requests to the very app the bot would serve. Each prints a marker
+    line, so pinned console output shows where the banners fall around them.
+    """
+
+    def __init__(self, monkeypatch, client=None):
+        self.logins = []
+        self.served = []
+        self._monkeypatch = monkeypatch
+
+        def tl_api(**credentials):
+            self.logins.append(credentials)
+            print(LOGIN)
+            if isinstance(client, BaseException):
+                raise client
+            return client
+
+        # uvicorn's own parameter names and defaults, keyword-only as in
+        # uvicorn: a call that passes anything else is recorded in ``options``.
+        def run(app, *, host="127.0.0.1", port=8000, **options):
+            self.served.append({"app": app, "host": host, "port": port, "options": options})
+            print(SERVE)
+
+        monkeypatch.setattr(bot, "TLAPI", tl_api)
+        monkeypatch.setattr(bot.uvicorn, "run", run)
+        # Legacy registers the route on a module-level app, so a second
+        # startup in the same process adds a second route. The app itself is
+        # kept, so its own settings stay under test; its route list and cached
+        # schema are put back after each test instead.
+        monkeypatch.setattr(bot.app.router, "routes", list(bot.app.router.routes))
+        monkeypatch.setattr(bot.app, "openapi_schema", None)
+
+    def run(self, *argv):
+        self._monkeypatch.setattr(sys, "argv", ["main_without_ssl.py", *argv])
+        bot.main()
+
+    @property
+    def app(self):
+        [served] = self.served
+        return served["app"]
+
+
+def serve(monkeypatch, client, *argv):
+    """Start the bot on the demo arguments plus ``argv`` and return its app."""
+    startup = Startup(monkeypatch, client)
+    startup.run(*DEMO, *argv)
+    return startup.app
