@@ -99,7 +99,7 @@ sequenceDiagram
     participant WH as webhook.create_app
     participant U as uvicorn
     EP->>CR: main()
-    CR->>CR: parse_args (exit 2 on a bad argument,<br/>a --url without a leading /)
+    CR->>CR: parse_args (exit 2 on a bad argument,<br/>a --url without a leading / or with a brace)
     opt --url generate
         CR->>CR: print the URL banner and random_webhook_path()
     end
@@ -336,9 +336,11 @@ layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
   shows.
 - It creates the one lock that every request shares.
 - `webhook_url` checks `--url` as the arguments are read: `generate` or a
-  path that starts with `/`. Anything else exits with status `2`, like any
-  bad argument, and the message leaves the value out
-  ([ADR 0014](adr/0014-require-a-leading-slash.md)).
+  path that starts with `/` and has no `{` or `}`, so the route is one
+  path, not a pattern. Anything else exits with status `2`, like any bad argument,
+  and the message leaves the value out
+  ([ADR 0014](adr/0014-require-a-leading-slash.md),
+  [ADR 0015](adr/0015-refuse-braces-in-the-webhook-path.md)).
 - `build_signal_handler(client, lock)` builds the console, the broker adapter, the
   use case and the handler once, at startup. The characterization tests
   build theirs through the same function.
@@ -362,3 +364,4 @@ layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
 | [0012](adr/0012-generate-the-webhook-path-with-secrets.md) | Generate the webhook path with `secrets` |
 | [0013](adr/0013-no-trailing-slash-redirect.md) | No trailing-slash redirect on the webhook |
 | [0014](adr/0014-require-a-leading-slash.md) | Refuse a webhook path without a leading slash |
+| [0015](adr/0015-refuse-braces-in-the-webhook-path.md) | Refuse braces in the webhook path |

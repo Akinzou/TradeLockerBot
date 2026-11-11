@@ -176,23 +176,17 @@ def test_a_path_set_with_a_trailing_slash_is_served_only_with_it(monkeypatch):
     assert fake.calls == OPEN_CALLS
 
 
-@pytest.mark.parametrize(
-    ("url", "other_path"),
-    [("/{x}", "/strategy"), ("/{x:path}", "/a/b/c"), ("/hook/{x}", "/hook/anything"), ("/{x:int}", "/42")],
-)
-def test_a_path_with_braces_handles_signals_on_paths_the_operator_never_set(monkeypatch, url, other_path):
-    # Known defect: FastAPI reads `{name}` in a route as a path parameter, so
-    # the setting becomes a pattern, and every path it matches opens trades.
-    # `/{x:path}` matches every path there is. Braces that are not a name, as
-    # in `/a{b` or `/{1}`, stay literal.
+@pytest.mark.parametrize("other_path", ["/hook/anything", "/hookx", "/strategy", "/"])
+def test_a_path_set_by_hand_handles_no_other_path(monkeypatch, other_path):
+    # ADR 0015: with braces refused, the route is one path, not a pattern, so
+    # a path under it, next to it or the default opens no trade.
     fake = broker()
-    app = serve(monkeypatch, fake, "--url", url)
+    app = serve(monkeypatch, fake, "--url", "/hook")
 
     response, threads = post(app, other_path, SIGNAL)
-    finish(threads)
 
-    assert response.status_code == 200
-    assert fake.calls == OPEN_CALLS
+    assert (response.status_code, response.history, threads) == (404, [], [])
+    assert fake.calls == []
 
 
 def test_a_broker_failure_ends_the_handler_thread_with_the_clients_exception(monkeypatch):

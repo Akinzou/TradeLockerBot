@@ -164,15 +164,50 @@ def test_a_failed_login_raises_and_never_starts_the_server(monkeypatch, capsys):
     assert startup.served == []
 
 
-@pytest.mark.parametrize(("url", "error"), [("/{x:foo}", AssertionError), ("/{x}/{x}", ValueError)])
-def test_a_brace_pattern_starlette_cannot_compile_stops_after_the_login(startup, url, error):
-    # Known defect: the route is built after the login, so a pattern with an
-    # unknown convertor or a repeated name stops the bot with a traceback once
-    # it has already logged in to the account.
-    with pytest.raises(error):
+@pytest.mark.parametrize(
+    "url",
+    [
+        "/{zq7}",
+        "/{zq7:path}",
+        "/hook/{zq7}",
+        "/{zq7:int}",
+        "/{zq7:foo}",
+        "/{zq7}/{zq7}",
+        "/{987}",
+        "/hook{zq7",
+        "/hook}zq7",
+    ],
+)
+def test_a_path_with_a_brace_stops_before_any_output_and_is_not_echoed(startup, capsys, url):
+    # ADR 0015: `{name}` made the setting a pattern, so other paths opened
+    # trades, and a pattern Starlette could not compile stopped the bot after
+    # the login. Any `{` or `}` now stops it like any invalid argument, before
+    # the banners, with the value left out of the error.
+    with pytest.raises(SystemExit) as exited:
         startup.run(*DEMO, "--url", url)
 
-    assert startup.logins == [DEMO_LOGIN]
+    out, err = capsys.readouterr()
+    assert exited.value.code == 2
+    assert out == ""
+    assert err.splitlines()[-1].endswith("error: argument --url: must not contain { or }")
+    # Split on braces too, since the message has them; the names are ones the
+    # usage text above it cannot contain, so a match can only be an echo.
+    assert [part for part in re.split("[/:{}]", url) if part and part in err] == []
+    assert startup.logins == []
+    assert startup.served == []
+
+
+def test_a_value_with_a_brace_and_no_leading_slash_gets_the_slash_message(startup, capsys):
+    # The leading slash is checked first, so one value always gets one message.
+    with pytest.raises(SystemExit) as exited:
+        startup.run(*DEMO, "--url", "{zq7}")
+
+    out, err = capsys.readouterr()
+    assert exited.value.code == 2
+    assert out == ""
+    assert err.splitlines()[-1].endswith("error: argument --url: must start with / or be generate")
+    assert "zq7" not in err
+    assert startup.logins == []
     assert startup.served == []
 
 
