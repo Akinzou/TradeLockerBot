@@ -21,6 +21,7 @@ from tests.characterization.harness import (
     generated_webhook_path,
 )
 from tests.characterization.webhook_driver import post
+from tradelocker_bot.adapters.webhook import server_log_config
 
 GREEN = "\x1b[92m"
 RED = "\x1b[91m"
@@ -65,8 +66,10 @@ def test_startup_greets_logs_in_and_serves_on_every_interface_at_port_443(startu
 
     assert capsys.readouterr().out == f"{GREEN}{HELLO}{RESET}\n{LOGIN}\n{SERVE}\n"
     assert startup.logins == [DEMO_LOGIN]
+    # What the log settings make the server write is pinned against a real
+    # uvicorn in test_server_log.py; here, only that they are the ones passed.
     assert [{k: v for k, v in s.items() if k != "app"} for s in startup.served] == [
-        {"host": "0.0.0.0", "port": 443, "options": {}},
+        {"host": "0.0.0.0", "port": 443, "options": {"log_config": server_log_config()}},
     ]
 
 

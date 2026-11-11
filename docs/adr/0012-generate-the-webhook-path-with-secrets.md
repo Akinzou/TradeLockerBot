@@ -109,6 +109,9 @@ against the old generator before the fix.
 - **uvicorn's access log** writes the path of every request to the same log.
   It is a known defect of its own in the
   [migration roadmap](../migration-roadmap.md#known-defects).
+
+  *Update:* step 6f ([ADR 0016](0016-hide-the-request-line-in-the-access-log.md))
+  drops the request line, and with it the path, from the access line.
 - **A path chosen by hand** is as strong as the operator makes it. The
   README's advice is the generator this ADR adopts.
 

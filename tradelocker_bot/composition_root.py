@@ -14,7 +14,7 @@ from tradelocker_bot.adapters import ascii_alerts
 from tradelocker_bot.adapters.console import PrintingConsole
 from tradelocker_bot.adapters.signal_handler import SignalHandler
 from tradelocker_bot.adapters.tradelocker_broker import TradeLockerBroker, log_in
-from tradelocker_bot.adapters.webhook import create_app
+from tradelocker_bot.adapters.webhook import create_app, server_log_config
 from tradelocker_bot.adapters.webhook_path import random_webhook_path
 from tradelocker_bot.application.execute_signal import ExecuteSignal
 
@@ -82,4 +82,4 @@ def main():
     # so two alerts never interleave between closing and ordering.
     app = create_app(args.url, build_signal_handler(client, threading.Lock()).handle)
 
-    uvicorn.run(app, host="0.0.0.0", port=args.port)
+    uvicorn.run(app, host="0.0.0.0", port=args.port, log_config=server_log_config())

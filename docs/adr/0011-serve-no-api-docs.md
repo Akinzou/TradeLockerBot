@@ -78,6 +78,9 @@ HTTP answer:
   container's log can read the path. This is a separate defect in the
   roadmap: whether to turn the log off or redact the path is a change of
   what operators see, and it needs a decision of its own.
+
+  *Update:* step 6f ([ADR 0016](0016-hide-the-request-line-in-the-access-log.md))
+  drops the request line, and with it the path, from the access line.
 - **`url=generate` prints the path at startup.** That is intended: the
   operator has to copy it into the alert, and the README tells them to.
 

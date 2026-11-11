@@ -37,7 +37,7 @@ flowchart TB
     EP[main_without_ssl.py<br/>container command]
     CR[composition_root<br/>parse_args, main, build_signal_handler]
     subgraph adapters [tradelocker_bot.adapters]
-        WH[webhook<br/>create_app]
+        WH[webhook<br/>create_app, server_log_config]
         SH[signal_handler<br/>SignalHandler]
         TLB[tradelocker_broker<br/>TradeLockerBroker, log_in]
         PC[console<br/>PrintingConsole]
@@ -110,7 +110,9 @@ sequenceDiagram
     CR->>CR: build_signal_handler(client, one Lock)
     CR->>WH: create_app(url, handler.handle)
     WH-->>CR: FastAPI app
-    CR->>U: run(app, host="0.0.0.0", port)
+    CR->>WH: server_log_config()
+    WH-->>CR: uvicorn's log settings,<br/>access line without the request line
+    CR->>U: run(app, host="0.0.0.0", port, log_config)
 ```
 
 A bad argument stops at step 2, a bad account selector at step 5, and a
@@ -317,6 +319,11 @@ design.
   ([ADR 0011](adr/0011-serve-no-api-docs.md)). It redirects nothing: a path
   one slash away answers `404`, because the redirect pointed senders at
   plain `http://` ([ADR 0013](adr/0013-no-trailing-slash-redirect.md)).
+- `server_log_config` (`webhook`) is uvicorn's default log settings with
+  an access line that keeps the client and the status but not the request
+  line, which holds the secret path. Only the documented `fmt` changes, so
+  no code reads uvicorn's internal log records
+  ([ADR 0016](adr/0016-hide-the-request-line-in-the-access-log.md)).
 - `SignalHandler` runs one request's lines. It parses them before the lock
   and runs a valid signal inside it.
   - A rejection or a refusal gets one operator line.
@@ -365,3 +372,4 @@ layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
 | [0013](adr/0013-no-trailing-slash-redirect.md) | No trailing-slash redirect on the webhook |
 | [0014](adr/0014-require-a-leading-slash.md) | Refuse a webhook path without a leading slash |
 | [0015](adr/0015-refuse-braces-in-the-webhook-path.md) | Refuse braces in the webhook path |
+| [0016](adr/0016-hide-the-request-line-in-the-access-log.md) | Hide the request line in the access log |
