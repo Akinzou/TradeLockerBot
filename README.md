@@ -340,14 +340,20 @@ Requires Python 3.11 or 3.12.
 
 ```sh
 python -m venv .venv
-.venv/bin/python -m pip install -r requirements-dev.txt   # Windows: .venv\Scripts\python
+.venv/bin/python -m pip install -r requirements.txt -r requirements-dev.txt   # Windows: .venv\Scripts\python
+.venv/bin/python -m pip install --no-deps -r requirements-overrides.txt
 .venv/bin/python -m pytest
 ```
+
+The second install replaces the versions of PyJWT, requests and
+python-dotenv that the `tradelocker` client pins, as the image does
+([ADR 0017](docs/adr/0017-override-the-clients-vulnerable-pins.md)).
 
 - Every pull request to `master` must pass the CI gates described in
   [ADR 0002](docs/adr/0002-ci-quality-gates.md): tests on Python 3.11 and
   3.12, Semgrep, and a Docker build with a smoke run and a check of its
-  packages against the lock.
+  packages against the lock. The `tests` job also checks that the lock
+  holds every package its packages need.
 - The codebase is being migrated, step by step, to a layered architecture; see
   [`docs/architecture.md`](docs/architecture.md), the
   [decision records](docs/adr) and the
@@ -368,6 +374,13 @@ python -m venv .venv
   After changing `requirements.txt`, or to take dependency updates,
   regenerate it with the `uv pip compile` command in its header (add
   `--upgrade` to move every package) and commit both files together.
+- `requirements-overrides.txt` lifts the `tradelocker` client's exact pins
+  on PyJWT, requests and python-dotenv, whose pinned versions have
+  published advisories. The image therefore installs the lock without
+  dependency resolution, and CI checks the lock is complete instead
+  ([ADR 0017](docs/adr/0017-override-the-clients-vulnerable-pins.md)).
+  When a new client release allows a fixed version, the check fails until
+  the override is removed.
 - The `tradelocker` client is pinned to the version the test suite's broker
   fake mirrors. Moving to a newer release means updating the pin and
   `TRADELOCKER_VERSION` in `tests/characterization/fake_tradelocker.py`, and

@@ -1,0 +1,11 @@
+# Versions that replace the tradelocker client's own requirements on these
+# packages when the lock is compiled (ADR 0017). tradelocker 0.56.2, its
+# newest release, pins each one exactly, at a version with published
+# advisories. Each floor is the first release that fixes every advisory
+# against the version the client pins; each ceiling keeps the major version
+# the client was written for. Remove an override once the client allows a
+# fixed version: the closure check (tests/dependency_closure.py) fails while
+# an override lifts nothing.
+pyjwt>=2.15.0,<3
+requests>=2.33.0,<3
+python-dotenv>=1.2.2,<2

@@ -6,9 +6,12 @@ WORKDIR /app
 # one version and verified by hash (ADR 0007). Wheels only: building from
 # source would fetch unhashed build tools and need a compiler in the image,
 # which is why the apt toolchain layer is gone. Copied before the source so
-# a code change does not reinstall every package.
+# a code change does not reinstall every package. No dependency resolution:
+# the lock overrides the tradelocker client's pins on packages with published
+# advisories, which pip would refuse (ADR 0017). The lock is complete by
+# construction, and CI checks it (tests/dependency_closure.py).
 COPY requirements-lock.txt /app/
-RUN pip install --no-cache-dir --require-hashes --only-binary :all: -r requirements-lock.txt
+RUN pip install --no-cache-dir --require-hashes --only-binary :all: --no-deps -r requirements-lock.txt
 
 COPY . /app
 

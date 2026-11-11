@@ -30,11 +30,16 @@ jobs:
           python -m pip install --upgrade pip
           # The lock first, as the image installs it, so the tests run against
           # the image's versions. The dev tools come after and may not move a
-          # locked package; the next step fails if one did.
-          python -m pip install --require-hashes -r requirements-lock.txt
+          # locked package; the next step fails if one did. --no-deps as in
+          # the image: the lock overrides the client's own pins (ADR 0017).
+          python -m pip install --require-hashes --no-deps -r requirements-lock.txt
           python -m pip install -r requirements-dev.txt
       - name: Check the locked versions survived the dev install
         run: python -m tests.dependency_lock
+      # What pip's resolver checked before --no-deps: every requirement of a
+      # locked package is locked, and every override is honoured and needed.
+      - name: Check the lock holds what its packages need
+        run: python -m tests.dependency_closure
       - name: Lint (syntax errors and undefined names)
         run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
       - name: Test

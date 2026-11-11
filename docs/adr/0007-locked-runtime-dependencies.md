@@ -26,7 +26,11 @@ minutes later.
    versions. numpy 2.5 already dropped 3.11, so a 3.12 resolution would not
    install in the image.
 3. The Dockerfile installs `pip install --require-hashes --only-binary :all:
-   -r requirements-lock.txt`. Under `--require-hashes` pip refuses any package
+   -r requirements-lock.txt`. *Update:* step 2h
+   ([ADR 0017](0017-override-the-clients-vulnerable-pins.md)) adds
+   `--no-deps`, because the lock overrides the client's pins on three
+   packages, and adds a CI check that the lock holds what its packages
+   need. Under `--require-hashes` pip refuses any package
    that is not in the lock or does not match a hash. Wheels only, because a
    source build would fetch build tools that are not hash-checked. Every
    locked package has a wheel for the image. With nothing to compile, the
@@ -62,7 +66,8 @@ minutes later.
   the lock (add `--upgrade` or `--upgrade-package <name>`) and merge it like
   any other change.
 - Local development may still install `requirements-dev.txt` on any
-  platform. Its versions can differ from the lock, which CI covers.
+  platform. *Update:* since step 2h it holds only the dev tools; the README
+  installs `requirements.txt` and the overrides next to it. Its versions can differ from the lock, which CI covers.
 - The base image `python:3.11-slim` is still a moving tag. Pinning it by
   digest is a separate step.
 

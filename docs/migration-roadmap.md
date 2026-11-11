@@ -20,6 +20,7 @@ migration pull request.
 | 2e | Pin whitespace variants of `open`/`close` and the retry line's inverted side                                                                             | safety    | done                                 |
 | 2f | Pin a failure at every broker call: calls made, console lines, lock released, the client's exception re-raised as the same object                        | safety    | done                                 |
 | 2g | Pin the base image `python:3.11-slim` by digest, so a rebuild cannot change the interpreter or system libraries unreviewed                               | safety    | todo                                 |
+| 2h | Lift the `tradelocker` client's exact pins on PyJWT, requests and python-dotenv, whose pinned versions have published advisories; install the lock with `--no-deps` and check in CI that it holds what its packages need ([ADR 0017](adr/0017-override-the-clients-vulnerable-pins.md)). No pin changed: the suite passes against the new versions | safety | done |
 | 3  | Validate the whole signal before any broker call, as a Result, and report a rejection by one operator line ([ADR 0008](adr/0008-validate-the-signal-before-any-broker-call.md)). Pins updated: wrong-side and NonInvert-forwarding, invalid-invert-after-close, invalid invert ignored outside `open`, truncated payload, non-numeric take profit and stop loss, unknown action, malformed and nonsensical lot; `close` no longer reads the balance | behaviour | done |
 | 3b | Refuse, before the first close request, what needs the broker's answer: an account state without a balance, an unknown symbol, a quantity that is not finite or not above zero ([ADR 0009](adr/0009-refuse-what-the-broker-rules-out-before-closing.md)). The instrument is looked up once, from the instrument list. Pins updated: missing balance, unknown symbol and unusable quantity refused; second lookup gone; a lookup failure no longer prints `Normal: Locked` | behaviour | done |
 | 4  | Application: execute-signal use case behind broker and console ports; TradeLocker and console adapters implement them ([ADR 0005](adr/0005-execute-signal-use-case-and-ports.md)) | structure | done                                 |
@@ -53,10 +54,11 @@ flowchart LR
     S6e --> S6f[6f access log]
     S6f --> S6[6 remaining defects]
     S2af -.-> S2g[2g base image digest]
+    S2af --> S2h[2h patched client pins]
     classDef done fill:#d4edda,stroke:#28a745,color:#155724
     classDef next fill:#fff3cd,stroke:#d39e00,color:#856404
     classDef todo fill:#f8f9fa,stroke:#6c757d,color:#383d41
-    class S1,S1abc,S2,S2af,S4,S4b,S3,S3b,S5a,S5,S6a,S6b,S6c,S6d,S6e,S6f done
+    class S1,S1abc,S2,S2af,S2h,S4,S4b,S3,S3b,S5a,S5,S6a,S6b,S6c,S6d,S6e,S6f done
     class S6 next
     class S2g todo
 ```
@@ -93,11 +95,19 @@ Fixed in behaviour steps, never during restructuring.
 | Closing polls in a tight loop with no delay or limit, re-sending a close request on every poll until the broker fills it, while holding the global lock | `test_close_request_is_resent_on_every_poll_until_the_broker_fills_it` |
 | The webhook returns 200 before the signal is handled; a rejected or refused signal or a broker failure is reported only in the bot's log, and the caller never learns | `test_the_answer_is_200_with_a_null_body_before_the_signal_is_handled`, `test_a_broker_failure_ends_the_handler_thread_with_the_clients_exception`, `test_rejected_signals.py` |
 | The account password is passed as a command-line argument, so it shows up in the process list                                                                      | `test_startup_greets_logs_in_and_serves_on_every_interface_at_port_443` (the argv the startup reads)                                                 |
-| Only `tradelocker` is pinned (#23); `pandas`, `fastapi`, `uvicorn` and the rest float, and the Dockerfile runs `apt-get update`, so a rebuilt image can change behaviour with no code change | step 2c: lock file |
 | The image's start command expands the credentials unquoted in `sh -c`, so a password with spaces or shell characters is split or glob-expanded and the login fails | not pinned (startup wiring) |
 
 ## Fixed defects
 
+- **The image shipped PyJWT, requests and python-dotenv at versions with
+  published advisories** (step 2h). The `tradelocker` client pins
+  `PyJWT==2.8.0`, `requests==2.32.2` and `python-dotenv==1.0.0`, which
+  carried 17 Dependabot alerts, one critical. The bot reaches none of them
+  in a way shown to be exploitable, but the image shipped them. The lock now
+  overrides those pins with PyJWT 2.15.1, requests 2.34.2 and
+  python-dotenv 1.2.4. Images built before step 2h still hold the old
+  versions
+  ([ADR 0017](adr/0017-override-the-clients-vulnerable-pins.md)).
 - **The access log wrote the webhook path** (step 6f). uvicorn's default
   access line held the request line, so the secret path, query string
   included, was in the container's log on every alert, and a near miss
@@ -167,3 +177,7 @@ Fixed in behaviour steps, never during restructuring.
 - The `if __name__ == "__main__"` guard in `main_without_ssl.py`. The tests
   call its `main`; CI's image smoke run (`main_without_ssl.py --help`) runs
   the script itself.
+- A login against the real broker with the PyJWT and requests versions the
+  lock overrides (step 2h). The client's calls into both were run against
+  a hand-made token and a closed port, not against the broker's answers
+  ([ADR 0017](adr/0017-override-the-clients-vulnerable-pins.md)).
