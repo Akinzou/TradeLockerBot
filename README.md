@@ -196,7 +196,8 @@ python -m venv .venv
 
 Every pull request to `master` must pass the CI gates described in
 [ADR 0002](docs/adr/0002-ci-quality-gates.md). Architecture decisions are
-recorded in [`docs/adr/`](docs/adr), and the ongoing restructuring is tracked
+recorded in [`docs/adr/`](docs/adr), the layering is described in
+[`docs/architecture.md`](docs/architecture.md), and the ongoing restructuring is tracked
 in the [migration roadmap](docs/migration-roadmap.md).
 
 ## Note:
