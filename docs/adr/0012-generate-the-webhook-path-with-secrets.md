@@ -84,16 +84,17 @@ shape.
 The tests changed with it:
 
 - **The shape pin is replaced** in `tests/characterization/test_startup.py`:
-  one segment of 32 URL-safe characters, and 50 paths in a row never repeat.
-  The startup test for `--url generate` checks the printed path against the
-  new shape and still posts a signal to it.
+  one segment of 32 URL-safe characters, checked on 50 paths. The startup
+  test for `--url generate` checks the printed path against the new shape
+  and still posts a signal to it.
 - **A new unit test pins the source** (`tests/unit/adapters/test_webhook_path.py`),
   because a shape says nothing about where it came from. It replaces the
   public `secrets.token_urlsafe` with a recorder and checks that the path is
   `/` plus its token, asked for with 24 bytes. A generator built on
   `random`, a hex token or a smaller token fails it.
 
-Both failed against the old generator before the fix.
+All three, the shape pin, the startup test and the unit test, failed
+against the old generator before the fix.
 
 ## What this does not cover
 
