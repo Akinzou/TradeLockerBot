@@ -1,0 +1,94 @@
+# ADR 0005: The execute-signal use case and its broker and console ports
+
+- Status: Accepted
+- Date: 2026-11-11
+
+## Context
+
+`handle_position_normal` in `main_without_ssl.py` mixes three things: the
+order of trading steps for a signal, calls to the TradeLocker client, and
+operator console output. Roadmap step 4 moves the trading steps into the
+application layer. It is a structure step, so ADR 0001's equivalence rule
+applies: for every input, the same broker calls with the same arguments, the
+same outcome and exception type, one critical section released on raise, and
+the same console lines in the same order inside that section.
+
+The characterization suite pins all of that, including the raising paths
+(roadmap step 2d), and stays unchanged.
+
+## Decision
+
+### Layers
+
+- `tradelocker_bot.application` holds the `ExecuteSignal` use case, the
+  `TradeSignal` input it receives, and two ports, `Broker` and
+  `OperatorConsole`, as `typing.Protocol` classes. It may import only the
+  domain, itself and pure standard-library modules; the fitness test enforces
+  this the same way it does for the domain.
+- `tradelocker_bot.adapters` holds `TradeLockerBroker`, which wraps a
+  `TLAPI` client, and `PrintingConsole`, which writes to stdout.
+- Resolving the order side from the direction and the invert flag has no I/O,
+  so it is a domain function, not part of a port.
+
+### Ports
+
+Each port is one process boundary: the broker's HTTP API and the operator's
+console.
+
+| `Broker` method                                  | TradeLocker call                                                     |
+|--------------------------------------------------|----------------------------------------------------------------------|
+| `account_balance()`                              | `get_account_state().get("projectedBalance")`, returned uncoerced   |
+| `instrument_id(symbol)`                          | `get_instrument_id_from_symbol_name(symbol)`                         |
+| `open_position_count(instrument_id)`             | `get_all_positions()`, rows for the instrument counted in the adapter |
+| `request_close(instrument_id)`                   | `close_all_positions(instrument_id)`                                 |
+| `place_market_order(instrument_id, quantity, side, stop_loss, take_profit)` | `create_order(..., type_="market", stop_loss_type="offset", take_profit_type="offset")` |
+
+`OperatorConsole` has one method per legacy line: `locked`, `closing`,
+`order_retry`, `order_placed`, `unlocked`.
+
+The `open_position_count` / `request_close` pair is **provisional**. It mirrors
+a known defect: one close request per open row, repeated on every poll until
+the broker reports none. A port shaped around the defect keeps this step
+behaviour-neutral; the fix (roadmap step 6) may replace the pair with a single
+close-and-confirm operation.
+
+### Ordering kept from the legacy handler
+
+1. The inbound side, still in `main_without_ssl.py`, reads the payload fields
+   inside the lock in the legacy order: lines 1, 2, 3, `int` of line 4,
+   `int` of line 5, line 7, then line 6.
+2. The use case reads the balance, then parses the lot and sizes the
+   quantity, then reports `locked`.
+3. `close` closes positions. `open` closes positions (with its own instrument
+   lookup), looks the instrument up a second time, then resolves the side, then
+   places the order. The retry line uses the resolved side.
+4. It reports `unlocked` only when nothing raised.
+
+### Errors
+
+Ports raise the client's exceptions unchanged, and the use case lets them
+propagate. A Result at the use-case boundary arrives with input validation in
+roadmap step 3, under its own ADR. Introducing it here would change what the
+webhook thread raises, which a structure step may not do.
+
+## Consequences
+
+- `main_without_ssl.py` keeps `handle_position_normal` as a thin delegate that
+  extracts the fields, builds the adapters and runs the use case inside the
+  lock. The characterization harness keeps importing it from there.
+- The use case is unit-tested against in-memory port fakes, and the adapters
+  against the signature-checked `FakeTradeLocker`.
+- `PrintingConsole` still uses the legacy `libs.AsciiAlerts` colours. Adapters
+  may depend on legacy code until step 5 removes it.
+
+## Alternatives considered
+
+- **One port method per legacy helper** (`close_positions(symbol)`,
+  `place_order(...)`). Rejected: the close-polling loop and the order retry
+  loop are trading decisions, and they would stay in infrastructure, out of
+  reach of unit tests.
+- **The adapter returns the positions DataFrame.** Rejected: it would leak
+  pandas into the application layer.
+- **A logger instead of a console port.** Rejected for now: the pinned output
+  is plain `print` lines with colour codes, and a logger changes the format.
+  Replacing the console with structured logging is a behaviour change.
