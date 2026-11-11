@@ -18,7 +18,7 @@ on every push to `master`:
 | Job            | Blocks merge when                                                                                    |
 |----------------|------------------------------------------------------------------------------------------------------|
 | `tests`        | pytest fails on Python 3.11 or 3.12, or flake8 finds a syntax error or an undefined name             |
-| `semgrep`      | Semgrep `p/python`, `p/security-audit` or `p/secrets` reports an `ERROR`-severity finding            |
+| `semgrep`      | Semgrep `p/python`, `p/security-audit`, `p/secrets` or `p/github-actions` reports an `ERROR` finding |
 | `docker-build` | the image fails to build                                                                             |
 | `ci-ok`        | any job above did not succeed; this is the only status check required by `master` branch protection |
 
@@ -34,6 +34,11 @@ The publish workflow (`docker-image.yml`) now runs only for successful CI runs
 on `master` that were triggered by a push or started manually
 (`workflow_dispatch`, used to rebuild the image when `master` has not changed).
 It checks out the exact commit that CI validated (`workflow_run.head_sha`).
+
+Workflows are scanned too (`p/github-actions`), because they hold the
+publishing credentials. Third-party actions are therefore pinned to full
+commit SHAs, with the release tag in a comment: a tag can be repointed by
+the action owner, a SHA cannot.
 
 A code-file size budget (300 lines for `.py`, `.sh` and `.ps1`) is enforced by
 `tests/test_code_file_size.py`.
