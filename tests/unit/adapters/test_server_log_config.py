@@ -10,7 +10,7 @@ import copy
 
 from uvicorn.config import LOGGING_CONFIG
 
-from tradelocker_bot.adapters.webhook import server_log_config
+from tradelocker_bot.adapters.server_log import server_log_config
 
 
 def test_building_the_settings_leaves_uvicorns_default_as_shipped():

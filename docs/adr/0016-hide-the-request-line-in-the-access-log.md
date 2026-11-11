@@ -46,8 +46,10 @@ flowchart LR
 ```
 
 - **How:** the composition root passes uvicorn a `log_config`, built by
-  `server_log_config()` in the inbound adapter (`webhook`). It is uvicorn's
-  own default settings with one change: the access formatter's `fmt` no
+  `server_log_config()` in an adapter module of its own, `server_log`,
+  next to the webhook adapter rather than in it: the app does not know
+  which server runs it. The settings are uvicorn's own defaults with one
+  change: the access formatter's `fmt` no
   longer contains `%(request_line)s`. Everything else stays as uvicorn ships
   it, including the server's start and stop lines and the error log.
 - **Only the format changes.** `fmt` and the fields it can name
@@ -91,12 +93,16 @@ The tests changed with it:
   `tests/characterization/test_server_log.py`. It starts the bot through
   its entrypoint, then hands the app and the uvicorn options the bot passed
   to a real uvicorn server on a loopback port, so it sees the very settings
-  the container uses. It sends the five requests above and checks:
+  the container uses. It runs twice, without and with colours, because
+  uvicorn colours its lines when stdout is a terminal, as with the
+  README's `docker run -t`. It sends the five requests above and checks:
   - one access line each, with the client and the exact status;
   - that a `500` is still logged with its traceback;
   - that nothing written to stdout or stderr contains the path.
 - **The startup pin** in `tests/characterization/test_startup.py` now
-  expects `log_config` among the options passed to uvicorn.
+  expects `log_config` among the options passed to uvicorn: uvicorn's
+  defaults with the access format spelled out in the test, so a change to
+  the format fails there too.
 - **Two unit tests** in `tests/unit/adapters/test_server_log_config.py`
   check that building the settings leaves uvicorn's default as shipped and
   that each call returns its own copy.
@@ -120,8 +126,9 @@ string included.
 
 ## Consequences
 
-- The container's log no longer reveals the webhook path, and a log
-  collector or a pasted log no longer leaks it.
+- Requests no longer write the webhook path to the container's log, so a
+  log collector or a pasted log no longer leaks it with every alert. With
+  `url=generate`, the startup output still holds it once.
 - Every request still leaves one line, so `docker logs` still shows that
   alerts arrive and how each was answered.
 - The log no longer shows which path a `404` asked for. To find out what

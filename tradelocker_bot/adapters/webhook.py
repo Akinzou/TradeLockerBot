@@ -1,37 +1,14 @@
-"""The inbound HTTP adapter: the webhook the alert sender posts to (ADR 0010),
-and the server's log settings, which must not write its path (ADR 0016).
+"""The inbound HTTP adapter: the webhook the alert sender posts to (ADR 0010).
 
 It turns a request body into lines and hands them to ``handle`` in a thread
 of their own. It knows nothing of signals, the broker or the lock, so the
 composition root decides what handles the lines.
 """
 
-import copy
 import threading
-from typing import Any, Callable
+from typing import Callable
 
 from fastapi import FastAPI, Request
-from uvicorn.config import LOGGING_CONFIG
-
-# The request line is the method, the path and the protocol, and the path is
-# the secret (ADR 0016). The client and the status stay, so `docker logs`
-# still shows that an alert arrived and how it was answered.
-ACCESS_LOG_FORMAT = '%(levelprefix)s %(client_addr)s - "<request line hidden>" %(status_code)s'
-
-
-def server_log_config() -> dict[str, Any]:
-    """uvicorn's own log settings, with an access line that leaves the request
-    line out.
-
-    Only the format changes, through a field uvicorn documents, rather than a
-    filter that rewrites the log record: the record's arguments are uvicorn's
-    internals, and a filter that misread them after an upgrade would let the
-    path through. A copy, because uvicorn writes into the dictionary it is
-    given and the default is its module-level one.
-    """
-    config = copy.deepcopy(LOGGING_CONFIG)
-    config["formatters"]["access"]["fmt"] = ACCESS_LOG_FORMAT
-    return config
 
 
 def create_app(path: str, handle: Callable[[list[str]], None]) -> FastAPI:

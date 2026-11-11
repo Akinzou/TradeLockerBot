@@ -14,7 +14,8 @@ from tradelocker_bot.adapters import ascii_alerts
 from tradelocker_bot.adapters.console import PrintingConsole
 from tradelocker_bot.adapters.signal_handler import SignalHandler
 from tradelocker_bot.adapters.tradelocker_broker import TradeLockerBroker, log_in
-from tradelocker_bot.adapters.webhook import create_app, server_log_config
+from tradelocker_bot.adapters.server_log import server_log_config
+from tradelocker_bot.adapters.webhook import create_app
 from tradelocker_bot.adapters.webhook_path import random_webhook_path
 from tradelocker_bot.application.execute_signal import ExecuteSignal
 

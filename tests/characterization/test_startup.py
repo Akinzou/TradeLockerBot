@@ -7,9 +7,11 @@ then the route and the server. A failure at one of those points leaves every
 later one undone.
 """
 
+import copy
 import re
 
 import pytest
+from uvicorn.config import LOGGING_CONFIG
 
 from tests.characterization.harness import (
     DEMO,
@@ -21,7 +23,6 @@ from tests.characterization.harness import (
     generated_webhook_path,
 )
 from tests.characterization.webhook_driver import post
-from tradelocker_bot.adapters.webhook import server_log_config
 
 GREEN = "\x1b[92m"
 RED = "\x1b[91m"
@@ -49,6 +50,13 @@ DEMO_LOGIN = {"environment": "https://demo.tradelocker.com", "username": "u", "p
 # One segment: 24 random bytes in URL-safe base64, unpadded (ADR 0012).
 GENERATED_PATH = re.compile(r"/[A-Za-z0-9_-]{32}")
 
+# uvicorn's default log settings with the access line's request line
+# replaced (ADR 0016). Spelled out rather than taken from the bot, so a
+# change to the bot's settings fails here as well as in test_server_log.py,
+# which pins what a real server writes with them.
+LOG_CONFIG = copy.deepcopy(LOGGING_CONFIG)
+LOG_CONFIG["formatters"]["access"]["fmt"] = '%(levelprefix)s %(client_addr)s - "<request line hidden>" %(status_code)s'
+
 
 @pytest.fixture
 def startup(monkeypatch):
@@ -66,10 +74,8 @@ def test_startup_greets_logs_in_and_serves_on_every_interface_at_port_443(startu
 
     assert capsys.readouterr().out == f"{GREEN}{HELLO}{RESET}\n{LOGIN}\n{SERVE}\n"
     assert startup.logins == [DEMO_LOGIN]
-    # What the log settings make the server write is pinned against a real
-    # uvicorn in test_server_log.py; here, only that they are the ones passed.
     assert [{k: v for k, v in s.items() if k != "app"} for s in startup.served] == [
-        {"host": "0.0.0.0", "port": 443, "options": {"log_config": server_log_config()}},
+        {"host": "0.0.0.0", "port": 443, "options": {"log_config": LOG_CONFIG}},
     ]
 
 
