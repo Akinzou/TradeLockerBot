@@ -6,7 +6,9 @@ WORKDIR /app
 
 COPY . /app
 
-RUN pip install --no-cache-dir -r requirements.txt
+# The lock, not requirements.txt: every package, transitive ones included, at
+# one version and verified by hash, so a rebuild installs what CI tested.
+RUN pip install --no-cache-dir --require-hashes -r requirements-lock.txt
 
 ENV url=/strategy
 ENV acc_num=0

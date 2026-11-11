@@ -254,11 +254,17 @@ python -m venv .venv
 
 - Every pull request to `master` must pass the CI gates described in
   [ADR 0002](docs/adr/0002-ci-quality-gates.md): tests on Python 3.11 and
-  3.12, Semgrep, and a Docker build with a smoke run.
+  3.12, Semgrep, and a Docker build with a smoke run and a check of its
+  packages against the lock.
 - The codebase is being migrated, step by step, to a layered architecture; see
   [`docs/architecture.md`](docs/architecture.md), the
   [decision records](docs/adr) and the
   [migration roadmap](docs/migration-roadmap.md).
+- The image installs `requirements-lock.txt`: every runtime package at one
+  version, verified by hash ([ADR 0007](docs/adr/0007-locked-runtime-dependencies.md)).
+  After changing `requirements.txt`, or to take dependency updates,
+  regenerate it with the `uv pip compile` command in its header (add
+  `--upgrade` to move every package) and commit both files together.
 - The `tradelocker` client is pinned to the version the test suite's broker
   fake mirrors. Moving to a newer release means updating the pin and
   `TRADELOCKER_VERSION` in `tests/characterization/fake_tradelocker.py`, and

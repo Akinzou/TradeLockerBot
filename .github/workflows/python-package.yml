@@ -28,6 +28,9 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          # The lock first, as the image installs it, so the tests run against
+          # the image's versions; the dev tools share no package with it.
+          python -m pip install --require-hashes -r requirements-lock.txt
           python -m pip install -r requirements-dev.txt
       - name: Lint (syntax errors and undefined names)
         run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
@@ -78,6 +81,26 @@ jobs:
           installed="$(docker run --rm --entrypoint python tradelocker_bot:ci -c "import importlib.metadata as m; print(m.version('tradelocker'))")"
           echo "pinned=${pinned} installed=${installed}"
           test -n "$pinned" && test "$pinned" = "$installed"
+      # The install uses --require-hashes, so nothing unlocked can enter; this
+      # checks the converse, that the image holds exactly the locked set.
+      - name: Check the image's packages against the lock
+        run: |
+          docker run --rm --entrypoint python tradelocker_bot:ci -m pip freeze --all > installed.txt
+          python3 - <<'EOF'
+          import re
+          def pins(path):
+              found = set()
+              for line in open(path, encoding="utf-8"):
+                  match = re.match(r"([A-Za-z0-9][A-Za-z0-9._-]*)==([^\s;\\]+)", line)
+                  if match:
+                      found.add((re.sub(r"[-_.]+", "-", match[1]).lower(), match[2]))
+              return found
+          installed = {pin for pin in pins("installed.txt") if pin[0] not in {"pip", "setuptools", "wheel"}}
+          locked = pins("requirements-lock.txt")
+          print("installed, not locked:", sorted(installed - locked))
+          print("locked, not installed:", sorted(locked - installed))
+          raise SystemExit(installed != locked)
+          EOF
 
   # Single required status check for master. Aggregating here means branch
   # protection does not need editing every time a job is added or renamed.
