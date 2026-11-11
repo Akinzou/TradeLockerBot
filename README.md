@@ -120,7 +120,7 @@ All settings are passed as environment variables (`-e name=value`).
 | `password` | yes      |             | TradeLocker password. Must not contain spaces or shell characters such as `*`, `?`, `$` or `;` (see below). |
 | `server`   | yes      |             | TradeLocker server name.                                                                            |
 | `env`      | yes      |             | `demo` or `live`.                                                                                   |
-| `url`      | no       | `/strategy` | Webhook path. Use a long secret path (see [Quick start](#quick-start)). It must start with `/`: without it the bot starts, but every alert gets `404 Not Found`. Keep `{` and `}` out of it: `{name}` makes the path a pattern that also handles signals posted to other paths, and some brace forms stop the bot at startup. `generate` prints a new random path on every start, made the same way as in Quick start. |
+| `url`      | no       | `/strategy` | Webhook path. Use a long secret path (see [Quick start](#quick-start)). It must start with `/`: otherwise the bot refuses to start, with `argument --url: must start with / or be generate` ([ADR 0014](docs/adr/0014-require-a-leading-slash.md)). Keep `{` and `}` out of it: `{name}` makes the path a pattern that also handles signals posted to other paths, and some brace forms stop the bot at startup. `generate` prints a new random path on every start, made the same way as in Quick start. |
 | `acc_id`   | no       | `0`         | Trade on the account with this ID. With both `acc_id` and `acc_num` at `0`, the first account listed for your login is used. |
 | `acc_num`  | no       | `0`         | Trade on the account with this number. Set either `acc_id` or `acc_num`, not both.                  |
 
@@ -313,7 +313,8 @@ alerts.
 | Position closed but no new one opened       | The broker rejected the order; the log shows its error. |
 | Bot does not start, login fails             | Wrong credentials or `env`, or a password with spaces or shell characters (see [Configuration](#configuration)). |
 | `Method Not Allowed` in the browser         | Expected; see [Verifying the setup](#verifying-the-setup).                                     |
-| Every alert gets `404 Not Found`            | The alert's URL does not match the `url` setting exactly (case included), or `url` does not start with `/`. A trailing `/` counts: `/strategy/` is not `/strategy`. |
+| Every alert gets `404 Not Found`            | The alert's URL does not match the `url` setting exactly (case included). A trailing `/` counts: `/strategy/` is not `/strategy`. On images built before [ADR 0014](docs/adr/0014-require-a-leading-slash.md), also check that `url` starts with `/`. |
+| Container keeps restarting, `docker logs` shows `argument --url: must start with / or be generate` | `url` is neither `generate` nor a path that starts with `/`. Add the leading `/`. An empty `url` shows `argument --url: expected one argument` instead. |
 | Error about account number and ID at start  | Both `acc_id` and `acc_num` are set; keep only one.                                            |
 
 Known defects and their planned fixes are listed in the

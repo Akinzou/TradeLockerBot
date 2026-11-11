@@ -103,6 +103,9 @@ All four failed against the redirect before the fix.
 - **A `url` without a leading `/`** is still accepted at startup and never
   matches a request. It is the next known defect, in the same lines of the
   README, so it gets its own step.
+
+  *Update:* step 6d ([ADR 0014](0014-require-a-leading-slash.md)) refuses
+  such a `url` at startup.
 - **Plain HTTP between the proxy and the bot** stays as it is. The bot no
   longer tells a sender to use it, but the README's advice to terminate TLS
   in front of the bot, on the same host or network, still holds.
