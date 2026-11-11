@@ -155,7 +155,7 @@ NonInvert
 
 | Line | Example                            | Meaning                                                                                                   |
 |------|------------------------------------|-----------------------------------------------------------------------------------------------------------|
-| 1    | `XAUUSD`                           | Instrument name exactly as TradeLocker lists it, case included. A name the broker does not list is rejected before anything is closed. |
+| 1    | `XAUUSD`                           | Instrument name exactly as TradeLocker lists it, case included. A name the broker does not list is rejected before anything is closed. The bot reads the list once at startup. |
 | 2    | `{{strategy.order.action}}`        | Direction: `buy` or `sell`; case and surrounding spaces are ignored. TradingView fills this in.           |
 | 3    | `0.01/100`                         | Position size; see [Dynamic lot size](#dynamic-lot-size).                                                 |
 | 4    | `500`                              | Take profit as a whole-number offset from the entry price.                                                |
@@ -288,7 +288,7 @@ alerts.
 | Symptom                                     | Likely cause                                                                                   |
 |---------------------------------------------|------------------------------------------------------------------------------------------------|
 | No trade after an alert                     | The log shows `Signal rejected:` with the line to fix. Otherwise the broker refused a call, and the log shows its error. |
-| `Signal rejected: line 1 (symbol) ...`      | The broker lists no instrument with that exact name. Copy it from TradeLocker, case included. |
+| `Signal rejected: line 1 (symbol) ...`      | The broker lists no instrument with that exact name. Copy it from TradeLocker, case included. If the name is right, restart the bot: it reads the instrument list once at startup, so an instrument added later stays unknown until a restart. |
 | `Signal rejected: line 3 (lot) gives 0.0 ...` | The balance is too small for this lot. Raise the lot or lower the balance step on line 3. |
 | `Signal rejected: the account balance is ...` | The broker reported no balance, a balance that is not a number, or one that is not above zero. Check the account in TradeLocker, then send the alert again. |
 | Position closed but no new one opened       | The broker rejected the order; the log shows its error. |
