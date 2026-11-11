@@ -14,6 +14,8 @@ migration pull request.
 | 1c | Pin malformed-payload behaviour (direction case, action case, malformed lot)                                                                                | safety    | done                                 |
 | 2  | Domain: lot sizing as a pure value object (the only logic identical for every input today), plus a layer import contract and an image smoke run            | structure | done                                 |
 | 2a | Pin exact broker call sequences, lock coverage and operator console lines; make the domain dependency rule a true allow-list                                | safety    | done                                 |
+| 2b | Pin the `tradelocker` client to the version the broker fake mirrors, checked in the built image                                                             | safety    | done                                 |
+| 2c | Lock every runtime dependency (direct and transitive) and check the image against the lock                                                                  | safety    | todo                                 |
 | 3  | Validate the whole signal before any broker call: strict direction, action, lot and inversion types, a Result at the boundary (own ADR). Expected pin updates: wrong-side and NonInvert-forwarding, invalid-invert-after-close, truncated payload, non-numeric take-profit, unknown action, malformed and nonsensical lot | behaviour | todo — merge only after 1a is unblocked |
 | 4  | Application: execute-signal use case behind a broker port; TradeLocker adapter implements the port                                                          | structure | next                                 |
 | 5  | Inbound HTTP adapter and composition root; `main_without_ssl.py` becomes a thin entrypoint                                                                  | structure | todo                                 |
@@ -51,7 +53,7 @@ These stay unchanged until an ADR changes them:
 | The generated webhook path, the only thing protecting the endpoint, comes from `random` instead of a cryptographically secure source                                | `test_generated_webhook_url_has_two_lowercase_alphanumeric_segments`        |
 | The account password is passed as a command-line argument, so it shows up in the process list                                                                      | not pinned (startup wiring)                                                 |
 | `libs/AsciiAlerts.py` contains an invalid escape sequence (a `SyntaxWarning` today, an error in a future Python)                                                     | not pinned                                                                  |
-| Runtime dependencies in `requirements.txt` are unpinned and the Dockerfile runs `apt-get update`, so a rebuilt image can change behaviour with no code change                                                | not pinned                                                                  |
+| Only `tradelocker` is pinned (#23); `pandas`, `fastapi`, `uvicorn` and the rest float, and the Dockerfile runs `apt-get update`, so a rebuilt image can change behaviour with no code change | step 2c: lock file |
 | `--port` is documented in the README but never passed by the Docker command                                                                                         | not pinned                                                                  |
 
 ## Not covered by tests yet
