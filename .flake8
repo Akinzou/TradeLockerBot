@@ -1,0 +1,4 @@
+[flake8]
+# flake8 does not read pyproject.toml. Without this, a local run of the CI lint
+# command also lints third-party code in the in-repo virtualenvs.
+extend-exclude = .venv*

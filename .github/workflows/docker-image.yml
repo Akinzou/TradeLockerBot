@@ -2,21 +2,36 @@ name: Docker Image CI
 
 on:
   workflow_run:
+    # Must match the `name:` of python-package.yml exactly.
     workflows: ["Python (3.11, 3.12) ,"]
     types:
       - completed
+
+permissions:
+  contents: read
+
 jobs:
   dockerloginbuildpush:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    # Publish only master: without the event/branch checks a green pull-request
+    # run also republished `latest`, which users run live. workflow_dispatch is
+    # kept so the image can be rebuilt (e.g. base-image CVE) with master unchanged.
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'master' &&
+      (github.event.workflow_run.event == 'push' ||
+       github.event.workflow_run.event == 'workflow_dispatch')
     runs-on: ubuntu-latest
     steps:
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v1
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: akinzou
           password: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-      - uses: actions/checkout@v2
+      # Build the exact commit CI validated, not whatever master points to now.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
       - name: Create image from repository
         run: docker build -t ghcr.io/akinzou/tradelocker_bot:latest .
       - name: Push image to GitHub Container Registry

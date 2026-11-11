@@ -1,0 +1,6 @@
+# Test and lint tooling only. Kept out of requirements.txt because that file is
+# what the Docker image installs. Semgrep is deliberately absent: its pinned
+# dependencies conflict with tradelocker's, so CI runs it in a separate job.
+-r requirements.txt
+pytest==9.2.0
+flake8==7.5.0

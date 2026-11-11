@@ -4,3 +4,14 @@
 CLAUDE.md
 CLAUDE.local.md
 AGENTS.md
+
+# Python tooling and local environments
+__pycache__/
+*.py[cod]
+.venv*/
+.pytest_cache/
+
+# Credentials are passed at runtime; a local .env must never reach the public repo
+.env
+.env.*
+!.env.example

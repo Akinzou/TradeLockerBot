@@ -184,6 +184,21 @@ Remember to configure Nginx or another appropriate software to enable access to 
 https://localhost/strategy
 ```
 
+## Development
+
+Requires Python 3.11 or 3.12.
+
+```sh
+python -m venv .venv
+.venv/bin/python -m pip install -r requirements-dev.txt   # Windows: .venv\Scripts\python
+.venv/bin/python -m pytest
+```
+
+Every pull request to `master` must pass the CI gates described in
+[ADR 0002](docs/adr/0002-ci-quality-gates.md). Architecture decisions are
+recorded in [`docs/adr/`](docs/adr), and the ongoing restructuring is tracked
+in the [migration roadmap](docs/migration-roadmap.md).
+
 ## Note:
 This program is provided "as is" without any warranty. Use it at your own risk.
 Before using this program in a live trading environment, thoroughly test it on a demo account to ensure its correctness and reliability.
