@@ -75,7 +75,7 @@ def _word(text: str) -> str:
 
 
 def _symbol(text: str) -> Optional[str]:
-    # Kept verbatim: whether the broker knows it is step 3b's question.
+    # Kept verbatim: only the broker knows its instrument names (ADR 0009).
     return text if text.strip() else None
 
 

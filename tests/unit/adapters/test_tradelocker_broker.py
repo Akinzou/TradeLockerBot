@@ -5,8 +5,11 @@ The fake is built directly rather than through the characterization harness,
 which imports the legacy entrypoint; adapter tests must not depend on it.
 """
 
+import logging
+
 import pandas as pd
 import pytest
+from tradelocker import TLAPI
 from tradelocker.exceptions import TLAPIException
 
 from tests.characterization.fake_tradelocker import NO_BALANCE_FIELD, FakeTradeLocker
@@ -28,23 +31,72 @@ def client(balance=1000.0, open_positions=(), order_results=(9001,), failures=No
     )
 
 
-@pytest.mark.parametrize(("balance", "expected"), [(1234.5, 1234.5), (None, None), (NO_BALANCE_FIELD, None)])
-def test_balance_is_the_projected_balance_uncoerced(balance, expected):
+@pytest.mark.parametrize(("balance", "expected"), [(1234.5, 1234.5), (0, 0), (-50.0, -50.0)])
+def test_a_numeric_balance_is_the_projected_balance_uncoerced(balance, expected):
     fake = client(balance=balance)
 
     assert TradeLockerBroker(fake).account_balance() == Ok(expected)
     assert fake.calls == [("get_account_state",)]
 
 
+@pytest.mark.parametrize("balance", [None, NO_BALANCE_FIELD, "1000", True, [1000.0]])
+def test_a_balance_that_is_not_a_number_is_reported_as_none(balance):
+    # Coercing "1000" would guess at what the broker meant; the use case
+    # refuses the signal instead (ADR 0009).
+    assert TradeLockerBroker(client(balance=balance)).account_balance() == Ok(None)
+
+
 def test_balance_keeps_the_reported_type():
     assert type(TradeLockerBroker(client(balance=1000)).account_balance().value) is int
 
 
-def test_instrument_id_is_looked_up_by_symbol_name():
+def test_instrument_id_is_looked_up_by_symbol_name_in_the_instrument_list():
     fake = client()
 
     assert TradeLockerBroker(fake).instrument_id("EURUSD") == Ok(EURO)
-    assert fake.calls == [("get_instrument_id_from_symbol_name", "EURUSD")]
+    assert fake.calls == [("get_all_instruments",)]
+
+
+@pytest.mark.parametrize("symbol", ["GBPUSD", "xauusd", " XAUUSD", ""])
+def test_a_symbol_the_broker_does_not_list_is_none_not_a_failure(symbol):
+    assert TradeLockerBroker(client()).instrument_id(symbol) == Ok(None)
+
+
+def test_an_empty_instrument_list_lists_no_symbol():
+    # The client builds it from an empty JSON list, so it has no columns.
+    assert TradeLockerBroker(AnswersWithoutTheExpectedShape()).instrument_id("XAUUSD") == Ok(None)
+
+
+class InstrumentList:
+    """Just what the client's own lookup reads from ``self``."""
+
+    log = logging.getLogger(__name__)
+
+    def __init__(self, names):
+        self._frame = pd.DataFrame({
+            "tradableInstrumentId": pd.Series(range(1, len(names) + 1), dtype="int64"),
+            "name": names,
+        })
+
+    def get_all_instruments(self):
+        return self._frame
+
+
+@pytest.mark.parametrize(
+    ("names", "symbol"),
+    [(["XAUUSD", "EURUSD"], "EURUSD"), (["XAUUSD", "EURUSD", "XAUUSD"], "XAUUSD"), (["XAUUSD"], "GBPUSD")],
+)
+def test_the_lookup_answers_what_the_clients_own_lookup_answers(names, symbol):
+    # The adapter repeats the client's match instead of calling it, so this
+    # pins the two together: a client upgrade that changes how a name is
+    # matched fails here, not in production (ADR 0009).
+    instruments = InstrumentList(names)
+    try:
+        expected = Ok(TLAPI.get_instrument_id_from_symbol_name(instruments, symbol))
+    except ValueError:
+        expected = Ok(None)
+
+    assert TradeLockerBroker(instruments).instrument_id(symbol) == expected
 
 
 def test_open_position_count_counts_only_the_instruments_rows():
@@ -94,7 +146,7 @@ def test_market_order_returns_a_missing_id_unchanged():
 
 CALLS = {
     "get_account_state": lambda broker: broker.account_balance(),
-    "get_instrument_id_from_symbol_name": lambda broker: broker.instrument_id("XAUUSD"),
+    "get_all_instruments": lambda broker: broker.instrument_id("XAUUSD"),
     "get_all_positions": lambda broker: broker.open_position_count(GOLD),
     "close_all_positions": lambda broker: broker.request_close(GOLD),
     "create_order": lambda broker: broker.place_market_order(GOLD, 0.1, Side.BUY, stop_loss=1000, take_profit=500),
@@ -111,13 +163,6 @@ def test_a_client_exception_comes_back_as_a_failure_holding_that_exception(clien
     assert result.error.cause is failure
 
 
-def test_an_unknown_symbol_is_a_failure_too():
-    result = TradeLockerBroker(client()).instrument_id("GBPUSD")
-
-    assert isinstance(result, Err)
-    assert type(result.error.cause) is ValueError
-
-
 def test_an_interrupt_is_not_turned_into_a_failure():
     # Only `Exception` is the broker's; Ctrl+C and interpreter exit must still stop the thread.
     with pytest.raises(KeyboardInterrupt):
@@ -129,6 +174,9 @@ class AnswersWithoutTheExpectedShape:
         return None
 
     def get_all_positions(self):
+        return pd.DataFrame()
+
+    def get_all_instruments(self):
         return pd.DataFrame()
 
 

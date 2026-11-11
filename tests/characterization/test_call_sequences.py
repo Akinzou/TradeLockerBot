@@ -32,11 +32,11 @@ from tests.characterization.harness import (
     ("scenario", "open_positions", "close_requests_to_fill", "action", "expected"),
     [
         ("open, nothing to close", [], 1, "open",
-         [BALANCE, LOOKUP, POSITIONS, LOOKUP, ORDER]),
+         [BALANCE, LOOKUP, POSITIONS, ORDER]),
         ("open replaces existing position", [XAUUSD_ID], 1, "open",
-         [BALANCE, LOOKUP, POSITIONS, CLOSE, POSITIONS, LOOKUP, ORDER]),
+         [BALANCE, LOOKUP, POSITIONS, CLOSE, POSITIONS, ORDER]),
         ("open ignores other instruments", [EURUSD_ID], 1, "open",
-         [BALANCE, LOOKUP, POSITIONS, LOOKUP, ORDER]),
+         [BALANCE, LOOKUP, POSITIONS, ORDER]),
         # close sizes nothing, so it no longer reads the balance (ADR 0008).
         ("close", [XAUUSD_ID], 1, "close",
          [LOOKUP, POSITIONS, CLOSE, POSITIONS]),
@@ -62,7 +62,7 @@ def test_order_without_an_id_is_placed_again():
 
     handle(fake, payload())
 
-    assert fake.calls == [BALANCE, LOOKUP, POSITIONS, LOOKUP, ORDER, ORDER]
+    assert fake.calls == [BALANCE, LOOKUP, POSITIONS, ORDER, ORDER]
 
 
 @pytest.mark.parametrize("action", ["open", "close"])
@@ -82,7 +82,8 @@ def test_whole_handling_is_one_critical_section(action):
         ("broker rejects the order",
          {"order_results": (order_rejection(),)},
          payload(), TLAPIOrderException),
-        ("unknown symbol", {}, payload(symbol="GBPUSD"), ValueError),
+        ("broker fails the lookup", {"failures": {("get_all_instruments", 1): ValueError("bad body")}},
+         payload(), ValueError),
     ],
 )
 def test_lock_is_released_when_handling_raises(scenario, fake_args, lines, error):

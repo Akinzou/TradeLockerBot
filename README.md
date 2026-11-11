@@ -45,12 +45,33 @@ flowchart LR
 1. A TradingView strategy fires an alert with a seven-line message.
 2. The bot receives it on its webhook URL and replies immediately; the signal
    is handled in the background.
-3. The bot checks the message first; an invalid one is logged and ignored.
-   Valid signals are processed one at a time. For `close`, the bot closes
-   every open position on the instrument. For `open`, it first sizes the
-   position from the account balance, then closes the instrument's open
-   positions and places a market order with the configured take profit and
-   stop loss.
+3. The bot checks the message first. An invalid one is logged and ignored.
+4. Valid signals are handled one at a time:
+   - For `close`, the bot looks up the instrument, then closes every open
+     position on it.
+   - For `open`, it reads the account balance, sizes the position and looks
+     up the instrument. Only then does it close the instrument's open
+     positions and place a market order with the configured take profit and
+     stop loss.
+   - If the balance is missing, the size comes out as zero, or the
+     instrument is unknown, the signal is logged and ignored before anything
+     is closed.
+
+```mermaid
+flowchart TD
+    A[Alert received] --> B{Message valid?}
+    B -- no --> X["Log a Signal rejected line, touch nothing"]
+    B -- yes --> C{Action}
+    C -- open --> D[Read balance, size the position]
+    D --> E[Look up the instrument]
+    C -- close --> E
+    D -- "no balance, or size 0" --> X
+    E -- unknown instrument --> X
+    E -- "found, open" --> F["Close the instrument's positions"] --> G["Place a market order"]
+    E -- "found, close" --> H["Close the instrument's positions"]
+```
+
+For a component-level view, see [docs/architecture.md](docs/architecture.md).
 
 ## Requirements
 
@@ -109,7 +130,7 @@ host port, change the left side of `-p`, for example `-p 8080:443`.
 The image passes the credentials to the bot through an unquoted shell command,
 so a password with spaces or shell characters is split or expanded and the
 login fails. Until this is fixed (see the
-[migration roadmap](docs/migration-roadmap.md#known-defects-fixed-in-behaviour-steps-3-and-6-never-during-restructuring)),
+[migration roadmap](docs/migration-roadmap.md#known-defects)),
 use a password without them.
 
 ## Connecting TradingView
@@ -134,7 +155,7 @@ NonInvert
 
 | Line | Example                            | Meaning                                                                                                   |
 |------|------------------------------------|-----------------------------------------------------------------------------------------------------------|
-| 1    | `XAUUSD`                           | Instrument name exactly as TradeLocker lists it.                                                          |
+| 1    | `XAUUSD`                           | Instrument name exactly as TradeLocker lists it, case included. A name the broker does not list is rejected before anything is closed. |
 | 2    | `{{strategy.order.action}}`        | Direction: `buy` or `sell`; case and surrounding spaces are ignored. TradingView fills this in.           |
 | 3    | `0.01/100`                         | Position size; see [Dynamic lot size](#dynamic-lot-size).                                                 |
 | 4    | `500`                              | Take profit as a whole-number offset from the entry price.                                                |
@@ -160,6 +181,15 @@ What each action does:
 > Signal rejected: line 3 (lot) is '0.01', expected <lot>/<balance step>, two positive numbers
 > ```
 >
+> A signal can also be rejected once the broker has answered, still before
+> anything is closed:
+>
+> ```text
+> Signal rejected: line 1 (symbol) is 'GBPUSD', expected an instrument the broker lists
+> Signal rejected: line 3 (lot) gives 0.0 at a balance of 10.0, expected a quantity above 0
+> Signal rejected: the account balance is missing or not a number, expected a number to size the position from
+> ```
+>
 > The webhook still answers `200 OK`, so check the bot's log.
 
 ### Dynamic lot size
@@ -173,7 +203,13 @@ lot = round(balance / balance_step * base_lot, 2)
 
 balance 1000, message 0.01/100  ->  1000 / 100 * 0.01  =  0.10 lots
 balance 1234, message 0.01/100  ->  1234 / 100 * 0.01  =  0.12 lots
+balance   10, message 0.01/100  ->    10 / 100 * 0.01  =  0.00 lots  (rejected)
 ```
+
+The result must be above zero. If the balance is too small for the lot to
+round up to 0.01, the signal is rejected, and the instrument's open positions
+are left as they are. The broker's own minimum lot and lot step still apply:
+an order below them is rejected by the broker.
 
 ### Inverting the direction
 
@@ -222,6 +258,12 @@ alerts.
 > line 2 and line 6 ignore case and surrounding spaces. An alert with `Open`
 > or `close ` used to be ignored and now trades, and `close` no longer needs
 > lines 2 to 5 and 7. Check your alerts' messages before you update.
+>
+> Since [ADR 0009](docs/adr/0009-refuse-what-the-broker-rules-out-before-closing.md),
+> an `open` whose size rounds to zero is rejected instead of being sent to the
+> broker as a 0-lot order, and the instrument's positions stay open. An
+> unknown symbol or a missing balance is logged as one `Signal rejected:` line
+> instead of a traceback.
 
 ## Security
 
@@ -230,7 +272,7 @@ alerts.
   Create it with a cryptographically secure generator, as in
   [Quick start](#quick-start). `url=generate` is weaker: it uses Python's
   non-cryptographic `random` module (a known defect, tracked in the
-  [migration roadmap](docs/migration-roadmap.md#known-defects-fixed-in-behaviour-steps-3-and-6-never-during-restructuring)).
+  [migration roadmap](docs/migration-roadmap.md#known-defects)).
 - **Use HTTPS.** The bot serves plain HTTP, so without TLS anyone on the
   network path can read the webhook path and send forged signals. Put the bot
   behind a reverse proxy such as Nginx or Caddy that terminates TLS. The bot's
@@ -246,13 +288,16 @@ alerts.
 | Symptom                                     | Likely cause                                                                                   |
 |---------------------------------------------|------------------------------------------------------------------------------------------------|
 | No trade after an alert                     | The log shows `Signal rejected:` with the line to fix. Otherwise the broker refused a call, and the log shows its error. |
+| `Signal rejected: line 1 (symbol) ...`      | The broker lists no instrument with that exact name. Copy it from TradeLocker, case included. |
+| `Signal rejected: line 3 (lot) gives 0.0 ...` | The balance is too small for this lot. Raise the lot or lower the balance step on line 3. |
+| `Signal rejected: the account balance is ...` | The broker reported no balance, a balance that is not a number, or one that is not above zero. Check the account in TradeLocker, then send the alert again. |
 | Position closed but no new one opened       | The broker rejected the order; the log shows its error. |
 | Bot does not start, login fails             | Wrong credentials or `env`, or a password with spaces or shell characters (see [Configuration](#configuration)). |
 | `Method Not Allowed` in the browser         | Expected; see [Verifying the setup](#verifying-the-setup).                                     |
 | Error about account number and ID at start  | Both `acc_id` and `acc_num` are set; keep only one.                                            |
 
 Known defects and their planned fixes are listed in the
-[migration roadmap](docs/migration-roadmap.md#known-defects-fixed-in-behaviour-steps-3-and-6-never-during-restructuring).
+[migration roadmap](docs/migration-roadmap.md#known-defects).
 
 ## Development
 

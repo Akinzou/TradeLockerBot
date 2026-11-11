@@ -40,7 +40,7 @@ DEFAULT_ORDER = MappingProxyType({
 # Recorded broker calls for the default payload, shared so a declared change
 # to a call's shape is made in one place.
 BALANCE = ("get_account_state",)
-LOOKUP = ("get_instrument_id_from_symbol_name", "XAUUSD")
+LOOKUP = ("get_all_instruments",)
 POSITIONS = ("get_all_positions",)
 CLOSE = ("close_all_positions", XAUUSD_ID)
 ORDER = ("create_order", XAUUSD_ID, DEFAULT_ORDER)

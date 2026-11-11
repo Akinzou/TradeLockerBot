@@ -86,6 +86,13 @@ handler re-raises the client's own exception object.
   *Update:* step 3 (ADR 0008) removed every input error from the use case.
   The missing balance still raises until step 3b, so step 5 follows 3b.
 
+  *Update:* step 3b (ADR 0009) refuses the missing balance, the unknown
+  symbol and the unusable quantity as `Err(Refusal)`. No signal and no
+  well-formed broker answer raises from the use case any more, so step 5
+  can start. An answer the adapter cannot read still raises, on purpose. `execute` now returns
+  `Result[None, BrokerFailure | Refusal]`. The legacy handler re-raises only
+  a `BrokerFailure` and prints a refusal.
+
 ## Alternatives considered
 
 - **A third-party Result library** (`returns`, `result`). Rejected: the layer
