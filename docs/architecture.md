@@ -321,7 +321,8 @@ design.
   - A broker failure is re-raised as the client's own exception, so the
     webhook thread fails as before.
 - `ascii_alerts` holds the console's colours and the startup banners, and
-  `webhook_path` makes the random path for `--url generate`.
+  `webhook_path` makes the random path for `--url generate`, from
+  `secrets` ([ADR 0012](adr/0012-generate-the-webhook-path-with-secrets.md)).
 
 ## Composition root
 
@@ -352,3 +353,4 @@ layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
 | [0009](adr/0009-refuse-what-the-broker-rules-out-before-closing.md) | Refuse what the broker rules out before closing anything |
 | [0010](adr/0010-webhook-adapter-and-composition-root.md) | Inbound webhook adapter and a composition root |
 | [0011](adr/0011-serve-no-api-docs.md) | Serve no API docs, so no page names the webhook path |
+| [0012](adr/0012-generate-the-webhook-path-with-secrets.md) | Generate the webhook path with `secrets` |

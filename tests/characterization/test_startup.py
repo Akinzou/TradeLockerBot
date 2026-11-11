@@ -45,7 +45,8 @@ SAVE_URL = r"""
 HELLO_LINES = [line for line in HELLO.splitlines() if line.strip()]
 
 DEMO_LOGIN = {"environment": "https://demo.tradelocker.com", "username": "u", "password": "p", "server": "s"}
-GENERATED_PATH = re.compile(r"/[a-z0-9]{10,20}/[a-z0-9]{10,20}")
+# One segment: 24 random bytes in URL-safe base64, unpadded (ADR 0012).
+GENERATED_PATH = re.compile(r"/[A-Za-z0-9_-]{32}")
 
 
 @pytest.fixture
@@ -53,7 +54,8 @@ def startup(monkeypatch):
     return Startup(monkeypatch, broker())
 
 
-def test_generated_webhook_url_has_two_lowercase_alphanumeric_segments():
+def test_a_generated_path_is_one_segment_of_32_url_safe_characters():
+    # The shape only; the unit tests pin the source (ADR 0012).
     for _ in range(50):
         assert GENERATED_PATH.fullmatch(generated_webhook_path())
 
