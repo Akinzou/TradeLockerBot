@@ -29,6 +29,7 @@ migration pull request.
 | 6a | Serve no OpenAPI schema and no docs pages, so no page names the webhook path ([ADR 0011](adr/0011-serve-no-api-docs.md)). Pin replaced: the four former docs addresses answer like any unknown one | behaviour | done |
 | 6b | Generate the `url=generate` path with `secrets`, as the README advises for a path chosen by hand ([ADR 0012](adr/0012-generate-the-webhook-path-with-secrets.md)). Pin replaced: one segment of 32 URL-safe characters; a new unit pin on the source | behaviour | done |
 | 6c | Redirect no request to a path one slash away; such a path answers `404` like any unknown address ([ADR 0013](adr/0013-no-trailing-slash-redirect.md)). Pin replaced: a trailing slash added or missing is not redirected, followed or handled | behaviour | done |
+| 6d | Refuse a `url` without a leading `/` at startup, with exit status `2` and a message that leaves the value out ([ADR 0014](adr/0014-require-a-leading-slash.md)). Pin replaced: such a value stops the bot before any output, the login and the server | behaviour | done |
 | 6  | Remaining behaviour changes from the defect list below, one pull request and one ADR each                                                                   | behaviour | next                                 |
 
 ```mermaid
@@ -45,12 +46,13 @@ flowchart LR
     S5 --> S6a[6a no API docs]
     S6a --> S6b[6b secrets path]
     S6b --> S6c[6c no slash redirect]
-    S6c --> S6[6 remaining defects]
+    S6c --> S6d[6d leading slash]
+    S6d --> S6[6 remaining defects]
     S2af -.-> S2g[2g base image digest]
     classDef done fill:#d4edda,stroke:#28a745,color:#155724
     classDef next fill:#fff3cd,stroke:#d39e00,color:#856404
     classDef todo fill:#f8f9fa,stroke:#6c757d,color:#383d41
-    class S1,S1abc,S2,S2af,S4,S4b,S3,S3b,S5a,S5,S6a,S6b,S6c done
+    class S1,S1abc,S2,S2af,S4,S4b,S3,S3b,S5a,S5,S6a,S6b,S6c,S6d done
     class S6 next
     class S2g todo
 ```
@@ -87,7 +89,6 @@ Fixed in behaviour steps, never during restructuring.
 | Closing polls in a tight loop with no delay or limit, re-sending a close request on every poll until the broker fills it, while holding the global lock | `test_close_request_is_resent_on_every_poll_until_the_broker_fills_it` |
 | The webhook returns 200 before the signal is handled; a rejected or refused signal or a broker failure is reported only in the bot's log, and the caller never learns | `test_the_answer_is_200_with_a_null_body_before_the_signal_is_handled`, `test_a_broker_failure_ends_the_handler_thread_with_the_clients_exception`, `test_rejected_signals.py` |
 | uvicorn's access log, on by default, writes every request line to stdout, so the secret webhook path is in the log of every alert; anyone who can read the container's log can read the path | not pinned (the server is replaced in the tests) |
-| A `url` without a leading `/` is accepted at startup, but the route can never match a request, so every alert gets `404` while the bot looks healthy | `test_a_path_without_a_leading_slash_starts_but_is_never_reachable` |
 | A `url` with `{name}` or `{name:convertor}` in it is read as a pattern, not a path, so the bot handles signals on paths the operator never set: `/{x}` any one-segment path, `/{x:path}` every path, and anyone who finds one of them can trade on the account. A pattern Starlette cannot compile, such as `/{x:foo}` or `/{x}/{x}`, stops the bot with a traceback after it has logged in. Braces that are not a name, as in `/a{b`, stay literal | `test_a_path_with_braces_handles_signals_on_paths_the_operator_never_set`, `test_a_brace_pattern_starlette_cannot_compile_stops_after_the_login` |
 | The account password is passed as a command-line argument, so it shows up in the process list                                                                      | `test_startup_greets_logs_in_and_serves_on_every_interface_at_port_443` (the argv the startup reads)                                                 |
 | Only `tradelocker` is pinned (#23); `pandas`, `fastapi`, `uvicorn` and the rest float, and the Dockerfile runs `apt-get update`, so a rebuilt image can change behaviour with no code change | step 2c: lock file |
@@ -95,6 +96,14 @@ Fixed in behaviour steps, never during restructuring.
 
 ## Fixed defects
 
+- **A `url` without a leading `/` was accepted** (step 6d). The route
+  matched no request, so the bot printed its banners, logged in and
+  served while every alert got `404`. Such a value now stops the bot at
+  startup with exit status `2` and
+  `argument --url: must start with / or be generate`, before any output
+  or the login. Images built before step 6d still start with it; there,
+  start the path with `/`
+  ([ADR 0014](adr/0014-require-a-leading-slash.md)).
 - **A path one slash away from the webhook path was redirected** (step 6c).
   Starlette answered it with a `307` whose `Location` took the scheme the
   bot saw, `http://` behind a TLS proxy uvicorn does not trust, so a sender

@@ -116,13 +116,23 @@ def test_custom_path_replaces_the_default(startup):
     assert post(startup.app, "/strategy", b"")[0].status_code == 404
 
 
-def test_a_path_without_a_leading_slash_starts_but_is_never_reachable(startup):
-    # Known defect: the route is registered as "strategy", and no request path
-    # lacks the leading slash, so every alert gets a 404 while the bot looks up.
-    startup.run(*DEMO, "--url", "strategy")
+@pytest.mark.parametrize("url", ["strategy", "hook/secret", "https://host/strategy", ""])
+def test_a_path_without_a_leading_slash_stops_before_any_output_and_is_not_echoed(startup, capsys, url):
+    # ADR 0014: such a route matched no request, so the bot looked up while
+    # every alert got a 404. It now stops like any invalid argument, and the
+    # error leaves the value out: it is the operator's secret path, give or
+    # take a slash, and stderr goes to the same log as everything else.
+    with pytest.raises(SystemExit) as exited:
+        startup.run(*DEMO, "--url", url)
 
-    assert startup.served
-    assert post(startup.app, "/strategy", b"")[0].status_code == 404
+    out, err = capsys.readouterr()
+    assert exited.value.code == 2
+    assert out == ""
+    assert err.splitlines()[-1].endswith("error: argument --url: must start with / or be generate")
+    # No piece of the value either, such as the last segment of a path.
+    assert [part for part in re.split("[/:]", url) if part and part in err] == []
+    assert startup.logins == []
+    assert startup.served == []
 
 
 @pytest.mark.parametrize(

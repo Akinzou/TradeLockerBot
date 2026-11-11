@@ -19,13 +19,28 @@ from tradelocker_bot.adapters.webhook_path import random_webhook_path
 from tradelocker_bot.application.execute_signal import ExecuteSignal
 
 
+def webhook_url(value):
+    """The ``--url`` value: ``generate`` or a path that starts with ``/``.
+
+    A route without the leading slash matches no request, so the bot would
+    look up while every alert got a 404 (ADR 0014). It stops instead, like any
+    invalid argument, before the banners and the login. The message leaves the
+    value out: it is the operator's secret path, give or take a slash.
+    """
+    # ArgumentTypeError rather than ValueError: for a ValueError argparse
+    # prints the rejected value, and stderr goes to the container's log.
+    if value != "generate" and not value.startswith("/"):
+        raise argparse.ArgumentTypeError("must start with / or be generate")
+    return value
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Add variables when starting")
     parser.add_argument('--username', type=str, required=True, help='username/email')
     parser.add_argument('--password', type=str, required=True, help='password')
     parser.add_argument('--server', type=str, required=True, help='server')
     parser.add_argument('--env', type=str, required=True, choices=['live', 'demo'], help='live/demo')
-    parser.add_argument('--url', type=str, default='/strategy', help='Optional URL, default is /strategy')
+    parser.add_argument('--url', type=webhook_url, default='/strategy', help='Optional URL, default is /strategy')
     parser.add_argument('--acc_num', type=str, default='0', help='Optional account number')
     parser.add_argument('--acc_id', type=str, default='0', help='Optional account ID')
     parser.add_argument('--port', type=int, default=443, help='Port to run the application')

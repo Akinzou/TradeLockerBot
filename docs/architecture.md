@@ -99,7 +99,7 @@ sequenceDiagram
     participant WH as webhook.create_app
     participant U as uvicorn
     EP->>CR: main()
-    CR->>CR: parse_args (exit 2 on a bad argument)
+    CR->>CR: parse_args (exit 2 on a bad argument,<br/>a --url without a leading /)
     opt --url generate
         CR->>CR: print the URL banner and random_webhook_path()
     end
@@ -335,6 +335,10 @@ layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
   app and starts the server, in the order the [startup](#startup) diagram
   shows.
 - It creates the one lock that every request shares.
+- `webhook_url` checks `--url` as the arguments are read: `generate` or a
+  path that starts with `/`. Anything else exits with status `2`, like any
+  bad argument, and the message leaves the value out
+  ([ADR 0014](adr/0014-require-a-leading-slash.md)).
 - `build_signal_handler(client, lock)` builds the console, the broker adapter, the
   use case and the handler once, at startup. The characterization tests
   build theirs through the same function.
@@ -357,3 +361,4 @@ layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
 | [0011](adr/0011-serve-no-api-docs.md) | Serve no API docs, so no page names the webhook path |
 | [0012](adr/0012-generate-the-webhook-path-with-secrets.md) | Generate the webhook path with `secrets` |
 | [0013](adr/0013-no-trailing-slash-redirect.md) | No trailing-slash redirect on the webhook |
+| [0014](adr/0014-require-a-leading-slash.md) | Refuse a webhook path without a leading slash |
