@@ -13,22 +13,17 @@ the requirement and the environment the suite runs in.
 """
 
 from importlib.metadata import version
-from pathlib import Path
 
 from packaging.requirements import Requirement
 
 from tests.characterization.fake_tradelocker import TRADELOCKER_VERSION
-
-REQUIREMENTS = Path(__file__).resolve().parent.parent / "requirements.txt"
+from tests.dependency_lock import requirement_lines
 
 
 def _requirements():
     # Parsed rather than matched as text, so a comment cannot satisfy the test
     # and an equivalent spelling (spaces, markers, case) cannot fail it.
-    for line in REQUIREMENTS.read_text(encoding="utf-8").splitlines():
-        line = line.split("#", 1)[0].strip()
-        if line and not line.startswith("-"):
-            yield Requirement(line)
+    return [Requirement(line) for line in requirement_lines()]
 
 
 def test_requirements_pin_the_characterized_client_version():

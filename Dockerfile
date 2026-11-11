@@ -1,12 +1,16 @@
 FROM python:3.11-slim
 
-RUN apt-get update && apt-get install -y build-essential libssl-dev git
-
 WORKDIR /app
 
-COPY . /app
+# The lock, not requirements.txt: every package, transitive ones included, at
+# one version and verified by hash (ADR 0007). Wheels only: building from
+# source would fetch unhashed build tools and need a compiler in the image,
+# which is why the apt toolchain layer is gone. Copied before the source so
+# a code change does not reinstall every package.
+COPY requirements-lock.txt /app/
+RUN pip install --no-cache-dir --require-hashes --only-binary :all: -r requirements-lock.txt
 
-RUN pip install --no-cache-dir -r requirements.txt
+COPY . /app
 
 ENV url=/strategy
 ENV acc_num=0
