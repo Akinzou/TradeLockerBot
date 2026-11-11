@@ -1,16 +1,16 @@
 """Exact broker call sequences and exact exception types on the raising paths
-of ``handle_position_normal``, and inputs whose problems legacy code never
-reaches.
+of ``handle_position_normal``, and the lines ``close`` never reads.
 
 The success-path pins fix the order of broker calls, but a restructure could
-still move a validation earlier or later on a failing signal: resolving the
-trade side before the second instrument lookup, or for actions that never
-use it, or reading the balance strictly before the lot is parsed. Each of
-those changes which broker calls happen before the failure, or whether it
-fails. The type is compared exactly, because ``pytest.raises`` alone would also
-accept a new subclass such as an ``InvalidSignal(ValueError)``.
+still change which calls happen before a failure: reading the balance on
+``close`` again, or looking the symbol up before the balance on ``open``. The
+type is compared exactly, because ``pytest.raises`` alone would also accept a
+new subclass of the client's exception.
 
 Where two raise sites share a type, ``match`` names the site that must fail.
+Input errors no longer raise: step 3 refuses them before any broker call
+(``test_rejected_signals``). What still raises needs the broker's answer, and
+the unknown symbol and the missing balance are refused in step 3b.
 """
 
 import pytest
@@ -31,35 +31,15 @@ from tests.characterization.harness import (
 )
 
 UNKNOWN_LOOKUP = ("get_instrument_id_from_symbol_name", "GBPUSD")
-LOT_PARSE = "could not convert string to float"
-
-TRUNCATED = [
-    (f"payload truncated to {length} lines", {}, payload()[:length], IndexError, None, [])
-    for length in range(7)
-]
 
 
 @pytest.mark.parametrize(
     ("scenario", "fake_args", "lines", "error", "match", "expected"),
     [
-        *TRUNCATED,
-        ("non-numeric take profit", {}, payload(tp="5x"), ValueError, "int", []),
-        ("non-numeric stop loss", {}, payload(sl="1e3"), ValueError, "int", []),
-        ("lot without a step", {"open_positions": [XAUUSD_ID]}, payload(lot="0.01"),
-         ValueError, "not enough values", [BALANCE]),
-        ("non-numeric lot", {"open_positions": [XAUUSD_ID]}, payload(lot="abc/100"),
-         ValueError, LOT_PARSE, [BALANCE]),
-        ("lot with two steps", {"open_positions": [XAUUSD_ID]}, payload(lot="0.01/100/2"),
-         ValueError, "too many values", [BALANCE]),
-        ("zero balance step", {"open_positions": [XAUUSD_ID]}, payload(lot="0.01/0"),
-         ZeroDivisionError, None, [BALANCE]),
         ("unknown symbol on open", {}, payload(symbol="GBPUSD"),
          ValueError, "No instrument found", [BALANCE, UNKNOWN_LOOKUP]),
-        ("unknown symbol on close", {}, payload(symbol="GBPUSD", action="close"),
-         ValueError, "No instrument found", [BALANCE, UNKNOWN_LOOKUP]),
-        ("invalid isInvert resolves after the second lookup", {"open_positions": [XAUUSD_ID]},
-         payload(invert="Sideways"), ValueError, "isInvert",
-         [BALANCE, LOOKUP, POSITIONS, CLOSE, POSITIONS, LOOKUP]),
+        ("unknown symbol on close: no balance read", {}, payload(symbol="GBPUSD", action="close"),
+         ValueError, "No instrument found", [UNKNOWN_LOOKUP]),
         ("broker rejects the order", {"order_results": (order_rejection(),)},
          payload(), TLAPIOrderException, None,
          [BALANCE, LOOKUP, POSITIONS, LOOKUP, ORDER]),
@@ -69,8 +49,6 @@ TRUNCATED = [
          [BALANCE, LOOKUP, POSITIONS, CLOSE, POSITIONS, LOOKUP, ORDER]),
         ("account state without a balance field", {"balance": NO_BALANCE_FIELD},
          payload(), TypeError, "NoneType", [BALANCE]),
-        ("no balance field and a malformed lot: the parse fails first",
-         {"balance": NO_BALANCE_FIELD}, payload(lot="abc/100"), ValueError, LOT_PARSE, [BALANCE]),
     ],
 )
 def test_raising_path_call_sequence(scenario, fake_args, lines, error, match, expected):
@@ -84,15 +62,16 @@ def test_raising_path_call_sequence(scenario, fake_args, lines, error, match, ex
 
 
 @pytest.mark.parametrize(
-    ("scenario", "action", "expected"),
+    "lines",
     [
-        ("close never reads isInvert", "close", [BALANCE, LOOKUP, POSITIONS, CLOSE, POSITIONS]),
-        ("unknown action never reads isInvert", "hold", [BALANCE]),
+        payload(action="close", invert="Sideways"),
+        payload(action="close", direction="long", lot="x", tp="", sl="?"),
+        payload(action="close")[:6],
     ],
 )
-def test_invalid_invert_is_ignored_outside_open(scenario, action, expected):
+def test_close_reads_only_the_symbol_and_the_action(lines):
     fake = broker(open_positions=[XAUUSD_ID])
 
-    handle(fake, payload(action=action, invert="Sideways"))
+    handle(fake, lines)
 
-    assert fake.calls == expected, scenario
+    assert fake.calls == [LOOKUP, POSITIONS, CLOSE, POSITIONS]

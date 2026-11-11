@@ -44,8 +44,6 @@ ONE_ROW = {"open_positions": [XAUUSD_ID]}
     [
         ("balance read", ("get_account_state", 1), {}, payload(),
          [BALANCE], [LOCK_ACQUIRED, LOCK_RELEASED]),
-        ("balance read, with a malformed lot: the broker error wins", ("get_account_state", 1), {},
-         payload(lot="abc/100"), [BALANCE], [LOCK_ACQUIRED, LOCK_RELEASED]),
         ("first instrument lookup", ("get_instrument_id_from_symbol_name", 1), {}, payload(),
          [BALANCE, LOOKUP], [*LOCKED, LOCK_RELEASED]),
         ("position list", ("get_all_positions", 1), {}, payload(),
@@ -62,12 +60,14 @@ ONE_ROW = {"open_positions": [XAUUSD_ID]}
          [BALANCE, LOOKUP, POSITIONS, LOOKUP, ORDER], [*LOCKED, LOCK_RELEASED]),
         ("order placed again", ("create_order", 2), {"order_results": (None,)}, payload(),
          [BALANCE, LOOKUP, POSITIONS, LOOKUP, ORDER, ORDER], [*LOCKED, RETRY, LOCK_RELEASED]),
+        ("lookup on close", ("get_instrument_id_from_symbol_name", 1), {}, payload(action="close"),
+         [LOOKUP], [*LOCKED, LOCK_RELEASED]),
         ("position list on close", ("get_all_positions", 1), {}, payload(action="close"),
-         [BALANCE, LOOKUP, POSITIONS], [*LOCKED, LOCK_RELEASED]),
+         [LOOKUP, POSITIONS], [*LOCKED, LOCK_RELEASED]),
         ("close request on close", ("close_all_positions", 1), ONE_ROW, payload(action="close"),
-         [BALANCE, LOOKUP, POSITIONS, CLOSE], [*LOCKED, LOCK_RELEASED]),
+         [LOOKUP, POSITIONS, CLOSE], [*LOCKED, LOCK_RELEASED]),
         ("recount on close", ("get_all_positions", 2), ONE_ROW, payload(action="close"),
-         [BALANCE, LOOKUP, POSITIONS, CLOSE, POSITIONS], [*LOCKED, CLOSING, LOCK_RELEASED]),
+         [LOOKUP, POSITIONS, CLOSE, POSITIONS], [*LOCKED, CLOSING, LOCK_RELEASED]),
     ],
 )
 def test_broker_failure_propagates_as_raised(capsys, scenario, failing_call, fake_args, lines, calls, console):

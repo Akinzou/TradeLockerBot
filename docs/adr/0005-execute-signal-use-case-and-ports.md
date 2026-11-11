@@ -25,6 +25,10 @@ The characterization suite pins all of that, including the raising paths
   `OperatorConsole`, as `typing.Protocol` classes. It may import only the
   domain, itself and pure standard-library modules; the fitness test enforces
   this the same way it does for the domain.
+
+  *Update:* [ADR 0008](0008-validate-the-signal-before-any-broker-call.md)
+  replaced `TradeSignal` with the domain's `OpenSignal` and `CloseSignal`,
+  parsed before the use case runs.
 - `tradelocker_bot.adapters` holds `TradeLockerBroker`, which wraps a
   `TLAPI` client, and `PrintingConsole`, which writes to stdout.
 - Resolving the order side from the direction and the invert flag has no I/O,

@@ -13,6 +13,7 @@ from tests.characterization.fake_tradelocker import NO_BALANCE_FIELD, FakeTradeL
 from tradelocker_bot.adapters.tradelocker_broker import TradeLockerBroker
 from tradelocker_bot.application.ports import BrokerFailure
 from tradelocker_bot.domain.result import Err, Ok
+from tradelocker_bot.domain.signal import Side
 
 GOLD, EURO = 11, 22
 
@@ -65,7 +66,7 @@ def test_request_close_passes_the_instrument_as_the_close_filter(instrument_id):
 def test_market_order_uses_offset_protection_and_client_defaults():
     fake = client(order_results=(9001,))
 
-    order_id = TradeLockerBroker(fake).place_market_order(GOLD, 0.1, "sell", stop_loss=1000, take_profit=500)
+    order_id = TradeLockerBroker(fake).place_market_order(GOLD, 0.1, Side.SELL, stop_loss=1000, take_profit=500)
 
     assert order_id == Ok(9001)
     assert fake.calls == [("create_order", GOLD, {
@@ -87,7 +88,7 @@ def test_market_order_uses_offset_protection_and_client_defaults():
 
 def test_market_order_returns_a_missing_id_unchanged():
     assert TradeLockerBroker(client(order_results=(None,))).place_market_order(
-        GOLD, 0.1, "buy", stop_loss=1000, take_profit=500
+        GOLD, 0.1, Side.BUY, stop_loss=1000, take_profit=500
     ) == Ok(None)
 
 
@@ -96,7 +97,7 @@ CALLS = {
     "get_instrument_id_from_symbol_name": lambda broker: broker.instrument_id("XAUUSD"),
     "get_all_positions": lambda broker: broker.open_position_count(GOLD),
     "close_all_positions": lambda broker: broker.request_close(GOLD),
-    "create_order": lambda broker: broker.place_market_order(GOLD, 0.1, "buy", stop_loss=1000, take_profit=500),
+    "create_order": lambda broker: broker.place_market_order(GOLD, 0.1, Side.BUY, stop_loss=1000, take_profit=500),
 }
 
 

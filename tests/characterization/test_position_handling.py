@@ -77,13 +77,24 @@ def test_close_closes_positions_without_ordering():
     assert broker.orders() == []
 
 
-@pytest.mark.parametrize("action", ["hold", "Open", "OPEN", "Close", " open", "open ", " close", "close "])
-def test_unknown_action_neither_closes_nor_orders(action):
+@pytest.mark.parametrize("action", ["Open", "OPEN", " open", "open "])
+def test_open_ignores_case_and_spaces_in_the_action(action):
+    # Before step 3 these were ignored like any unknown action (ADR 0008).
     broker = _broker(open_positions=[XAUUSD_ID])
 
     _handle(broker, _payload(action=action))
 
-    assert broker.open_positions == [XAUUSD_ID]
+    assert broker.open_positions == []
+    assert len(broker.orders()) == 1
+
+
+@pytest.mark.parametrize("action", ["Close", " close", "close "])
+def test_close_ignores_case_and_spaces_in_the_action(action):
+    broker = _broker(open_positions=[XAUUSD_ID])
+
+    _handle(broker, _payload(action=action))
+
+    assert broker.open_positions == []
     assert broker.orders() == []
 
 
@@ -107,11 +118,12 @@ def test_close_request_is_resent_on_every_poll_until_the_broker_fills_it():
     assert broker.open_positions == []
 
 
-def test_invalid_invert_value_raises_after_existing_position_was_closed():
+def test_invalid_invert_value_keeps_the_existing_position():
+    # Before step 3 it raised only after the position was closed, leaving the
+    # account flat (ADR 0008).
     broker = _broker(open_positions=[XAUUSD_ID])
 
-    with pytest.raises(ValueError, match="isInvert"):
-        _handle(broker, _payload(invert="Sideways"))
+    _handle(broker, _payload(invert="Sideways"))
 
-    assert broker.open_positions == []
-    assert broker.orders() == []
+    assert broker.open_positions == [XAUUSD_ID]
+    assert broker.calls == []

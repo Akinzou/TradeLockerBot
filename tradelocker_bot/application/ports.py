@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from tradelocker_bot.domain.result import Result
+from tradelocker_bot.domain.signal import Side
 
 
 @dataclass(frozen=True)
@@ -40,7 +41,7 @@ class Broker(Protocol):
         """Ask the broker to close the instrument's positions; it may fill later."""
 
     def place_market_order(
-        self, instrument_id: int, quantity: float, side: str, stop_loss: int, take_profit: int
+        self, instrument_id: int, quantity: float, side: Side, stop_loss: int, take_profit: int
     ) -> Result[int | None, BrokerFailure]:
         """Order id, or ``Ok(None)`` when the broker answered without one."""
 
@@ -52,7 +53,7 @@ class OperatorConsole(Protocol):
     def closing(self, symbol: str) -> None:
         ...
 
-    def order_retry(self, side: str) -> None:
+    def order_retry(self, side: Side) -> None:
         ...
 
     def order_placed(self, order_id: int) -> None:
