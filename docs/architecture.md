@@ -14,7 +14,7 @@ tracked in the [migration roadmap](migration-roadmap.md).
 | Legacy      | `main_without_ssl.py`, `libs/` | anything          | Code not migrated yet; shrinks with every structure step      |
 
 Dependencies point inwards only. The domain rule is enforced by
-`tests/test_domain_dependencies.py`, an explicit allow-list: the domain may
+`tests/test_layer_dependencies.py`, an explicit allow-list: the domain may
 import its own package and a named set of pure standard-library modules
 (`dataclasses`, `enum`, `math`, `typing` and similar). Anything else fails,
 including `datetime` (the clock), `random`, `os` and every third-party
