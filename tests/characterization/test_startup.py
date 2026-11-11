@@ -190,6 +190,8 @@ def test_a_path_with_a_brace_stops_before_any_output_and_is_not_echoed(startup, 
     assert exited.value.code == 2
     assert out == ""
     assert err.splitlines()[-1].endswith("error: argument --url: must not contain { or }")
+    # Split on braces too, since the message has them; the names are ones the
+    # usage text above it cannot contain, so a match can only be an echo.
     assert [part for part in re.split("[/:{}]", url) if part and part in err] == []
     assert startup.logins == []
     assert startup.served == []
@@ -197,10 +199,16 @@ def test_a_path_with_a_brace_stops_before_any_output_and_is_not_echoed(startup, 
 
 def test_a_value_with_a_brace_and_no_leading_slash_gets_the_slash_message(startup, capsys):
     # The leading slash is checked first, so one value always gets one message.
-    with pytest.raises(SystemExit):
+    with pytest.raises(SystemExit) as exited:
         startup.run(*DEMO, "--url", "{zq7}")
 
-    assert capsys.readouterr().err.splitlines()[-1].endswith("must start with / or be generate")
+    out, err = capsys.readouterr()
+    assert exited.value.code == 2
+    assert out == ""
+    assert err.splitlines()[-1].endswith("error: argument --url: must start with / or be generate")
+    assert "zq7" not in err
+    assert startup.logins == []
+    assert startup.served == []
 
 
 @pytest.mark.parametrize(

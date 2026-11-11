@@ -44,7 +44,7 @@ flowchart LR
     SLASH -- no --> STOP1["exit 2: must start with /<br/>or be generate (ADR 0014)"]
     SLASH -- yes --> BRACE{"has { or }?"}
     BRACE -- yes --> STOP2["exit 2: must not<br/>contain { or }"]
-    BRACE -- no --> ROUTE["the app's one route,<br/>matched as written"]
+    BRACE -- no --> ROUTE["the app's one route,<br/>one path, not a pattern"]
     NEW --> ROUTE
     ROUTE --> SERVE[uvicorn serves it]
 ```
@@ -65,7 +65,8 @@ flowchart LR
   later Starlette with a wider syntax could turn a path that passed it into
   a pattern.
 - **Nothing else is refused.** With braces gone, every accepted `url` is
-  matched as written, which is what the rest of this decision relies on.
+  one path, not a pattern, which is what the rest of this decision relies
+  on.
 - **`generate` cannot produce a brace.** Its path comes from
   `secrets.token_urlsafe`, whose alphabet is letters, digits, `-` and `_`.
 
@@ -103,6 +104,11 @@ The tests changed with it:
   value anywhere in it.
 - **A new pin**, `test_a_value_with_a_brace_and_no_leading_slash_gets_the_slash_message`,
   fixes the order of the two checks.
+- **A new route pin**, `test_a_path_set_by_hand_handles_no_other_path` in
+  `tests/characterization/test_webhook_route.py`, takes over the half of
+  the removed route pin that still holds: with `url` set to `/hook`, a
+  path under it, next to it, the default and `/` answer `404` and open
+  no trade.
 
 All nine brace cases failed before the fix: the bot started and served, or
 logged in and raised.
@@ -120,8 +126,10 @@ logged in and raised.
 
 ## Consequences
 
-- Every `url` the bot accepts is a literal path: the bot handles signals on
-  that path and on no other.
+- Every `url` the bot accepts is one path, not a pattern: the bot handles
+  signals on that path and on no other. Starlette compares it with the
+  decoded request path, so a `url` with `%`, `?` or `#` can still name a
+  path no sender reaches (see "What this does not cover").
 - A broken pattern no longer stops the bot after it has logged in.
 - The README's `url` row and security notes no longer need to explain
   braces.

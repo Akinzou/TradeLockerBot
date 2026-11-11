@@ -176,6 +176,19 @@ def test_a_path_set_with_a_trailing_slash_is_served_only_with_it(monkeypatch):
     assert fake.calls == OPEN_CALLS
 
 
+@pytest.mark.parametrize("other_path", ["/hook/anything", "/hookx", "/strategy", "/"])
+def test_a_path_set_by_hand_handles_no_other_path(monkeypatch, other_path):
+    # ADR 0015: with braces refused, the route is one path, not a pattern, so
+    # a path under it, next to it or the default opens no trade.
+    fake = broker()
+    app = serve(monkeypatch, fake, "--url", "/hook")
+
+    response, threads = post(app, other_path, SIGNAL)
+
+    assert (response.status_code, response.history, threads) == (404, [], [])
+    assert fake.calls == []
+
+
 def test_a_broker_failure_ends_the_handler_thread_with_the_clients_exception(monkeypatch):
     failure = TLAPIException({}, {"errmsg": "Service unavailable"})
     client = GatedClient(broker(failures={("get_all_positions", 1): failure}))

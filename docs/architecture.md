@@ -336,8 +336,8 @@ layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
   shows.
 - It creates the one lock that every request shares.
 - `webhook_url` checks `--url` as the arguments are read: `generate` or a
-  path that starts with `/` and has no `{` or `}`, so the route is matched
-  as written. Anything else exits with status `2`, like any bad argument,
+  path that starts with `/` and has no `{` or `}`, so the route is one
+  path, not a pattern. Anything else exits with status `2`, like any bad argument,
   and the message leaves the value out
   ([ADR 0014](adr/0014-require-a-leading-slash.md),
   [ADR 0015](adr/0015-refuse-braces-in-the-webhook-path.md)).
