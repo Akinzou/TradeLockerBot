@@ -31,6 +31,7 @@ migration pull request.
 | 6c | Redirect no request to a path one slash away; such a path answers `404` like any unknown address ([ADR 0013](adr/0013-no-trailing-slash-redirect.md)). Pin replaced: a trailing slash added or missing is not redirected, followed or handled | behaviour | done |
 | 6d | Refuse a `url` without a leading `/` at startup, with exit status `2` and a message that leaves the value out ([ADR 0014](adr/0014-require-a-leading-slash.md)). Pin replaced: such a value stops the bot before any output, the login and the server | behaviour | done |
 | 6e | Refuse a `url` with `{` or `}` at startup, with exit status `2` and a message that leaves the value out, so an accepted `url` is one path, not a pattern ([ADR 0015](adr/0015-refuse-braces-in-the-webhook-path.md)). Pins replaced: patterns, broken patterns and literal braces stop the bot before any output, the login and the server; a path set by hand handles no other path | behaviour | done |
+| 6f | Write each request's access line without the request line, keeping the client and the status, so the log never holds the webhook path ([ADR 0016](adr/0016-hide-the-request-line-in-the-access-log.md)). New pin against a real uvicorn server: a hit, a query string, a near miss, a `GET` and a `500` each leave one line with the exact status, and no output names the path | behaviour | done |
 | 6  | Remaining behaviour changes from the defect list below, one pull request and one ADR each                                                                   | behaviour | next                                 |
 
 ```mermaid
@@ -49,12 +50,13 @@ flowchart LR
     S6b --> S6c[6c no slash redirect]
     S6c --> S6d[6d leading slash]
     S6d --> S6e[6e no braces]
-    S6e --> S6[6 remaining defects]
+    S6e --> S6f[6f access log]
+    S6f --> S6[6 remaining defects]
     S2af -.-> S2g[2g base image digest]
     classDef done fill:#d4edda,stroke:#28a745,color:#155724
     classDef next fill:#fff3cd,stroke:#d39e00,color:#856404
     classDef todo fill:#f8f9fa,stroke:#6c757d,color:#383d41
-    class S1,S1abc,S2,S2af,S4,S4b,S3,S3b,S5a,S5,S6a,S6b,S6c,S6d,S6e done
+    class S1,S1abc,S2,S2af,S4,S4b,S3,S3b,S5a,S5,S6a,S6b,S6c,S6d,S6e,S6f done
     class S6 next
     class S2g todo
 ```
@@ -90,13 +92,20 @@ Fixed in behaviour steps, never during restructuring.
 | A rejected order raises inside the background handler *after* the existing position was closed, leaving the account flat; the `while not order_id` retry loop never runs because the client raises rather than returning an empty id | `test_broker_rejection_propagates_after_existing_position_was_closed`, `test_raising_path_call_sequence` |
 | Closing polls in a tight loop with no delay or limit, re-sending a close request on every poll until the broker fills it, while holding the global lock | `test_close_request_is_resent_on_every_poll_until_the_broker_fills_it` |
 | The webhook returns 200 before the signal is handled; a rejected or refused signal or a broker failure is reported only in the bot's log, and the caller never learns | `test_the_answer_is_200_with_a_null_body_before_the_signal_is_handled`, `test_a_broker_failure_ends_the_handler_thread_with_the_clients_exception`, `test_rejected_signals.py` |
-| uvicorn's access log, on by default, writes every request line to stdout, so the secret webhook path is in the log of every alert; anyone who can read the container's log can read the path | not pinned (the server is replaced in the tests) |
 | The account password is passed as a command-line argument, so it shows up in the process list                                                                      | `test_startup_greets_logs_in_and_serves_on_every_interface_at_port_443` (the argv the startup reads)                                                 |
 | Only `tradelocker` is pinned (#23); `pandas`, `fastapi`, `uvicorn` and the rest float, and the Dockerfile runs `apt-get update`, so a rebuilt image can change behaviour with no code change | step 2c: lock file |
 | The image's start command expands the credentials unquoted in `sh -c`, so a password with spaces or shell characters is split or glob-expanded and the login fails | not pinned (startup wiring) |
 
 ## Fixed defects
 
+- **The access log wrote the webhook path** (step 6f). uvicorn's default
+  access line held the request line, so the secret path, query string
+  included, was in the container's log on every alert, and a near miss
+  wrote most of it. Each line now reads
+  `INFO:     <client> - "<request line hidden>" <status>`: the client and
+  the status stay, the method, path, query and protocol are gone. Images
+  built before step 6f still write the path; there, treat the log as
+  secret ([ADR 0016](adr/0016-hide-the-request-line-in-the-access-log.md)).
 - **A `url` with `{name}` was a pattern** (step 6e). FastAPI read
   `{name}` and `{name:convertor}` as a path parameter, so the bot
   handled signals on paths the operator never set: `/{x}` any
@@ -153,6 +162,8 @@ Fixed in behaviour steps, never during restructuring.
   would record the test setup rather than production.
 - The real `TLAPI` login and `uvicorn` server. The tests replace both at
   their call, so they pin the arguments and the order, not the libraries.
+  One exception: `test_server_log.py` serves the bot's app with the bot's
+  own uvicorn options on a real server, to pin what it writes per request.
 - The `if __name__ == "__main__"` guard in `main_without_ssl.py`. The tests
   call its `main`; CI's image smoke run (`main_without_ssl.py --help`) runs
   the script itself.

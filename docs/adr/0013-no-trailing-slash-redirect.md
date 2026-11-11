@@ -100,6 +100,9 @@ All four failed against the redirect before the fix.
 - **uvicorn's access log** still writes the path of every request. It is a
   known defect of its own in the
   [migration roadmap](../migration-roadmap.md#known-defects).
+
+  *Update:* step 6f ([ADR 0016](0016-hide-the-request-line-in-the-access-log.md))
+  drops the request line, and with it the path, from the access line.
 - **A `url` without a leading `/`** is still accepted at startup and never
   matches a request. It is the next known defect, in the same lines of the
   README, so it gets its own step.

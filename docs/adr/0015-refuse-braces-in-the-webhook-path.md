@@ -121,6 +121,9 @@ logged in and raised.
   the silent-`404` class of ADR 0014, not a pattern, and it is not pinned
   yet.
 - **uvicorn's access log** still writes the path of every request.
+
+  *Update:* step 6f ([ADR 0016](0016-hide-the-request-line-in-the-access-log.md))
+  drops the request line, and with it the path, from the access line.
 - **The image's `sh -c` command** expands `url` unquoted, like the
   credentials.
 

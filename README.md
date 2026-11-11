@@ -239,6 +239,12 @@ That is expected: the webhook accepts only `POST` requests, which is what
 TradingView sends. Open the URL exactly as `url` sets it: with a trailing `/`
 added or missing, the bot answers `{"detail":"Not Found"}` instead.
 
+Each request also leaves one line in the bot's log, without the path:
+
+```text
+INFO:     203.0.113.7:52403 - "<request line hidden>" 405 Method Not Allowed
+```
+
 ## Updating
 
 ```sh
@@ -278,8 +284,14 @@ alerts.
 - **The bot serves only the webhook.** It has no API documentation pages and
   no OpenAPI schema, so no page names the webhook path
   ([ADR 0011](docs/adr/0011-serve-no-api-docs.md)). Addresses it does not
-  serve answer `404 Not Found`. Its console log still shows the path of every
-  request (a known defect), so treat the log as secret too.
+  serve answer `404 Not Found`. Its log has one line per request, with the
+  client and the status but not the path
+  ([ADR 0016](docs/adr/0016-hide-the-request-line-in-the-access-log.md)).
+  With `url=generate`, the path is still printed once at every start, so
+  treat that log as secret. Images built before that change write the path
+  of every request, so treat their log as secret too. A reverse proxy in front of the bot logs the
+  path by default (Nginx and Caddy write every request line), so keep it
+  out of the proxy's log too.
 - **Use the exact path in your alerts, and forward only that path.** The bot
   handles only the exact `url` path: it refuses to start with a `{` or `}`
   in `url`, which would make the path a pattern
@@ -314,7 +326,7 @@ alerts.
 | Position closed but no new one opened       | The broker rejected the order; the log shows its error. |
 | Bot does not start, login fails             | Wrong credentials or `env`, or a password with spaces or shell characters (see [Configuration](#configuration)). |
 | `Method Not Allowed` in the browser         | Expected; see [Verifying the setup](#verifying-the-setup).                                     |
-| Every alert gets `404 Not Found`            | The alert's URL does not match the `url` setting exactly (case included). A trailing `/` counts: `/strategy/` is not `/strategy`. On images built before [ADR 0014](docs/adr/0014-require-a-leading-slash.md), also check that `url` starts with `/`. |
+| Every alert gets `404 Not Found`            | Each one leaves a `<request line hidden>` line in the log with the status `404 Not Found`. The alert's URL does not match the `url` setting exactly (case included). A trailing `/` counts: `/strategy/` is not `/strategy`. On images built before [ADR 0014](docs/adr/0014-require-a-leading-slash.md), also check that `url` starts with `/`. |
 | Container keeps restarting, `docker logs` shows `argument --url: must start with / or be generate` | `url` is neither `generate` nor a path that starts with `/`. Add the leading `/`. An empty `url` shows `argument --url: expected one argument` instead. |
 | Container keeps restarting, `docker logs` shows `argument --url: must not contain { or }` | `url` has a `{` or `}`. Remove it, or make a new path with the command in [Quick start](#quick-start). |
 | Error about account number and ID at start  | Both `acc_id` and `acc_num` are set; keep only one.                                            |

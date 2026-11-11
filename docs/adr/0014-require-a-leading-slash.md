@@ -100,6 +100,9 @@ All four cases failed before the fix: the bot started and served.
   *Update:* step 6e ([ADR 0015](0015-refuse-braces-in-the-webhook-path.md))
   refuses any `{` or `}` in `url` at startup, with the same exit status.
 - **uvicorn's access log** still writes the path of every request.
+
+  *Update:* step 6f ([ADR 0016](0016-hide-the-request-line-in-the-access-log.md))
+  drops the request line, and with it the path, from the access line.
 - **The image's `sh -c` command** expands `url` unquoted, like the
   credentials. A path with spaces or shell characters is split before the
   check sees it.
