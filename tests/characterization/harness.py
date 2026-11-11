@@ -8,6 +8,8 @@ that out (ADR 0001).
 import threading
 from types import MappingProxyType
 
+from tradelocker.exceptions import TLAPIOrderException
+
 import main_without_ssl as bot
 from tests.characterization.fake_tradelocker import FakeTradeLocker
 
@@ -34,12 +36,24 @@ DEFAULT_ORDER = MappingProxyType({
     "_ignore_len_check": False,
 })
 
+# Recorded broker calls for the default payload, shared so a declared change
+# to a call's shape is made in one place.
+BALANCE = ("get_account_state",)
+LOOKUP = ("get_instrument_id_from_symbol_name", "XAUUSD")
+POSITIONS = ("get_all_positions",)
+CLOSE = ("close_all_positions", XAUUSD_ID)
+ORDER = ("create_order", XAUUSD_ID, DEFAULT_ORDER)
+
 LOCK_ACQUIRED = "[lock acquired]"
 LOCK_RELEASED = "[lock released]"
 
 
-def payload(action="open", direction="buy", lot="0.01/100", tp="500", sl="1000", invert="NonInvert"):
-    return ["XAUUSD", direction, lot, tp, sl, action, invert]
+def payload(action="open", direction="buy", lot="0.01/100", tp="500", sl="1000", invert="NonInvert", symbol="XAUUSD"):
+    return [symbol, direction, lot, tp, sl, action, invert]
+
+
+def order_rejection():
+    return TLAPIOrderException({}, {"errmsg": "Not enough margin"})
 
 
 def broker(balance=1000.0, open_positions=(), order_results=(9001,), close_requests_to_fill=1):

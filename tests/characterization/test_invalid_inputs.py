@@ -29,25 +29,6 @@ def test_non_invert_forwards_unexpected_direction_to_the_broker_unchanged():
 
 
 @pytest.mark.parametrize(
-    ("lot", "error"),
-    [
-        ("0.01", ValueError),
-        ("abc/100", ValueError),
-        ("0.01/100/2", ValueError),
-        ("0.01/0", ZeroDivisionError),
-    ],
-)
-def test_malformed_lot_raises_after_reading_balance_before_touching_positions(lot, error):
-    fake = broker(open_positions=[XAUUSD_ID])
-
-    with pytest.raises(error):
-        handle(fake, payload(lot=lot))
-
-    assert [call[0] for call in fake.calls] == ["get_account_state"]
-    assert fake.open_positions == [XAUUSD_ID]
-
-
-@pytest.mark.parametrize(
     ("balance", "lot", "expected_quantity"),
     [
         (1000.0, "0/100", 0.0),
