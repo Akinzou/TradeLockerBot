@@ -43,3 +43,46 @@ def test_tradelocker_runs_without_runtime_type_checks():
     # If a dependency ever pulls in typeguard, TLAPI starts rejecting values the
     # fake accepts, and every pin about unvalidated arguments becomes fiction.
     assert importlib.util.find_spec("typeguard") is None
+
+
+def test_scheduled_failure_raises_on_that_call_only_after_recording_it():
+    failure = RuntimeError("connection reset")
+    fake = FakeTradeLocker(balance=1000.0, instrument_ids={"XAUUSD": 1},
+                           failures={("get_all_positions", 2): failure})
+
+    fake.get_all_positions()
+    with pytest.raises(RuntimeError) as raised:
+        fake.get_all_positions()
+    fake.get_all_positions()
+
+    assert raised.value is failure
+    assert fake.calls == [("get_all_positions",)] * 3
+
+
+@pytest.mark.parametrize("key", [("get_all_position", 1), ("get_account_state", 0), ("orders", 1)])
+def test_fake_refuses_a_failure_it_would_never_raise(key):
+    with pytest.raises(ValueError, match="never reaches"):
+        FakeTradeLocker(balance=1000.0, instrument_ids={"XAUUSD": 1}, failures={key: RuntimeError()})
+
+
+def test_failed_close_request_is_recorded_but_has_no_effect():
+    fake = FakeTradeLocker(balance=1000.0, instrument_ids={"XAUUSD": 1}, open_positions=[1],
+                           failures={("close_all_positions", 1): RuntimeError()})
+
+    with pytest.raises(RuntimeError):
+        fake.close_all_positions(1)
+
+    assert fake.calls == [("close_all_positions", 1)]
+    assert fake.open_positions == [1]
+
+
+def test_scheduled_order_failure_raises_before_an_order_result_is_used():
+    failure = RuntimeError("timeout")
+    fake = FakeTradeLocker(balance=1000.0, instrument_ids={"XAUUSD": 1}, order_results=(9001,),
+                           failures={("create_order", 1): failure})
+
+    with pytest.raises(RuntimeError) as raised:
+        fake.create_order(1, quantity=0.1, side="buy")
+
+    assert raised.value is failure
+    assert fake.create_order(1, quantity=0.1, side="buy") == 9001

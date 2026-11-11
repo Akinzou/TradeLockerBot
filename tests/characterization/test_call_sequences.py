@@ -6,8 +6,6 @@ merge per-row close requests, split the critical section or drop an operator
 line unnoticed.
 """
 
-import re
-
 import pytest
 from tradelocker.exceptions import TLAPIOrderException
 
@@ -23,12 +21,11 @@ from tests.characterization.harness import (
     XAUUSD_ID,
     RecordingLock,
     broker,
+    console_lines,
     handle,
     order_rejection,
     payload,
 )
-
-ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 
 
 @pytest.mark.parametrize(
@@ -138,8 +135,6 @@ PLACED = "Order placed successfully, order ID: 9001"
     ],
 )
 def test_operator_console_lines(capsys, scenario, fake_args, lines, error, expected):
-    # Colour codes and the blank reset lines are presentation; the text, its
-    # order and its position inside the critical section are what count.
     fake = broker(**fake_args)
 
     if error:
@@ -148,5 +143,4 @@ def test_operator_console_lines(capsys, scenario, fake_args, lines, error, expec
     else:
         handle(fake, lines, RecordingLock(fake))
 
-    out = ANSI_ESCAPE.sub("", capsys.readouterr().out)
-    assert [line for line in out.splitlines() if line.strip()] == expected, scenario
+    assert console_lines(capsys) == expected, scenario
