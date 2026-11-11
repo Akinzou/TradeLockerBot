@@ -41,6 +41,13 @@ watched.
   secret (tracked in the migration roadmap). Until then, the decision's
   "no long-lived credential" benefit is not realised.
 
+## Outcome
+
+On 2026-11-11 the owner granted the repository Write access to the
+package. The re-run publish for `944991a` pushed `latest` with the workflow
+token, and the `PERSONAL_ACCESS_TOKEN` secret was deleted the same day.
+Revoking the token itself is done in the owner's account settings.
+
 ## Alternatives considered
 
 - **Renew the personal access token.** Rejected: it fixes today's symptom
