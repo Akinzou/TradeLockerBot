@@ -52,8 +52,10 @@ def handle_position_normal(tl, payload_list, lock):
         result = ExecuteSignal(TradeLockerBroker(tl), PrintingConsole()).execute(signal)
         if isinstance(result, Err):
             # The client's own exception object, raised inside the lock: the
-            # webhook thread fails as it did before the Result (ADR 0006).
-            # Reporting failures instead is a behaviour change for step 5.
+            # webhook thread fails with the same type, message and attributes
+            # as before the Result (ADR 0006). Reporting failures instead is a
+            # behaviour change, and must wait for step 3, because invalid input
+            # still raises from the use case.
             raise result.error.cause
 
 def main():

@@ -47,15 +47,15 @@ class ExecuteSignal:
         quantity = LotSizing.parse(signal.lot).quantity_for(balance.value)
         self._console.locked()
         if signal.action == "close":
-            closed = self._close_positions(signal.symbol)
-            if isinstance(closed, Err):
-                return closed
-        if signal.action == "open":
-            opened = self._replace_position(signal, quantity)
-            if isinstance(opened, Err):
-                return opened
+            outcome = self._close_positions(signal.symbol)
+        elif signal.action == "open":
+            outcome = self._replace_position(signal, quantity)
+        else:
+            outcome = Ok(None)
+        if isinstance(outcome, Err):
+            return outcome
         self._console.unlocked()
-        return Ok(None)
+        return outcome
 
     def _replace_position(self, signal: TradeSignal, quantity: float) -> Result[None, BrokerFailure]:
         closed = self._close_positions(signal.symbol)

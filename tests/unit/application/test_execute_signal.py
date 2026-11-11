@@ -1,6 +1,8 @@
 """``ExecuteSignal`` against in-memory ports that share one journal, so the
 order of broker calls and console lines relative to each other is checked."""
 
+from collections import Counter
+
 import pytest
 
 from tradelocker_bot.application.execute_signal import ExecuteSignal, TradeSignal
@@ -11,8 +13,11 @@ XAUUSD = 101
 
 
 class FakeBroker:
-    """Answers with ``Ok``; ``failures`` maps ``(journal entry, nth call)`` to
-    an exception whose ``BrokerFailure`` that call returns instead."""
+    """Answers with ``Ok``; ``failures`` maps ``(journal entry, nth call)``,
+    counted from 1, to an exception whose ``BrokerFailure`` that call returns
+    instead. Like ``FakeTradeLocker``, it refuses a key it would never reach."""
+
+    CALLS = frozenset({"balance", "instrument_id", "position_count", "request_close", "place"})
 
     def __init__(self, journal, balance=1000.0, rows=(0,), order_results=(9001,), failures=None):
         self._journal = journal
@@ -20,11 +25,13 @@ class FakeBroker:
         self._rows = list(rows)
         self._order_results = list(order_results)
         self._failures = dict(failures or {})
+        assert all(call in self.CALLS and nth >= 1 for call, nth in self._failures), self._failures
+        self._counts = Counter()
 
     def _answer(self, entry, value):
         self._journal.append(entry)
-        nth = sum(1 for seen in self._journal if seen[0] == entry[0])
-        failure = self._failures.get((entry[0], nth))
+        self._counts[entry[0]] += 1
+        failure = self._failures.get((entry[0], self._counts[entry[0]]))
         return Err(BrokerFailure(failure)) if failure is not None else Ok(value)
 
     def account_balance(self):
@@ -163,6 +170,11 @@ CLOSE = [("request_close", XAUUSD), ("closing", "XAUUSD")]
         ("order", ("place", 1), signal(), (0,), (9001,), [*START, LOOKUP, NO_ROWS, LOOKUP, PLACE]),
         ("order placed again", ("place", 2), signal(), (0,), (None, 9001),
          [*START, LOOKUP, NO_ROWS, LOOKUP, PLACE, ("retry", "buy"), PLACE]),
+        ("lookup on close", ("instrument_id", 1), signal(action="close"), (0,), (9001,), [*START, LOOKUP]),
+        ("position count on close", ("position_count", 1), signal(action="close"), (0,), (9001,),
+         [*START, LOOKUP, NO_ROWS]),
+        ("close request on close", ("request_close", 1), signal(action="close"), (1, 0), (9001,),
+         [*START, LOOKUP, NO_ROWS, ("request_close", XAUUSD)]),
         ("recount on close", ("position_count", 2), signal(action="close"), (1, 0), (9001,),
          [*START, LOOKUP, NO_ROWS, *CLOSE, NO_ROWS]),
     ],

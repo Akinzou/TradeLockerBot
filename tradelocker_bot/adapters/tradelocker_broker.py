@@ -8,14 +8,17 @@ from tradelocker_bot.domain.result import Err, Ok, Result
 T = TypeVar("T")
 
 
-def _answer(request: Callable[[], T]) -> Result[T, BrokerFailure]:
+def _answer(client_call: Callable[[], T]) -> Result[T, BrokerFailure]:
     # `Exception`, not a list of client exceptions: the client raises its own
     # `TLAPIException`, a bare `ValueError` for an unknown symbol, and whatever
     # `requests` and pandas raise underneath, so a narrower list would let an
     # unlisted failure escape as an exception after all. `BaseException` stays
     # out: an interrupt or interpreter exit is not the broker's answer.
+    # Only the client call goes in here; the adapter's own handling of the
+    # answer stays outside, so a bug in it raises instead of posing as an
+    # outage.
     try:
-        return Ok(request())
+        return Ok(client_call())
     except Exception as error:
         return Err(BrokerFailure(error))
 
@@ -34,17 +37,20 @@ class TradeLockerBroker:
     def account_balance(self) -> Result[float | None, BrokerFailure]:
         # `.get`, not `[...]`: the client builds the state from the broker's
         # column list, so a missing field must surface as `None`, as before.
-        return _answer(lambda: self._client.get_account_state().get("projectedBalance"))
+        state = _answer(self._client.get_account_state)
+        if isinstance(state, Err):
+            return state
+        return Ok(state.value.get("projectedBalance"))
 
     def instrument_id(self, symbol: str) -> Result[int, BrokerFailure]:
         return _answer(lambda: self._client.get_instrument_id_from_symbol_name(symbol))
 
     def open_position_count(self, instrument_id: int) -> Result[int, BrokerFailure]:
-        def count() -> int:
-            positions = self._client.get_all_positions()
-            return len(positions[positions["tradableInstrumentId"] == instrument_id])
-
-        return _answer(count)
+        positions = _answer(self._client.get_all_positions)
+        if isinstance(positions, Err):
+            return positions
+        rows = positions.value
+        return Ok(len(rows[rows["tradableInstrumentId"] == instrument_id]))
 
     def request_close(self, instrument_id: int) -> Result[None, BrokerFailure]:
         def close() -> None:

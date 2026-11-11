@@ -5,6 +5,7 @@ The fake is built directly rather than through the characterization harness,
 which imports the legacy entrypoint; adapter tests must not depend on it.
 """
 
+import pandas as pd
 import pytest
 from tradelocker.exceptions import TLAPIException
 
@@ -120,3 +121,23 @@ def test_an_interrupt_is_not_turned_into_a_failure():
     # Only `Exception` is the broker's; Ctrl+C and interpreter exit must still stop the thread.
     with pytest.raises(KeyboardInterrupt):
         TradeLockerBroker(client(failures={("get_account_state", 1): KeyboardInterrupt()})).account_balance()
+
+
+class AnswersWithoutTheExpectedShape:
+    def get_account_state(self):
+        return None
+
+    def get_all_positions(self):
+        return pd.DataFrame()
+
+
+@pytest.mark.parametrize(
+    ("read", "error"),
+    [
+        (lambda broker: broker.account_balance(), AttributeError),
+        (lambda broker: broker.open_position_count(GOLD), KeyError),
+    ],
+)
+def test_a_fault_in_handling_the_answer_raises_rather_than_posing_as_an_outage(read, error):
+    with pytest.raises(error):
+        read(TradeLockerBroker(AnswersWithoutTheExpectedShape()))

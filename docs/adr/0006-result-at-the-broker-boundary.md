@@ -30,7 +30,10 @@ handler re-raises the client's own exception object.
 2. **Broker port.** Every `Broker` method returns `Result[T, BrokerFailure]`.
    `BrokerFailure(cause)` holds the client's exception object as raised.
 3. **Adapter.** `TradeLockerBroker` turns any `Exception` from a client call
-   into `Err(BrokerFailure(error))`. The client raises its own
+   into `Err(BrokerFailure(error))`. Only the client call is wrapped: the
+   adapter's own handling of the answer (reading the balance field, counting
+   rows) stays outside, so a bug there raises instead of posing as a broker
+   outage. The client raises its own
    `TLAPIException`, a bare `ValueError` for an unknown symbol, and whatever
    `requests` and pandas raise underneath, so no narrower list is complete.
    `BaseException` (interrupts, interpreter exit) is not caught.
@@ -40,6 +43,14 @@ handler re-raises the client's own exception object.
 5. **Legacy delegate.** `handle_position_normal` raises `result.error.cause`
    inside the lock. That is the same object, so the webhook thread fails with
    the same type, message and attributes as before.
+
+   The traceback is not the same. It still runs from the delegate down
+   through the client to the raise site, but the use-case frames in between
+   are gone, because the exception left them as a value. ADR 0001's
+   equivalence rule covers type and outcome, not frames. The cost is
+   diagnostic: a failed instrument lookup no longer shows whether it was the
+   first or the second one. Logging the failure inside the use case would
+   recover that, and belongs with failure reporting in step 5.
 
 ### Kept out of the Result in this step
 
@@ -65,6 +76,12 @@ handler re-raises the client's own exception object.
 - Behaviour is unchanged. The webhook thread still dies with the client's
   exception. Reporting failures to the operator instead is a behaviour change
   for step 5 or 6.
+- `execute`'s return type covers broker failures only. Until step 3, invalid
+  input (a malformed lot, an unknown `isInvert`, a missing balance) still
+  raises from the use case, after any positions were already closed in the
+  `isInvert` case. A caller that stops re-raising, such as step 5's inbound
+  adapter, must therefore come after step 3 or keep handling those
+  exceptions.
 
 ## Alternatives considered
 
