@@ -25,12 +25,14 @@ they are outside the rule.
 
 ## Domain model
 
+- `parse_signal`: turns the webhook's lines into an `OpenSignal` or a
+  `CloseSignal`, or the first `InvalidSignal`, before any broker call
+  ([ADR 0008](adr/0008-validate-the-signal-before-any-broker-call.md)). An
+  `OpenSignal` already holds the `Side` to trade, with the inversion applied.
 - `LotSizing`: position size per unit of account balance, parsed from the
-  webhook's `<lot>/<divider>` field. It keeps the legacy semantics exactly,
-  including accepting nonsensical values, until roadmap step 3 adds validation.
-- `order_side`: the side to trade, given the alert's direction and its
-  `Invert`/`NonInvert` flag. It keeps the legacy semantics too: directions are
-  not validated, and `Invert` turns anything but exactly `buy` into `buy`.
+  webhook's `<lot>/<balance step>` field. Both numbers must be positive and
+  finite; the constructor refuses anything else.
+- `Side`: `buy` or `sell`, and its `opposite`.
 - `Ok` / `Err` (`Result`): an outcome returned as a value. A result refuses
   truth testing, so a forgotten unwrap fails loudly
   ([ADR 0006](adr/0006-result-at-the-broker-boundary.md)).
@@ -40,18 +42,20 @@ they are outside the rule.
 [ADR 0005](adr/0005-execute-signal-use-case-and-ports.md) describes the
 design.
 
-- `ExecuteSignal` runs one alert: it reads the balance, sizes the position,
-  closes the instrument's positions and, for `open`, places a market order. It
-  keeps the legacy order of steps exactly, including the known defects listed
-  in the roadmap.
+- `ExecuteSignal` runs one valid signal. `close` closes the instrument's
+  positions. `open` reads the balance, sizes the position, closes the
+  instrument's positions and places a market order. It keeps the legacy order
+  of broker calls otherwise, including the known defects listed in the
+  roadmap.
 - `Broker` and `OperatorConsole` are its ports, one per process boundary.
   `TradeLockerBroker` and `PrintingConsole` in `tradelocker_bot.adapters`
   implement them.
 - Every `Broker` call returns a `Result`: a client exception comes back as
   `Err(BrokerFailure)` holding that exception, and `ExecuteSignal` returns
-  the first one at once. Lot and inversion errors still raise until step 3
-  validates the signal.
-- `main_without_ssl.py` still receives the webhook. Inside the lock it reads
-  the payload fields in the legacy order, builds the adapters and runs the use
-  case. On a failure it re-raises the client's own exception, so the webhook
-  thread fails as before. Step 5 moves that into an inbound adapter and a composition root.
+  the first one at once. A missing balance still raises from the lot sizing
+  until step 3b.
+- `main_without_ssl.py` still receives the webhook. It parses the payload
+  first; a rejected signal gets one operator line and nothing else. A valid
+  one runs inside the lock. On a broker failure it re-raises the client's own
+  exception, so the webhook thread fails as before. Step 5 moves that into an
+  inbound adapter and a composition root.

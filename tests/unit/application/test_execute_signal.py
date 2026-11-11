@@ -5,9 +5,11 @@ from collections import Counter
 
 import pytest
 
-from tradelocker_bot.application.execute_signal import ExecuteSignal, TradeSignal
+from tradelocker_bot.application.execute_signal import ExecuteSignal
 from tradelocker_bot.application.ports import BrokerFailure
+from tradelocker_bot.domain.lot_sizing import LotSizing
 from tradelocker_bot.domain.result import Err, Ok
+from tradelocker_bot.domain.signal import CloseSignal, OpenSignal, Side
 
 XAUUSD = 101
 
@@ -71,9 +73,12 @@ class FakeConsole:
         self._journal.append(("unlocked",))
 
 
-def signal(action="open", direction="buy", lot="0.01/100", invert="NonInvert"):
-    return TradeSignal(symbol="XAUUSD", direction=direction, lot=lot, take_profit=500,
-                       stop_loss=1000, action=action, invert=invert)
+def signal(side=Side.BUY, base_lot=0.01):
+    return OpenSignal(symbol="XAUUSD", side=side, sizing=LotSizing(base_lot=base_lot, balance_step=100.0),
+                      take_profit=500, stop_loss=1000)
+
+
+CLOSE_SIGNAL = CloseSignal(symbol="XAUUSD")
 
 
 def run(sig, **broker_args):
@@ -93,7 +98,7 @@ def run_raising(sig, error, **broker_args):
 START = [("balance",), ("locked",)]
 LOOKUP = ("instrument_id", "XAUUSD")
 NO_ROWS = ("position_count", XAUUSD)
-PLACE = ("place", XAUUSD, 0.1, "buy", 1000, 500)
+PLACE = ("place", XAUUSD, 0.1, Side.BUY, 1000, 500)
 
 
 def test_open_with_nothing_to_close_looks_up_twice_then_orders():
@@ -110,42 +115,26 @@ def test_open_requests_one_close_per_row_and_polls_until_none_are_left():
     ]
 
 
-def test_close_closes_without_a_second_lookup_or_an_order():
-    assert run(signal(action="close"), rows=(1, 0)) == [
-        *START, LOOKUP, NO_ROWS, ("request_close", XAUUSD), ("closing", "XAUUSD"), NO_ROWS, ("unlocked",),
+def test_close_needs_no_balance_and_makes_no_second_lookup_or_order():
+    assert run(CLOSE_SIGNAL, rows=(1, 0)) == [
+        ("locked",), LOOKUP, NO_ROWS, ("request_close", XAUUSD), ("closing", "XAUUSD"), NO_ROWS, ("unlocked",),
     ]
-
-
-@pytest.mark.parametrize("action", ["hold", "Open", " open", "close ", " close", ""])
-def test_any_other_action_only_reads_the_balance(action):
-    assert run(signal(action=action, invert="Sideways")) == [*START, ("unlocked",)]
 
 
 def test_quantity_is_sized_from_the_balance():
-    assert run(signal(), balance=1234.0)[5] == ("place", XAUUSD, 0.12, "buy", 1000, 500)
+    assert run(signal(), balance=1234.0)[5] == ("place", XAUUSD, 0.12, Side.BUY, 1000, 500)
 
 
-def test_inverted_side_is_ordered_and_named_in_the_retry_line():
-    journal = run(signal(invert="Invert"), order_results=(None, 0, 9001))
+def test_the_signal_side_is_ordered_and_named_in_the_retry_line():
+    journal = run(signal(side=Side.SELL), order_results=(None, 0, 9001))
 
     assert journal[4:] == [
         LOOKUP,
-        ("place", XAUUSD, 0.1, "sell", 1000, 500), ("retry", "sell"),
-        ("place", XAUUSD, 0.1, "sell", 1000, 500), ("retry", "sell"),
-        ("place", XAUUSD, 0.1, "sell", 1000, 500), ("placed", 9001),
+        ("place", XAUUSD, 0.1, Side.SELL, 1000, 500), ("retry", Side.SELL),
+        ("place", XAUUSD, 0.1, Side.SELL, 1000, 500), ("retry", Side.SELL),
+        ("place", XAUUSD, 0.1, Side.SELL, 1000, 500), ("placed", 9001),
         ("unlocked",),
     ]
-
-
-def test_invalid_invert_fails_after_closing_and_the_second_lookup():
-    journal = run_raising(signal(invert="Sideways"), ValueError, rows=(1, 0))
-
-    assert journal == [*START, LOOKUP, NO_ROWS, ("request_close", XAUUSD), ("closing", "XAUUSD"), NO_ROWS, LOOKUP]
-
-
-@pytest.mark.parametrize(("lot", "error"), [("abc/100", ValueError), ("0.01/0", ZeroDivisionError)])
-def test_malformed_lot_fails_after_the_balance_before_locked(lot, error):
-    assert run_raising(signal(lot=lot), error) == [("balance",)]
 
 
 def test_balance_reaches_the_lot_sizing_uncoerced():
@@ -158,7 +147,7 @@ CLOSE = [("request_close", XAUUSD), ("closing", "XAUUSD")]
 @pytest.mark.parametrize(
     ("scenario", "failing_call", "sig", "rows", "order_results", "expected"),
     [
-        ("balance, ahead of a malformed lot", ("balance", 1), signal(lot="abc/100"), (0,), (9001,), [("balance",)]),
+        ("balance", ("balance", 1), signal(), (0,), (9001,), [("balance",)]),
         ("first lookup", ("instrument_id", 1), signal(), (0,), (9001,), [*START, LOOKUP]),
         ("position count", ("position_count", 1), signal(), (0,), (9001,), [*START, LOOKUP, NO_ROWS]),
         ("first close request: no closing line", ("request_close", 1), signal(), (2, 0), (9001,),
@@ -169,14 +158,14 @@ CLOSE = [("request_close", XAUUSD), ("closing", "XAUUSD")]
         ("second lookup", ("instrument_id", 2), signal(), (0,), (9001,), [*START, LOOKUP, NO_ROWS, LOOKUP]),
         ("order", ("place", 1), signal(), (0,), (9001,), [*START, LOOKUP, NO_ROWS, LOOKUP, PLACE]),
         ("order placed again", ("place", 2), signal(), (0,), (None, 9001),
-         [*START, LOOKUP, NO_ROWS, LOOKUP, PLACE, ("retry", "buy"), PLACE]),
-        ("lookup on close", ("instrument_id", 1), signal(action="close"), (0,), (9001,), [*START, LOOKUP]),
-        ("position count on close", ("position_count", 1), signal(action="close"), (0,), (9001,),
-         [*START, LOOKUP, NO_ROWS]),
-        ("close request on close", ("request_close", 1), signal(action="close"), (1, 0), (9001,),
-         [*START, LOOKUP, NO_ROWS, ("request_close", XAUUSD)]),
-        ("recount on close", ("position_count", 2), signal(action="close"), (1, 0), (9001,),
-         [*START, LOOKUP, NO_ROWS, *CLOSE, NO_ROWS]),
+         [*START, LOOKUP, NO_ROWS, LOOKUP, PLACE, ("retry", Side.BUY), PLACE]),
+        ("lookup on close", ("instrument_id", 1), CLOSE_SIGNAL, (0,), (9001,), [("locked",), LOOKUP]),
+        ("position count on close", ("position_count", 1), CLOSE_SIGNAL, (0,), (9001,),
+         [("locked",), LOOKUP, NO_ROWS]),
+        ("close request on close", ("request_close", 1), CLOSE_SIGNAL, (1, 0), (9001,),
+         [("locked",), LOOKUP, NO_ROWS, ("request_close", XAUUSD)]),
+        ("recount on close", ("position_count", 2), CLOSE_SIGNAL, (1, 0), (9001,),
+         [("locked",), LOOKUP, NO_ROWS, *CLOSE, NO_ROWS]),
     ],
 )
 def test_a_broker_failure_is_returned_at_once_without_unlocked(

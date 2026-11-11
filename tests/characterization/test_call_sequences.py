@@ -37,14 +37,13 @@ from tests.characterization.harness import (
          [BALANCE, LOOKUP, POSITIONS, CLOSE, POSITIONS, LOOKUP, ORDER]),
         ("open ignores other instruments", [EURUSD_ID], 1, "open",
          [BALANCE, LOOKUP, POSITIONS, LOOKUP, ORDER]),
+        # close sizes nothing, so it no longer reads the balance (ADR 0008).
         ("close", [XAUUSD_ID], 1, "close",
-         [BALANCE, LOOKUP, POSITIONS, CLOSE, POSITIONS]),
+         [LOOKUP, POSITIONS, CLOSE, POSITIONS]),
         ("close re-requested until filled", [XAUUSD_ID], 3, "close",
-         [BALANCE, LOOKUP, POSITIONS, CLOSE, POSITIONS, CLOSE, POSITIONS, CLOSE, POSITIONS]),
+         [LOOKUP, POSITIONS, CLOSE, POSITIONS, CLOSE, POSITIONS, CLOSE, POSITIONS]),
         ("one close request per position row", [XAUUSD_ID, XAUUSD_ID], 1, "close",
-         [BALANCE, LOOKUP, POSITIONS, CLOSE, CLOSE, POSITIONS]),
-        ("unknown action still reads the balance", [XAUUSD_ID], 1, "hold",
-         [BALANCE]),
+         [LOOKUP, POSITIONS, CLOSE, CLOSE, POSITIONS]),
     ],
 )
 def test_exact_broker_call_sequence(scenario, open_positions, close_requests_to_fill, action, expected):
@@ -66,7 +65,7 @@ def test_order_without_an_id_is_placed_again():
     assert fake.calls == [BALANCE, LOOKUP, POSITIONS, LOOKUP, ORDER, ORDER]
 
 
-@pytest.mark.parametrize("action", ["open", "close", "hold"])
+@pytest.mark.parametrize("action", ["open", "close"])
 def test_whole_handling_is_one_critical_section(action):
     fake = broker(open_positions=[XAUUSD_ID])
     lock = RecordingLock(fake)
@@ -83,9 +82,7 @@ def test_whole_handling_is_one_critical_section(action):
         ("broker rejects the order",
          {"order_results": (order_rejection(),)},
          payload(), TLAPIOrderException),
-        ("invalid isInvert", {}, payload(invert="Sideways"), ValueError),
-        ("malformed lot", {}, payload(lot="abc/100"), ValueError),
-        ("truncated payload", {}, payload()[:5], IndexError),
+        ("unknown symbol", {}, payload(symbol="GBPUSD"), ValueError),
     ],
 )
 def test_lock_is_released_when_handling_raises(scenario, fake_args, lines, error):
@@ -119,19 +116,11 @@ PLACED = "Order placed successfully, order ID: 9001"
         ("close re-requested until filled", {"open_positions": [XAUUSD_ID], "close_requests_to_fill": 3},
          payload(action="close"), None,
          [*LOCKED, CLOSING, CLOSING, CLOSING, *UNLOCKED]),
-        ("unknown action", {"open_positions": [XAUUSD_ID]}, payload(action="hold"), None,
-         [*LOCKED, *UNLOCKED]),
-        ("invalid isInvert", {"open_positions": [XAUUSD_ID]}, payload(invert="Sideways"), ValueError,
-         [*LOCKED, CLOSING, LOCK_RELEASED]),
         ("broker rejects the order",
          {"open_positions": [XAUUSD_ID],
           "order_results": (order_rejection(),)},
          payload(), TLAPIOrderException,
          [*LOCKED, CLOSING, LOCK_RELEASED]),
-        ("truncated payload", {}, payload()[:5], IndexError,
-         [LOCK_ACQUIRED, LOCK_RELEASED]),
-        ("malformed lot", {"open_positions": [XAUUSD_ID]}, payload(lot="abc/100"), ValueError,
-         [LOCK_ACQUIRED, LOCK_RELEASED]),
     ],
 )
 def test_operator_console_lines(capsys, scenario, fake_args, lines, error, expected):

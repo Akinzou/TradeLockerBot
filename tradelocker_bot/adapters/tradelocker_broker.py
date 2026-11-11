@@ -4,6 +4,7 @@ from tradelocker import TLAPI
 
 from tradelocker_bot.application.ports import BrokerFailure
 from tradelocker_bot.domain.result import Err, Ok, Result
+from tradelocker_bot.domain.signal import Side
 
 T = TypeVar("T")
 
@@ -60,12 +61,12 @@ class TradeLockerBroker:
         return _answer(close)
 
     def place_market_order(
-        self, instrument_id: int, quantity: float, side: str, stop_loss: int, take_profit: int
+        self, instrument_id: int, quantity: float, side: Side, stop_loss: int, take_profit: int
     ) -> Result[int | None, BrokerFailure]:
         return _answer(lambda: self._client.create_order(
             instrument_id,
             quantity=quantity,
-            side=side,
+            side=side.value,
             type_="market",
             stop_loss=stop_loss,
             take_profit=take_profit,

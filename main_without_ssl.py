@@ -7,8 +7,9 @@ from libs import AsciiAlerts
 from libs.URLgenerator import *
 from tradelocker_bot.adapters.console import PrintingConsole
 from tradelocker_bot.adapters.tradelocker_broker import TradeLockerBroker
-from tradelocker_bot.application.execute_signal import ExecuteSignal, TradeSignal
+from tradelocker_bot.application.execute_signal import ExecuteSignal
 from tradelocker_bot.domain.result import Err
+from tradelocker_bot.domain.signal import parse_signal
 
 app = FastAPI()
 lock = threading.Lock()
@@ -35,27 +36,21 @@ def create_tl_instance(env, username, password, server, acc_num, acc_id):
     return TLAPI(environment=env, username=username, password=password, server=server)
 
 def handle_position_normal(tl, payload_list, lock):
+    console = PrintingConsole()
+    signal = parse_signal(payload_list)
+    if isinstance(signal, Err):
+        # Refused before the lock, so an invalid alert neither waits behind
+        # nor delays a valid one, and before any broker call; the thread ends
+        # without an exception, because the operator line says it all (ADR 0008).
+        console.rejected(signal.error)
+        return
     with lock:
-        # Read here, inside the lock and in the legacy field order, rather than
-        # in the use case: a short or non-numeric payload must keep failing
-        # with the same exception, inside the critical section, before any
-        # broker call (ADR 0005). Parsing it into domain values is step 3.
-        signal = TradeSignal(
-            symbol=payload_list[0],
-            direction=payload_list[1],
-            lot=payload_list[2],
-            take_profit=int(payload_list[3]),
-            stop_loss=int(payload_list[4]),
-            invert=payload_list[6],
-            action=payload_list[5],
-        )
-        result = ExecuteSignal(TradeLockerBroker(tl), PrintingConsole()).execute(signal)
+        result = ExecuteSignal(TradeLockerBroker(tl), console).execute(signal.value)
         if isinstance(result, Err):
             # The client's own exception object, raised inside the lock: the
             # webhook thread fails with the same type, message and attributes
-            # as before the Result (ADR 0006). Reporting failures instead is a
-            # behaviour change, and must wait for step 3, because invalid input
-            # still raises from the use case.
+            # as before the Result (ADR 0006). Reporting broker failures
+            # instead is a behaviour change of its own (roadmap step 6).
             raise result.error.cause
 
 def main():

@@ -45,9 +45,12 @@ flowchart LR
 1. A TradingView strategy fires an alert with a seven-line message.
 2. The bot receives it on its webhook URL and replies immediately; the signal
    is handled in the background.
-3. Signals are processed one at a time. For each one the bot reads the
-   account balance, closes any open position on the instrument, and, for
-   `open`, places a market order with the configured take profit and stop loss.
+3. The bot checks the message first; an invalid one is logged and ignored.
+   Valid signals are processed one at a time. For `close`, the bot closes
+   every open position on the instrument. For `open`, it first sizes the
+   position from the account balance, then closes the instrument's open
+   positions and places a market order with the configured take profit and
+   stop loss.
 
 ## Requirements
 
@@ -132,15 +135,15 @@ NonInvert
 | Line | Example                            | Meaning                                                                                                   |
 |------|------------------------------------|-----------------------------------------------------------------------------------------------------------|
 | 1    | `XAUUSD`                           | Instrument name exactly as TradeLocker lists it.                                                          |
-| 2    | `{{strategy.order.action}}`        | Direction: `buy` or `sell`, lowercase. TradingView fills this in.                                         |
+| 2    | `{{strategy.order.action}}`        | Direction: `buy` or `sell`; case and surrounding spaces are ignored. TradingView fills this in.           |
 | 3    | `0.01/100`                         | Position size; see [Dynamic lot size](#dynamic-lot-size).                                                 |
 | 4    | `500`                              | Take profit as a whole-number offset from the entry price.                                                |
 | 5    | `1000`                             | Stop loss as a whole-number offset from the entry price.                                                  |
-| 6    | `{{strategy.order.alert_message}}` | Action: `open` or `close`, lowercase. Set it as the order's alert message in your Pine Script strategy.   |
-| 7    | `NonInvert`                        | `NonInvert` keeps the direction; `Invert` reverses it. See [Inverting the direction](#inverting-the-direction). |
+| 6    | `{{strategy.order.alert_message}}` | Action: `open` or `close`; case and surrounding spaces are ignored. Set it as the order's alert message in your Pine Script strategy. |
+| 7    | `NonInvert`                        | Exactly `NonInvert` (keep the direction) or `Invert` (reverse it). See [Inverting the direction](#inverting-the-direction). |
 
-All seven lines must be present and valid for **every** signal, including
-`close`: the bot reads lines 3 to 5 and line 7 before it looks at the action.
+`open` needs all seven lines. `close` reads only lines 1 and 6, so the other
+lines may hold anything, or be left out.
 
 What each action does:
 
@@ -149,17 +152,21 @@ What each action does:
 - **`close`**: closes every open position on the instrument.
 
 > [!IMPORTANT]
-> Values are matched exactly: case and surrounding spaces count, so `Open` or
-> `open ` is ignored like any other unknown action. An invalid line 3, 4, 5 or
-> 7 stops the signal; with `open`, an invalid line 7 stops it **after**
-> existing positions were closed, so no new order is placed. The webhook still
-> answers `200 OK` in all these cases, so check the bot's log.
+> The bot checks every line a signal needs before it touches the account. If
+> one is missing or invalid, nothing is closed or opened, and the log shows a
+> red line naming it, for example:
+>
+> ```text
+> Signal rejected: line 3 (lot) is '0.01', expected <lot>/<balance step>, two positive numbers
+> ```
+>
+> The webhook still answers `200 OK`, so check the bot's log.
 
 ### Dynamic lot size
 
 Line 3 uses the format `<lot>/<balance step>`: open `<lot>` lots for every
 `<balance step>` of account balance. The result is rounded to two decimals.
-Both parts are required, and the step must not be `0`.
+Both parts are required, and both must be positive numbers.
 
 ```text
 lot = round(balance / balance_step * base_lot, 2)
@@ -210,6 +217,12 @@ Then start the container again with the same `docker run` command. If you use
 `url=generate`, a new webhook path is generated, so update your TradingView
 alerts.
 
+> [!NOTE]
+> Since signal validation ([ADR 0008](docs/adr/0008-validate-the-signal-before-any-broker-call.md)),
+> line 2 and line 6 ignore case and surrounding spaces. An alert with `Open`
+> or `close ` used to be ignored and now trades, and `close` no longer needs
+> lines 2 to 5 and 7. Check your alerts' messages before you update.
+
 ## Security
 
 - **Keep the webhook path secret.** It is the only thing protecting the
@@ -232,9 +245,8 @@ alerts.
 
 | Symptom                                     | Likely cause                                                                                   |
 |---------------------------------------------|------------------------------------------------------------------------------------------------|
-| No trade after an alert                     | Fewer than seven lines, a different line order, line 6 not exactly `open` or `close` (case and spaces count), a lot without `/` or with step `0`, or a take profit or stop loss that is not a whole number. The log shows the error. |
-| Position closed but no new one opened       | Line 7 is not exactly `Invert` or `NonInvert`, line 2 is not lowercase `buy` or `sell` with `NonInvert`, or the broker rejected the order (check the log). |
-| Trades on the wrong side                    | Line 2 is not lowercase `buy` or `sell` and line 7 is `Invert`: any other spelling becomes `buy`. |
+| No trade after an alert                     | The log shows `Signal rejected:` with the line to fix. Otherwise the broker refused a call, and the log shows its error. |
+| Position closed but no new one opened       | The broker rejected the order; the log shows its error. |
 | Bot does not start, login fails             | Wrong credentials or `env`, or a password with spaces or shell characters (see [Configuration](#configuration)). |
 | `Method Not Allowed` in the browser         | Expected; see [Verifying the setup](#verifying-the-setup).                                     |
 | Error about account number and ID at start  | Both `acc_id` and `acc_num` are set; keep only one.                                            |
