@@ -66,6 +66,9 @@ close-and-confirm operation.
 
 ### Errors
 
+*Superseded by [ADR 0006](0006-result-at-the-broker-boundary.md): broker
+failures are now returned as a Result.*
+
 Ports raise the client's exceptions unchanged, and the use case lets them
 propagate. A Result at the port and use-case boundary follows as its own
 structure step (roadmap 4b), in which the legacy delegate turns a failure

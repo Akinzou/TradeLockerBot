@@ -31,6 +31,9 @@ they are outside the rule.
 - `order_side`: the side to trade, given the alert's direction and its
   `Invert`/`NonInvert` flag. It keeps the legacy semantics too: directions are
   not validated, and `Invert` turns anything but exactly `buy` into `buy`.
+- `Ok` / `Err` (`Result`): an outcome returned as a value. A result refuses
+  truth testing, so a forgotten unwrap fails loudly
+  ([ADR 0006](adr/0006-result-at-the-broker-boundary.md)).
 
 ## Application
 
@@ -44,6 +47,11 @@ design.
 - `Broker` and `OperatorConsole` are its ports, one per process boundary.
   `TradeLockerBroker` and `PrintingConsole` in `tradelocker_bot.adapters`
   implement them.
+- Every `Broker` call returns a `Result`: a client exception comes back as
+  `Err(BrokerFailure)` holding that exception, and `ExecuteSignal` returns
+  the first one at once. Lot and inversion errors still raise until step 3
+  validates the signal.
 - `main_without_ssl.py` still receives the webhook. Inside the lock it reads
   the payload fields in the legacy order, builds the adapters and runs the use
-  case. Step 5 moves that into an inbound adapter and a composition root.
+  case. On a failure it re-raises the client's own exception, so the webhook
+  thread fails as before. Step 5 moves that into an inbound adapter and a composition root.

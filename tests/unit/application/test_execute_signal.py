@@ -4,42 +4,44 @@ order of broker calls and console lines relative to each other is checked."""
 import pytest
 
 from tradelocker_bot.application.execute_signal import ExecuteSignal, TradeSignal
+from tradelocker_bot.application.ports import BrokerFailure
+from tradelocker_bot.domain.result import Err, Ok
 
 XAUUSD = 101
 
 
-class Rejected(Exception):
-    pass
-
-
 class FakeBroker:
-    def __init__(self, journal, balance=1000.0, rows=(0,), order_results=(9001,)):
+    """Answers with ``Ok``; ``failures`` maps ``(journal entry, nth call)`` to
+    an exception whose ``BrokerFailure`` that call returns instead."""
+
+    def __init__(self, journal, balance=1000.0, rows=(0,), order_results=(9001,), failures=None):
         self._journal = journal
         self._balance = balance
         self._rows = list(rows)
         self._order_results = list(order_results)
+        self._failures = dict(failures or {})
+
+    def _answer(self, entry, value):
+        self._journal.append(entry)
+        nth = sum(1 for seen in self._journal if seen[0] == entry[0])
+        failure = self._failures.get((entry[0], nth))
+        return Err(BrokerFailure(failure)) if failure is not None else Ok(value)
 
     def account_balance(self):
-        self._journal.append(("balance",))
-        return self._balance
+        return self._answer(("balance",), self._balance)
 
     def instrument_id(self, symbol):
-        self._journal.append(("instrument_id", symbol))
-        return XAUUSD
+        return self._answer(("instrument_id", symbol), XAUUSD)
 
     def open_position_count(self, instrument_id):
-        self._journal.append(("position_count", instrument_id))
-        return self._rows.pop(0)
+        return self._answer(("position_count", instrument_id), self._rows.pop(0))
 
     def request_close(self, instrument_id):
-        self._journal.append(("request_close", instrument_id))
+        return self._answer(("request_close", instrument_id), None)
 
     def place_market_order(self, instrument_id, quantity, side, stop_loss, take_profit):
-        self._journal.append(("place", instrument_id, quantity, side, stop_loss, take_profit))
-        result = self._order_results.pop(0)
-        if isinstance(result, Exception):
-            raise result
-        return result
+        return self._answer(("place", instrument_id, quantity, side, stop_loss, take_profit),
+                            self._order_results.pop(0))
 
 
 class FakeConsole:
@@ -69,7 +71,7 @@ def signal(action="open", direction="buy", lot="0.01/100", invert="NonInvert"):
 
 def run(sig, **broker_args):
     journal = []
-    ExecuteSignal(FakeBroker(journal, **broker_args), FakeConsole(journal)).execute(sig)
+    assert ExecuteSignal(FakeBroker(journal, **broker_args), FakeConsole(journal)).execute(sig) == Ok(None)
     return journal
 
 
@@ -143,7 +145,37 @@ def test_balance_reaches_the_lot_sizing_uncoerced():
     assert run_raising(signal(), TypeError, balance=None) == [("balance",)]
 
 
-def test_broker_rejection_propagates_without_unlocked():
-    journal = run_raising(signal(), Rejected, order_results=(Rejected(),))
+CLOSE = [("request_close", XAUUSD), ("closing", "XAUUSD")]
 
-    assert journal[-1] == PLACE
+
+@pytest.mark.parametrize(
+    ("scenario", "failing_call", "sig", "rows", "order_results", "expected"),
+    [
+        ("balance, ahead of a malformed lot", ("balance", 1), signal(lot="abc/100"), (0,), (9001,), [("balance",)]),
+        ("first lookup", ("instrument_id", 1), signal(), (0,), (9001,), [*START, LOOKUP]),
+        ("position count", ("position_count", 1), signal(), (0,), (9001,), [*START, LOOKUP, NO_ROWS]),
+        ("first close request: no closing line", ("request_close", 1), signal(), (2, 0), (9001,),
+         [*START, LOOKUP, NO_ROWS, ("request_close", XAUUSD)]),
+        ("second close request", ("request_close", 2), signal(), (2, 0), (9001,),
+         [*START, LOOKUP, NO_ROWS, *CLOSE, ("request_close", XAUUSD)]),
+        ("recount", ("position_count", 2), signal(), (1, 0), (9001,), [*START, LOOKUP, NO_ROWS, *CLOSE, NO_ROWS]),
+        ("second lookup", ("instrument_id", 2), signal(), (0,), (9001,), [*START, LOOKUP, NO_ROWS, LOOKUP]),
+        ("order", ("place", 1), signal(), (0,), (9001,), [*START, LOOKUP, NO_ROWS, LOOKUP, PLACE]),
+        ("order placed again", ("place", 2), signal(), (0,), (None, 9001),
+         [*START, LOOKUP, NO_ROWS, LOOKUP, PLACE, ("retry", "buy"), PLACE]),
+        ("recount on close", ("position_count", 2), signal(action="close"), (1, 0), (9001,),
+         [*START, LOOKUP, NO_ROWS, *CLOSE, NO_ROWS]),
+    ],
+)
+def test_a_broker_failure_is_returned_at_once_without_unlocked(
+    scenario, failing_call, sig, rows, order_results, expected
+):
+    cause = RuntimeError(scenario)
+    journal = []
+    broker = FakeBroker(journal, rows=rows, order_results=order_results, failures={failing_call: cause})
+
+    result = ExecuteSignal(broker, FakeConsole(journal)).execute(sig)
+
+    assert result == Err(BrokerFailure(cause)), scenario
+    assert result.error.cause is cause, scenario
+    assert journal == expected, scenario

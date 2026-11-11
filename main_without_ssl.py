@@ -8,6 +8,7 @@ from libs.URLgenerator import *
 from tradelocker_bot.adapters.console import PrintingConsole
 from tradelocker_bot.adapters.tradelocker_broker import TradeLockerBroker
 from tradelocker_bot.application.execute_signal import ExecuteSignal, TradeSignal
+from tradelocker_bot.domain.result import Err
 
 app = FastAPI()
 lock = threading.Lock()
@@ -48,7 +49,12 @@ def handle_position_normal(tl, payload_list, lock):
             invert=payload_list[6],
             action=payload_list[5],
         )
-        ExecuteSignal(TradeLockerBroker(tl), PrintingConsole()).execute(signal)
+        result = ExecuteSignal(TradeLockerBroker(tl), PrintingConsole()).execute(signal)
+        if isinstance(result, Err):
+            # The client's own exception object, raised inside the lock: the
+            # webhook thread fails as it did before the Result (ADR 0006).
+            # Reporting failures instead is a behaviour change for step 5.
+            raise result.error.cause
 
 def main():
     args = parse_args()
