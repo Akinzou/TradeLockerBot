@@ -50,11 +50,12 @@ A code-file size budget (300 lines for `.py`, `.sh` and `.ps1`) is enforced by
 - `docker-image.yml` matches the CI workflow by its `name:`. Renaming the CI
   workflow requires updating the trigger in the same change.
 - The published image is rebuilt from that commit, not promoted from the CI
-  build. Because `requirements.txt` is unpinned and the Dockerfile runs
-  `apt-get update`, the published image can contain dependency versions no CI
-  run tested. Pinning dependencies is tracked in the migration roadmap; it fixes
-  the cause, while promoting the CI image would only hide the drift until the
-  next rebuild.
+  build. The broker client `tradelocker` is pinned, and CI checks that the
+  built image installs the pinned version, but its dependencies, `fastapi` and
+  `uvicorn` are not pinned, and the Dockerfile runs `apt-get update`, so the published image can still contain
+  versions no CI run tested. A full lock is tracked in the migration roadmap; it
+  fixes the cause, while promoting the CI image would only hide the drift until
+  the next rebuild.
 - Semgrep's version is pinned, but its rule packs come live from the Semgrep
   registry. A newly published `ERROR` rule can turn `master` red, and block
   publishing, with no code change. We accept this: a new blocking finding is

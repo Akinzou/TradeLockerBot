@@ -5,7 +5,7 @@ fake answers, so a renamed or missing argument fails here exactly as it would
 against the broker. A free-form ``**kwargs`` fake would let such mistakes pass
 the whole suite and only surface in production.
 
-Return values and failure modes follow tradelocker 0.56.2: ``create_order``
+Return values and failure modes follow ``TRADELOCKER_VERSION``: ``create_order``
 returns an integer id and *raises* ``TLAPIOrderException`` on rejection, and
 ``close_all_positions`` only requests a close, which the broker may fill later.
 
@@ -21,6 +21,10 @@ import inspect
 
 import pandas as pd
 from tradelocker import TLAPI
+
+# The client version this fake mirrors; requirements.txt pins the same one
+# (tests/test_broker_client_version.py).
+TRADELOCKER_VERSION = "0.56.2"
 
 
 def _bind_to_real(method_name, *args, **kwargs):
