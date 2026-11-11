@@ -1,0 +1,5 @@
+# Private agent rules (owner's IP) - must never be committed to this public repo.
+.claude/rules/
+CLAUDE.md
+CLAUDE.local.md
+AGENTS.md
