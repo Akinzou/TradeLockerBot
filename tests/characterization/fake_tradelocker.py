@@ -8,6 +8,13 @@ the whole suite and only surface in production.
 Return values and failure modes follow tradelocker 0.56.2: ``create_order``
 returns an integer id and *raises* ``TLAPIOrderException`` on rejection, and
 ``close_all_positions`` only requests a close, which the broker may fill later.
+
+Argument *types* are deliberately not checked. ``TLAPI`` methods are wrapped
+in ``tl_typechecked``, which is typeguard's ``typechecked`` only when typeguard
+is installed and a no-op otherwise. typeguard is not a tradelocker dependency
+and is absent from the image, so production forwards any value (e.g.
+``side="Buy"``) to the broker unchecked. Type-checking here would pin
+rejections that production never performs.
 """
 
 import inspect

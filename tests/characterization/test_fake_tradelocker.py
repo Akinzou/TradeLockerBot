@@ -1,5 +1,7 @@
 """The fake is only a safe stand-in while it refuses calls the real client refuses."""
 
+import importlib.util
+
 import pytest
 
 from tests.characterization.fake_tradelocker import FakeTradeLocker
@@ -22,3 +24,10 @@ def test_fake_rejects_missing_required_create_order_argument():
 def test_fake_rejects_keyword_the_real_close_all_positions_does_not_have():
     with pytest.raises(TypeError):
         _fake().close_all_positions(instrument_id=1)
+
+
+def test_tradelocker_runs_without_runtime_type_checks():
+    # The fake skips type checks because production does (see its docstring).
+    # If a dependency ever pulls in typeguard, TLAPI starts rejecting values the
+    # fake accepts, and every pin about unvalidated arguments becomes fiction.
+    assert importlib.util.find_spec("typeguard") is None
