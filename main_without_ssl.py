@@ -5,6 +5,7 @@ import uvicorn
 import argparse
 from libs import AsciiAlerts
 from libs.URLgenerator import *
+from tradelocker_bot.domain.lot_sizing import LotSizing
 
 app = FastAPI()
 lock = threading.Lock()
@@ -71,8 +72,7 @@ def handle_position_normal(tl, payload_list, lock):
         isInvert = payload_list[6]
         balance = tl.get_account_state().get("projectedBalance")
 
-        minilot, per = map(float, mainLot.split('/'))
-        lot = round((balance / per) * minilot, 2)
+        lot = LotSizing.parse(mainLot).quantity_for(balance)
 
         print("Normal: Locked")
         if payload_list[5] == "close":
