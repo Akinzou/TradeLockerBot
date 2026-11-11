@@ -112,6 +112,8 @@ PLACED = "Order placed successfully, order ID: 9001"
 @pytest.mark.parametrize(
     ("scenario", "fake_args", "lines", "error", "expected"),
     [
+        ("open, nothing to close", {}, payload(), None,
+         [*LOCKED, PLACED, *UNLOCKED]),
         ("open replaces two position rows", {"open_positions": [XAUUSD_ID, XAUUSD_ID]}, payload(), None,
          [*LOCKED, CLOSING, CLOSING, PLACED, *UNLOCKED]),
         ("order placed again", {"order_results": (None, 9001)}, payload(), None,
@@ -123,6 +125,13 @@ PLACED = "Order placed successfully, order ID: 9001"
          [*LOCKED, *UNLOCKED]),
         ("invalid isInvert", {"open_positions": [XAUUSD_ID]}, payload(invert="Sideways"), ValueError,
          [*LOCKED, CLOSING, LOCK_RELEASED]),
+        ("broker rejects the order",
+         {"open_positions": [XAUUSD_ID],
+          "order_results": (TLAPIOrderException({}, {"errmsg": "Not enough margin"}),)},
+         payload(), TLAPIOrderException,
+         [*LOCKED, CLOSING, LOCK_RELEASED]),
+        ("truncated payload", {}, payload()[:5], IndexError,
+         [LOCK_ACQUIRED, LOCK_RELEASED]),
         ("malformed lot", {"open_positions": [XAUUSD_ID]}, payload(lot="abc/100"), ValueError,
          [LOCK_ACQUIRED, LOCK_RELEASED]),
     ],

@@ -24,13 +24,16 @@ from tradelocker import TLAPI
 
 
 def _bind_to_real(method_name, *args, **kwargs):
-    """Return the passed arguments by parameter name, as the real method sees them.
+    """Return every argument by parameter name, defaults filled in, as the real
+    method sees them.
 
-    Recording by name rather than by position lets a caller switch between
-    positional and keyword spelling without changing what the pins compare:
-    the broker receives the same request either way.
+    Recording the full request rather than the call's spelling lets a caller
+    switch between positional and keyword arguments, or pass a default
+    explicitly, without changing what the pins compare: the broker receives
+    the same request either way.
     """
     bound = inspect.signature(getattr(TLAPI, method_name)).bind(None, *args, **kwargs)
+    bound.apply_defaults()
     arguments = dict(bound.arguments)
     del arguments["self"]
     return arguments
@@ -74,7 +77,7 @@ class FakeTradeLocker:
         return pd.DataFrame({"tradableInstrumentId": self._open_positions}, dtype="int64")
 
     def close_all_positions(self, *args, **kwargs):
-        instrument_id = _bind_to_real("close_all_positions", *args, **kwargs).get("instrument_id_filter", 0)
+        instrument_id = _bind_to_real("close_all_positions", *args, **kwargs)["instrument_id_filter"]
         self.calls.append(("close_all_positions", instrument_id))
         requests = self._close_requests.get(instrument_id, 0) + 1
         self._close_requests[instrument_id] = requests

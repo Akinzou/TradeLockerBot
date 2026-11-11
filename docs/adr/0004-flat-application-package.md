@@ -18,8 +18,9 @@ create them. A fitness test (`tests/test_domain_dependencies.py`) allows the
 domain to import only its own package and an explicitly named set of pure
 standard-library modules, and forbids the builtins that do I/O or load code
 (`open`, `print`, `input`, `exit`, `eval`, `__import__`, `globals` and
-similar), as a guard against accidents rather than a sandbox. The import check is a true allow-list, so a new third-party package,
-layer or impure stdlib module fails CI without anyone having to foresee it.
+similar), as a guard against accidents rather than a sandbox. The import
+check is a true allow-list, so a new third-party package, layer or impure
+stdlib module fails CI without anyone having to foresee it.
 
 ## Consequences
 

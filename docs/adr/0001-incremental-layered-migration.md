@@ -2,9 +2,10 @@
 
 - Status: Accepted
 - Date: 2026-11-11
-- Amended: 2026-11-11, before any structure step relied on it: the
-  lock and console-line clauses of rule 2 were added, and
-  `tests/characterization/test_call_sequences.py` pins them.
+- Amended: 2026-11-11: the lock and console-line clauses of rule 2 were
+  added, and `tests/characterization/test_call_sequences.py` pins them. Step 2
+  (lot sizing, #21) merged under the original wording; the new pins pass on
+  its result, so it also meets the amended rule.
 
 ## Context
 

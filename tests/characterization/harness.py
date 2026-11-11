@@ -16,14 +16,22 @@ EURUSD_ID = 202
 
 # One shared literal, so a declared change to an order field is made in one
 # place; read-only, so no test can alter the expectation for the tests after it.
+# It lists every parameter, defaults included, because the fake records the
+# full request the broker receives.
 DEFAULT_ORDER = MappingProxyType({
     "quantity": 0.1,
     "side": "buy",
+    "price": None,
     "type_": "market",
-    "stop_loss": 1000,
+    "validity": None,
+    "position_netting": False,
     "take_profit": 500,
-    "stop_loss_type": "offset",
     "take_profit_type": "offset",
+    "stop_loss": 1000,
+    "stop_loss_type": "offset",
+    "stop_price": None,
+    "strategy_id": None,
+    "_ignore_len_check": False,
 })
 
 LOCK_ACQUIRED = "[lock acquired]"
@@ -69,9 +77,11 @@ class RecordingLock:
         return acquired
 
     def release(self):
+        # Release first: a double release must fail before it is logged, so
+        # the record never shows a release that did not happen.
+        self._lock.release()
         self.events.append(("release", len(self._fake.calls)))
         print(LOCK_RELEASED)
-        self._lock.release()
 
     def locked(self):
         return self._lock.locked()
