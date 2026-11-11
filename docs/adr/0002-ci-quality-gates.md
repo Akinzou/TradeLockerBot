@@ -22,6 +22,13 @@ on every push to `master`:
 | `docker-build` | the image fails to build                                                                             |
 | `ci-ok`        | any job above did not succeed; this is the only status check required by `master` branch protection |
 
+*Update:* since [ADR 0007](0007-locked-runtime-dependencies.md), `tests` also
+fails when the dev tools moved a locked package, and `docker-build` fails
+when the image's packages differ from the lock. Since
+[ADR 0017](0017-override-the-clients-vulnerable-pins.md), `tests` and
+`docker-build` also fail when the installed lock does not hold what its
+packages need, or an override is not honoured or no longer needed.
+
 Semgrep `WARNING` and `INFO` findings never fail the build. They are written
 to the job summary, and each pull request description records the decision
 for each one: fixed now, or accepted with a reason.

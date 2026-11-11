@@ -377,3 +377,4 @@ layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
 | [0014](adr/0014-require-a-leading-slash.md) | Refuse a webhook path without a leading slash |
 | [0015](adr/0015-refuse-braces-in-the-webhook-path.md) | Refuse braces in the webhook path |
 | [0016](adr/0016-hide-the-request-line-in-the-access-log.md) | Hide the request line in the access log |
+| [0017](adr/0017-override-the-clients-vulnerable-pins.md) | Override the broker client's pins on vulnerable packages |
