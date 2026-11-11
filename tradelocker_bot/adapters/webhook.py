@@ -12,16 +12,18 @@ from fastapi import FastAPI, Request
 
 
 def create_app(path: str, handle: Callable[[list[str]], None]) -> FastAPI:
-    """The app that serves the webhook at ``path``.
+    """The app that serves the webhook at ``path``, and nothing else.
 
-    FastAPI's defaults are kept, the API docs included, and the request is
-    answered before ``handle`` finishes: both are known defects that change
-    in behaviour steps of their own (roadmap step 6), not in this move.
+    The request is still answered before ``handle`` finishes, a known defect
+    that changes in a behaviour step of its own (roadmap step 6).
     """
-    app = FastAPI()
+    # No OpenAPI schema, and with it no /docs or /redoc, which need it: the
+    # schema names every route, so serving it would publish the secret path
+    # (ADR 0011). docs_url and redoc_url stay at their defaults because they
+    # do nothing without the schema; setting them too would read as a second
+    # line of defence that is not there.
+    app = FastAPI(openapi_url=None)
 
-    # The function's name is part of the served OpenAPI document (its
-    # operation id and summary), so it keeps the legacy name.
     @app.post(path)
     async def process_webhook(request: Request):
         payload_bytes = await request.body()

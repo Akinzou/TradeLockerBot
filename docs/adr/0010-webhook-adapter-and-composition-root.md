@@ -51,6 +51,10 @@ flowchart TB
    broker or the lock. The route function keeps the name `process_webhook`,
    because the served OpenAPI document derives its operation id and summary
    from that name.
+
+   *Update:* step 6 ([ADR 0011](0011-serve-no-api-docs.md)) stopped serving
+   the OpenAPI document and the docs pages, so the name no longer shows
+   anywhere.
 2. **Signal handler** (`adapters/signal_handler.py`). `SignalHandler.handle`
    parses the lines and refuses an invalid signal before the lock. It then
    runs the use case inside the lock. A refusal becomes one operator line,
@@ -129,7 +133,8 @@ request declares them:
   root. Code outside the package is only the three-line entrypoint.
 - The inbound adapter can change how it answers (step 6: the answer before
   handling, the API docs, the trailing-slash redirect) without touching the
-  wiring or the use case.
+  wiring or the use case. *Update:* the API docs went first, in `create_app`
+  alone ([ADR 0011](0011-serve-no-api-docs.md)).
 - Reporting a refusal or a broker failure to the caller, as ADR 0006 and
   ADR 0009 anticipated, is now a change to `SignalHandler` and `create_app`
   alone. It is still a behaviour change, so it waits for step 6.

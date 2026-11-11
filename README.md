@@ -273,19 +273,19 @@ alerts.
   [Quick start](#quick-start). `url=generate` is weaker: it uses Python's
   non-cryptographic `random` module (a known defect, tracked in the
   [migration roadmap](docs/migration-roadmap.md#known-defects)).
-- **Forward only the webhook path.** The bot also serves FastAPI's API
-  documentation at `/docs`, `/redoc` and `/openapi.json`, and that schema
-  names the webhook path. Anyone who can reach the bot can read the secret
-  path there. Until this is fixed (a known defect, tracked in the
-  [migration roadmap](docs/migration-roadmap.md#known-defects)), configure
-  your reverse proxy to forward only the webhook path and to answer every
-  other path itself.
-- **Use the exact path in your alerts.** The bot answers the webhook path
-  with a trailing `/` by a `307` redirect to the path without it. The
-  redirect's address starts with `http://` even behind an HTTPS proxy, so a
-  sender that follows it sends the secret path and the signal unencrypted
-  (a known defect). Forwarding only the exact path from the proxy, as above,
-  prevents this.
+- **The bot serves only the webhook.** It has no API documentation pages and
+  no OpenAPI schema, so no page names the webhook path
+  ([ADR 0011](docs/adr/0011-serve-no-api-docs.md)). Addresses it does not
+  serve answer `404 Not Found`. Its console log still shows the path of every
+  request (a known defect), so treat the log as secret too.
+- **Use the exact path in your alerts, and forward only that path.** The bot
+  answers the webhook path with a trailing `/` by a `307` redirect to the
+  path without it. The redirect's address starts with `http://` even behind
+  an HTTPS proxy, so a sender that follows it sends the secret path and the
+  signal unencrypted (a known defect, tracked in the
+  [migration roadmap](docs/migration-roadmap.md#known-defects)). Configure
+  your reverse proxy to forward only the exact webhook path and to answer
+  every other path itself; that prevents this.
 - **Use HTTPS.** The bot serves plain HTTP, so without TLS anyone on the
   network path can read the webhook path and send forged signals. Put the bot
   behind a reverse proxy such as Nginx or Caddy that terminates TLS. The bot's

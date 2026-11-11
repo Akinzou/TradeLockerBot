@@ -312,8 +312,9 @@ design.
     characters.
 - `create_app` (`webhook`) is the inbound HTTP adapter. It serves the
   webhook path, splits the body into lines and starts one thread per
-  request. It keeps FastAPI's defaults, so the API docs are still served;
-  the roadmap lists that as a defect for step 6.
+  request. It serves nothing else: no OpenAPI schema and no docs pages,
+  because the schema would name the secret path
+  ([ADR 0011](adr/0011-serve-no-api-docs.md)).
 - `SignalHandler` runs one request's lines. It parses them before the lock
   and runs a valid signal inside it.
   - A rejection or a refusal gets one operator line.
@@ -350,3 +351,4 @@ layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
 | [0008](adr/0008-validate-the-signal-before-any-broker-call.md) | Validate the whole signal before any broker call |
 | [0009](adr/0009-refuse-what-the-broker-rules-out-before-closing.md) | Refuse what the broker rules out before closing anything |
 | [0010](adr/0010-webhook-adapter-and-composition-root.md) | Inbound webhook adapter and a composition root |
+| [0011](adr/0011-serve-no-api-docs.md) | Serve no API docs, so no page names the webhook path |

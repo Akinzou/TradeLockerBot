@@ -26,6 +26,7 @@ migration pull request.
 | 4b | Broker failures as a Result at the port and use-case boundary; the legacy delegate re-raises the client's own exception ([ADR 0006](adr/0006-result-at-the-broker-boundary.md))| structure | done                                 |
 | 5a | Pin the startup and the webhook route through the real entrypoint: argument checks, banners, login, server start, the HTTP answer, body decoding and line splitting, one thread per request, one lock for every request, the API docs the app serves | safety | done |
 | 5  | Inbound HTTP adapter, signal handler and composition root; `libs/` moved into the adapters; `main_without_ssl.py` becomes a thin entrypoint ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)) | structure | done |
+| 6a | Serve no OpenAPI schema and no docs pages, so nothing names the webhook path ([ADR 0011](adr/0011-serve-no-api-docs.md)). Pin replaced: the four former docs addresses answer like any unknown one | behaviour | done |
 | 6  | Remaining behaviour changes from the defect list below, one pull request and one ADR each                                                                   | behaviour | next                                 |
 
 ```mermaid
@@ -39,12 +40,13 @@ flowchart LR
     S3 --> S3b[3b refuse before closing]
     S3b --> S5a[5a pin startup and route]
     S5a --> S5[5 inbound adapter, composition root]
-    S5 --> S6[6 remaining defects]
+    S5 --> S6a[6a no API docs]
+    S6a --> S6[6 remaining defects]
     S2af -.-> S2g[2g base image digest]
     classDef done fill:#d4edda,stroke:#28a745,color:#155724
     classDef next fill:#fff3cd,stroke:#d39e00,color:#856404
     classDef todo fill:#f8f9fa,stroke:#6c757d,color:#383d41
-    class S1,S1abc,S2,S2af,S4,S4b,S3,S3b,S5a,S5 done
+    class S1,S1abc,S2,S2af,S4,S4b,S3,S3b,S5a,S5,S6a done
     class S6 next
     class S2g todo
 ```
@@ -81,20 +83,27 @@ Fixed in behaviour steps, never during restructuring.
 | Closing polls in a tight loop with no delay or limit, re-sending a close request on every poll until the broker fills it, while holding the global lock | `test_close_request_is_resent_on_every_poll_until_the_broker_fills_it` |
 | The webhook returns 200 before the signal is handled; a rejected or refused signal or a broker failure is reported only in the bot's log, and the caller never learns | `test_the_answer_is_200_with_a_null_body_before_the_signal_is_handled`, `test_a_broker_failure_ends_the_handler_thread_with_the_clients_exception`, `test_rejected_signals.py` |
 | The generated webhook path, the only thing protecting the endpoint, comes from `random` instead of a cryptographically secure source                                | `test_generated_webhook_url_has_two_lowercase_alphanumeric_segments`        |
-| The app serves FastAPI's default `/docs`, `/redoc` and `/openapi.json`, and the schema names the webhook path, so the secret path is readable by anyone who can reach the bot | `test_the_default_api_docs_are_served_and_list_the_webhook_path` |
+| uvicorn's access log, on by default, writes every request line to stdout, so the secret webhook path is in the log of every alert; anyone who can read the container's log can read the path | not pinned (the server is replaced in the tests) |
 | The webhook path with a trailing `/` is answered with a `307` redirect whose `Location` is built from the request's scheme; behind a TLS-terminating proxy that is `http://`, so a sender that follows it repeats the secret path and the signal in plain text | `test_a_trailing_slash_is_redirected_to_the_path_without_handling` |
 | A `url` without a leading `/` is accepted at startup, but the route can never match a request, so every alert gets `404` while the bot looks healthy | `test_a_path_without_a_leading_slash_starts_but_is_never_reachable` |
 | The account password is passed as a command-line argument, so it shows up in the process list                                                                      | `test_startup_greets_logs_in_and_serves_on_every_interface_at_port_443` (the argv the startup reads)                                                 |
 | Only `tradelocker` is pinned (#23); `pandas`, `fastapi`, `uvicorn` and the rest float, and the Dockerfile runs `apt-get update`, so a rebuilt image can change behaviour with no code change | step 2c: lock file |
 | The image's start command expands the credentials unquoted in `sh -c`, so a password with spaces or shell characters is split or glob-expanded and the login fails | not pinned (startup wiring) |
 
-## Fixed during restructuring
+## Fixed defects
 
+- **The API docs named the webhook path** (step 6a). The app served
+  FastAPI's default `/openapi.json`, `/docs`, `/docs/oauth2-redirect` and
+  `/redoc`, and the schema listed the secret path. Images built before
+  step 6a still serve them; the README's earlier advice applies there:
+  let the reverse proxy forward only the webhook path
+  ([ADR 0011](adr/0011-serve-no-api-docs.md)).
 - **The invalid escape sequences in the greeting banner** (`libs/AsciiAlerts.py`,
-  a `SyntaxWarning` on stderr, an error in a future Python). Step 5 moved the
-  banner into `tradelocker_bot/adapters/ascii_alerts.py` as a raw string with
-  the same bytes, which the startup tests pin byte for byte. Copying the
-  warning into the package would have gained nothing
+  a `SyntaxWarning` on stderr, an error in a future Python), fixed during
+  restructuring. Step 5 moved the banner into
+  `tradelocker_bot/adapters/ascii_alerts.py` as a raw string with the same
+  bytes, which the startup tests pin byte for byte. Copying the warning into
+  the package would have gained nothing
   ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
 
 ## Not covered by tests
