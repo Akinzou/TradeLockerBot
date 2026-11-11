@@ -21,8 +21,8 @@ migration pull request.
 | 2f | Pin a failure at every broker call: calls made, console lines, lock released, the client's exception re-raised as the same object                        | safety    | done                                 |
 | 3  | Validate the whole signal before any broker call: strict direction, action, lot and inversion types, a Result at the boundary (own ADR). Expected pin updates: wrong-side and NonInvert-forwarding, invalid-invert-after-close, invalid invert ignored outside `open`, truncated payload, non-numeric take profit and stop loss, unknown action, malformed and nonsensical lot, missing balance, unknown symbol | behaviour | todo |
 | 4  | Application: execute-signal use case behind broker and console ports; TradeLocker and console adapters implement them ([ADR 0005](adr/0005-execute-signal-use-case-and-ports.md)) | structure | done                                 |
-| 4b | A Result at the port and use-case boundary; the legacy delegate turns a failure back into the same exception, so behaviour is unchanged                    | structure | next                                 |
-| 5  | Inbound HTTP adapter and composition root; `main_without_ssl.py` becomes a thin entrypoint                                                                  | structure | todo                                 |
+| 4b | Broker failures as a Result at the port and use-case boundary; the legacy delegate re-raises the client's own exception ([ADR 0006](adr/0006-result-at-the-broker-boundary.md))| structure | done                                 |
+| 5  | Inbound HTTP adapter and composition root; `main_without_ssl.py` becomes a thin entrypoint                                                                  | structure | next                                 |
 | 6  | Remaining behaviour changes from the defect list below, one pull request and one ADR each                                                                   | behaviour | todo                                 |
 
 Structure steps must keep `tests/characterization/` green with **unchanged

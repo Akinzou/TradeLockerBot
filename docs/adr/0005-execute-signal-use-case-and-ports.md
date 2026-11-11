@@ -66,12 +66,12 @@ close-and-confirm operation.
 
 ### Errors
 
-Ports raise the client's exceptions unchanged, and the use case lets them
-propagate. A Result at the port and use-case boundary follows as its own
-structure step (roadmap 4b), in which the legacy delegate turns a failure
-back into the same exception, so the webhook thread behaves as before. It is
-kept out of this step so that this one stays a pure move, reviewable against
-the legacy handler line by line.
+*Superseded by [ADR 0006](0006-result-at-the-broker-boundary.md): broker
+failures are now returned as a Result.*
+
+In this step, ports raised the client's exceptions unchanged and the use
+case let them propagate. The Result was kept out so that the move stayed
+reviewable against the legacy handler line by line.
 
 ## Consequences
 
