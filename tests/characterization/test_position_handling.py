@@ -11,6 +11,7 @@ from tradelocker.exceptions import TLAPIOrderException
 from tests.characterization.harness import DEFAULT_ORDER, EURUSD_ID, XAUUSD_ID
 from tests.characterization.harness import broker as _broker
 from tests.characterization.harness import handle as _handle
+from tests.characterization.harness import order_rejection
 from tests.characterization.harness import payload as _payload
 
 
@@ -87,8 +88,7 @@ def test_unknown_action_neither_closes_nor_orders(action):
 
 
 def test_broker_rejection_propagates_after_existing_position_was_closed():
-    rejection = TLAPIOrderException({}, {"errmsg": "Not enough margin"})
-    broker = _broker(open_positions=[XAUUSD_ID], order_results=(rejection,))
+    broker = _broker(open_positions=[XAUUSD_ID], order_results=(order_rejection(),))
 
     with pytest.raises(TLAPIOrderException):
         _handle(broker, _payload())
@@ -115,21 +115,3 @@ def test_invalid_invert_value_raises_after_existing_position_was_closed():
 
     assert broker.open_positions == []
     assert broker.orders() == []
-
-
-def test_truncated_payload_raises_index_error():
-    broker = _broker()
-
-    with pytest.raises(IndexError):
-        _handle(broker, _payload()[:5])
-
-    assert broker.orders() == []
-
-
-def test_non_numeric_take_profit_raises_before_touching_the_broker():
-    broker = _broker()
-
-    with pytest.raises(ValueError):
-        _handle(broker, _payload(tp="abc"))
-
-    assert broker.calls == []

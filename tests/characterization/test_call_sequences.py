@@ -12,22 +12,21 @@ import pytest
 from tradelocker.exceptions import TLAPIOrderException
 
 from tests.characterization.harness import (
-    DEFAULT_ORDER,
+    BALANCE,
+    CLOSE,
     EURUSD_ID,
     LOCK_ACQUIRED,
     LOCK_RELEASED,
+    LOOKUP,
+    ORDER,
+    POSITIONS,
     XAUUSD_ID,
     RecordingLock,
     broker,
     handle,
+    order_rejection,
     payload,
 )
-
-BALANCE = ("get_account_state",)
-LOOKUP = ("get_instrument_id_from_symbol_name", "XAUUSD")
-POSITIONS = ("get_all_positions",)
-CLOSE = ("close_all_positions", XAUUSD_ID)
-ORDER = ("create_order", XAUUSD_ID, DEFAULT_ORDER)
 
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 
@@ -85,7 +84,7 @@ def test_whole_handling_is_one_critical_section(action):
     ("scenario", "fake_args", "lines", "error"),
     [
         ("broker rejects the order",
-         {"order_results": (TLAPIOrderException({}, {"errmsg": "Not enough margin"}),)},
+         {"order_results": (order_rejection(),)},
          payload(), TLAPIOrderException),
         ("invalid isInvert", {}, payload(invert="Sideways"), ValueError),
         ("malformed lot", {}, payload(lot="abc/100"), ValueError),
@@ -127,7 +126,7 @@ PLACED = "Order placed successfully, order ID: 9001"
          [*LOCKED, CLOSING, LOCK_RELEASED]),
         ("broker rejects the order",
          {"open_positions": [XAUUSD_ID],
-          "order_results": (TLAPIOrderException({}, {"errmsg": "Not enough margin"}),)},
+          "order_results": (order_rejection(),)},
          payload(), TLAPIOrderException,
          [*LOCKED, CLOSING, LOCK_RELEASED]),
         ("truncated payload", {}, payload()[:5], IndexError,

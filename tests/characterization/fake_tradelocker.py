@@ -26,6 +26,10 @@ from tradelocker import TLAPI
 # (tests/test_broker_client_version.py).
 TRADELOCKER_VERSION = "0.56.2"
 
+# The real client builds the account state by zipping the broker's column
+# names with its values, so a field can be absent rather than None.
+NO_BALANCE_FIELD = object()
+
 
 def _bind_to_real(method_name, *args, **kwargs):
     """Return every argument by parameter name, defaults filled in, as the real
@@ -68,11 +72,15 @@ class FakeTradeLocker:
     def get_account_state(self):
         _bind_to_real("get_account_state")
         self.calls.append(("get_account_state",))
+        if self._balance is NO_BALANCE_FIELD:
+            return {}
         return {"projectedBalance": self._balance}
 
     def get_instrument_id_from_symbol_name(self, *args, **kwargs):
         symbol_name = _bind_to_real("get_instrument_id_from_symbol_name", *args, **kwargs)["symbol_name"]
         self.calls.append(("get_instrument_id_from_symbol_name", symbol_name))
+        if symbol_name not in self._instrument_ids:
+            raise ValueError(f"No instrument found with {symbol_name=}")
         return self._instrument_ids[symbol_name]
 
     def get_all_positions(self):
