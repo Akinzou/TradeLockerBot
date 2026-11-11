@@ -8,7 +8,7 @@ separate, explicitly reviewed step (see docs/migration-roadmap.md).
 import pytest
 from tradelocker.exceptions import TLAPIOrderException
 
-from tests.characterization.harness import EURUSD_ID, XAUUSD_ID
+from tests.characterization.harness import DEFAULT_ORDER, EURUSD_ID, XAUUSD_ID
 from tests.characterization.harness import broker as _broker
 from tests.characterization.harness import handle as _handle
 from tests.characterization.harness import payload as _payload
@@ -21,15 +21,7 @@ def test_open_places_market_order_with_offset_protection():
 
     [(_, instrument_id, order)] = broker.orders()
     assert instrument_id == XAUUSD_ID
-    assert order == {
-        "quantity": 0.1,
-        "side": "buy",
-        "type_": "market",
-        "stop_loss": 1000,
-        "take_profit": 500,
-        "stop_loss_type": "offset",
-        "take_profit_type": "offset",
-    }
+    assert order == DEFAULT_ORDER
 
 
 @pytest.mark.parametrize(

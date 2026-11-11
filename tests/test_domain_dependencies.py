@@ -1,24 +1,40 @@
-"""Fitness function: the domain imports only side-effect-free standard library.
+"""Fitness function: the domain imports only pure standard-library modules and
+reads no builtin that reaches I/O, the interpreter or code by name.
 
-An allow-list instead of a deny-list of known libraries: any new third-party
-package, any other layer, and any stdlib module that performs I/O or reads the
-clock fails here, so the rule in docs/architecture.md holds by construction.
+Imports are checked against a true allow-list. Filtering
+``sys.stdlib_module_names`` through a deny-list of I/O modules let
+``datetime`` (the clock), ``concurrent``, ``shelve`` and ``imaplib`` through,
+because every module nobody listed was allowed. Here, anything not named below
+fails, including any third-party package and any other layer. Adding a module
+is a reviewed decision.
+
+Builtins need no import, so they get their own check. It guards against
+accidents, not against deliberate evasion (``type(x).__subclasses__`` and
+similar introspection still reach anything); review covers that.
 """
 
 import ast
-import sys
 from pathlib import Path
 
 DOMAIN = Path(__file__).resolve().parent.parent / "tradelocker_bot" / "domain"
 DOMAIN_PACKAGE = "tradelocker_bot.domain"
 
-# Standard-library modules that reach outside the process (network, files,
-# subprocesses, threads) or read the clock. Those belong behind a port.
-IO_STDLIB = {
-    "asyncio", "ftplib", "glob", "http", "io", "logging", "mmap", "multiprocessing",
-    "os", "pathlib", "random", "secrets", "select", "selectors", "shutil", "signal",
-    "smtplib", "socket", "socketserver", "sqlite3", "ssl", "subprocess", "sys",
-    "tempfile", "threading", "time", "urllib", "uuid",
+# Only modules whose every public name is free of I/O, clock, randomness and
+# concurrency, so allowing the module cannot let an impure call in through a
+# side door (`datetime` is out because of `datetime.now`).
+PURE_STDLIB = {
+    "__future__", "abc", "collections", "dataclasses", "decimal", "enum",
+    "fractions", "functools", "itertools", "math", "numbers", "operator",
+    "re", "string", "types", "typing",
+}
+
+# Builtins that do I/O or stop the process (`open`, `print`, `input`, `help`,
+# `exit` and the other `site` helpers), run or import code by name, or hand
+# out the namespace where the others live (`globals`, `vars`, `locals`).
+IMPURE_BUILTINS = {
+    "__builtins__", "__import__", "breakpoint", "compile", "copyright",
+    "credits", "eval", "exec", "exit", "globals", "help", "input", "license",
+    "locals", "open", "print", "quit", "vars",
 }
 
 
@@ -27,9 +43,9 @@ def _package_of(path):
     return path.relative_to(DOMAIN.parent.parent).parts[:-1]
 
 
-def _imported_modules(path):
+def _imported_modules(tree, path):
     package = _package_of(path)
-    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+    for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             yield from (alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom) and node.level:
@@ -41,21 +57,35 @@ def _imported_modules(path):
             yield node.module
 
 
-def _is_allowed(module):
-    if module == DOMAIN_PACKAGE or module.startswith(DOMAIN_PACKAGE + "."):
-        return True
-    top_level = module.split(".")[0]
-    return top_level in sys.stdlib_module_names and top_level not in IO_STDLIB
+def _forbidden_imports(tree, path):
+    for module in _imported_modules(tree, path):
+        is_domain = module == DOMAIN_PACKAGE or module.startswith(DOMAIN_PACKAGE + ".")
+        if not is_domain and module.split(".")[0] not in PURE_STDLIB:
+            yield module
 
 
-def test_domain_imports_only_pure_standard_library():
+def _impure_builtins_read(tree, path):
+    # Reads only: a field such as `Candle.open` is a Store and must stay legal
+    # in a trading domain, while a Load catches both calls and aliasing
+    # (`read = open`).
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id in IMPURE_BUILTINS:
+            yield node.id
+
+
+def _violations(rule):
     files = sorted(DOMAIN.rglob("*.py"))
-    violations = {
-        f"{path.relative_to(DOMAIN.parent.parent)}: {module}"
+    assert files, "no domain modules found - the path is wrong, not the rule"
+    return {
+        f"{path.relative_to(DOMAIN.parent.parent)}: {name}"
         for path in files
-        for module in _imported_modules(path)
-        if not _is_allowed(module)
+        for name in rule(ast.parse(path.read_text(encoding="utf-8")), path)
     }
 
-    assert files, "no domain modules found - the path is wrong, not the rule"
-    assert violations == set()
+
+def test_domain_imports_only_allow_listed_modules():
+    assert _violations(_forbidden_imports) == set()
+
+
+def test_domain_reads_no_impure_builtins():
+    assert _violations(_impure_builtins_read) == set()

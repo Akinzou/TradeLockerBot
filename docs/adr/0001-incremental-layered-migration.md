@@ -2,6 +2,9 @@
 
 - Status: Accepted
 - Date: 2026-11-11
+- Amended: 2026-11-11, before any structure step relied on it: the
+  lock and console-line clauses of rule 2 were added, and
+  `tests/characterization/test_call_sequences.py` pins them.
 
 ## Context
 
@@ -28,11 +31,18 @@ pull request at a time**, never as a rewrite.
    caught.
 2. **Restructure without changing behaviour.** While code moves into layers,
    the characterization tests must stay green with their assertions unchanged.
-   Only their seam (`tests/characterization/harness.py`, the one module that imports the code under test) may move, and the
-   pull request must call out that edit. "Behaviour-preserving" means, for
-   every input: the same sequence of broker calls with the same arguments, and
-   the same outcome, including the exact exception type when it raises. Only code that is identical under this rule
-   for *all* inputs, malformed ones included, moves in a structure step.
+   Only their seam (`tests/characterization/harness.py`, the one module that
+   imports the code under test) may move, and the pull request must call out
+   that edit. "Behaviour-preserving" means, for every input:
+   - the same sequence of broker calls with the same arguments;
+   - the same outcome, including the exact exception type when it raises;
+   - the whole handling runs as one critical section of the handler's lock,
+     released again when it raises;
+   - the same operator console lines, in the same order and inside the same
+     critical section (colour codes and blank lines aside).
+
+   Only code that is identical under this rule for *all* inputs, malformed ones
+   included, moves in a structure step.
 3. **Change behaviour separately.** Each intentional behaviour change gets its
    own pull request, its own ADR, and an explicit update to the characterization
    test that pinned the old behaviour.

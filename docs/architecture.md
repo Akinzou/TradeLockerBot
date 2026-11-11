@@ -14,10 +14,13 @@ tracked in the [migration roadmap](migration-roadmap.md).
 | Legacy      | `main_without_ssl.py`, `libs/` | anything          | Code not migrated yet; shrinks with every structure step      |
 
 Dependencies point inwards only. The domain rule is enforced by
-`tests/test_domain_dependencies.py`, an allow-list: the domain may import its
-own package and standard-library modules that do no I/O and do not read the
-clock (no `os`, `socket`, `time`, `random`, and so on). Rules for the outer
-layers are added together with those layers.
+`tests/test_domain_dependencies.py`, an explicit allow-list: the domain may
+import its own package and a named set of pure standard-library modules
+(`dataclasses`, `enum`, `math`, `typing` and similar). Anything else fails,
+including `datetime` (the clock), `random`, `os` and every third-party
+package. The same test forbids builtins that do I/O or load code, such as
+`open`, `print` and `eval`. Rules for the outer layers are added together with
+those layers.
 
 ## Domain model
 
