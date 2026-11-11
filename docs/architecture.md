@@ -8,36 +8,45 @@ describes the code as it is on `master`.
 ## Contents
 
 - [Layers](#layers)
+- [Startup](#startup)
 - [Data flow](#data-flow)
 - [Handling one signal](#handling-one-signal)
 - [How a signal can end](#how-a-signal-can-end)
 - [Domain model](#domain-model)
 - [Application](#application)
 - [Adapters](#adapters)
+- [Composition root](#composition-root)
 - [Decisions](#decisions)
 
 ## Layers
 
-| Layer       | Package                       | May depend on      | Holds                                                         |
-|-------------|-------------------------------|--------------------|---------------------------------------------------------------|
-| Domain      | `tradelocker_bot.domain`      | standard library   | Trading rules as plain values and functions, with no I/O      |
-| Application | `tradelocker_bot.application` | domain             | Use cases and the ports they need                             |
-| Adapters    | `tradelocker_bot.adapters`    | application, domain, third-party clients, legacy `libs/` until step 5 | TradeLocker client, operator console; HTTP webhook in step 5 |
-| Legacy      | `main_without_ssl.py`, `libs/` | anything          | Code not migrated yet; shrinks with every structure step      |
+| Layer             | Package                            | May depend on                                   | Holds                                                          |
+|-------------------|------------------------------------|-------------------------------------------------|----------------------------------------------------------------|
+| Domain            | `tradelocker_bot.domain`           | standard library                                | Trading rules as plain values and functions, with no I/O       |
+| Application       | `tradelocker_bot.application`      | domain                                          | Use cases and the ports they need                              |
+| Adapters          | `tradelocker_bot.adapters`         | application, domain, third-party clients        | TradeLocker client and login, operator console, HTTP webhook, signal handler |
+| Composition root  | `tradelocker_bot.composition_root` | everything above                                | Start arguments, banners, wiring, the lock, the server start   |
+| Entrypoint        | `main_without_ssl.py`              | the composition root                            | The container's command; calls `main()` and nothing else       |
+
+Every arrow below is an import in the code. The entrypoint keeps its name
+because the container command is part of the frozen contract
+([roadmap](migration-roadmap.md#frozen-contract)).
 
 ```mermaid
 flowchart TB
-    subgraph legacy [Legacy, until step 5]
-        MAIN[main_without_ssl.py<br/>FastAPI webhook, login, lock]
-        LIBS[libs/<br/>AsciiAlerts, URLgenerator]
-    end
+    EP[main_without_ssl.py<br/>container command]
+    CR[composition_root<br/>parse_args, main, build_signal_handler]
     subgraph adapters [tradelocker_bot.adapters]
-        TLB[TradeLockerBroker]
-        PC[PrintingConsole]
+        WH[webhook<br/>create_app]
+        SH[signal_handler<br/>SignalHandler]
+        TLB[tradelocker_broker<br/>TradeLockerBroker, log_in]
+        PC[console<br/>PrintingConsole]
+        AA[ascii_alerts<br/>colours, banners]
+        WP[webhook_path<br/>random_webhook_path]
     end
     subgraph application [tradelocker_bot.application]
         ES[ExecuteSignal]
-        PORTS[ports: Broker, OperatorConsole]
+        PORTS[ports: Broker, OperatorConsole, BrokerFailure]
         REF[refusal: NoBalance, UnknownSymbol]
     end
     subgraph domain [tradelocker_bot.domain]
@@ -45,16 +54,19 @@ flowchart TB
         LS[lot_sizing: LotSizing, UnusableQuantity]
         RES[result: Ok, Err]
     end
-    MAIN --> TLB & PC & ES & SIG & PORTS & RES & LIBS
-    TLB --> PORTS & SIG & RES
-    PC --> REF & LIBS & SIG & LS
-    ES --> PORTS & REF
-    ES --> SIG & LS & RES
-    PORTS --> SIG & RES
+    EP --> CR
+    CR --> WH & SH & TLB & PC & AA & WP & ES
+    SH --> PC & ES & PORTS & RES & SIG
+    TLB --> PORTS & RES & SIG
+    PC --> AA & REF & LS & SIG
+    ES --> PORTS & REF & LS & RES & SIG
+    PORTS --> RES & SIG
     REF --> LS
     SIG --> LS & RES
     LS --> RES
-    TLB & MAIN --> CLIENT[(tradelocker client)]
+    WH --> FASTAPI[(FastAPI)]
+    CR --> UVICORN[(uvicorn)]
+    TLB --> CLIENT[(tradelocker client)]
 ```
 
 Dependencies point inwards only. `tests/test_layer_dependencies.py` enforces
@@ -69,8 +81,41 @@ this for the inner layers with an explicit allow-list:
 - The same test forbids builtins that do I/O or load code, such as `open`,
   `print` and `eval`, in both layers.
 
-Adapters exist to depend on third-party clients, so the rule does not cover
-them.
+Adapters exist to depend on third-party clients, so the allow-list does not
+cover them. The same test keeps them inward of the composition root: an
+adapter may import neither `composition_root` nor `main_without_ssl`, so no
+adapter can reach another's wiring, such as the shared lock or the
+logged-in client, behind the root's back
+([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
+
+## Startup
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant EP as main_without_ssl.py
+    participant CR as composition_root.main
+    participant TB as tradelocker_broker.log_in
+    participant WH as webhook.create_app
+    participant U as uvicorn
+    EP->>CR: main()
+    CR->>CR: parse_args (exit 2 on a bad argument)
+    opt --url generate
+        CR->>CR: print the URL banner and random_webhook_path()
+    end
+    CR->>CR: print the greeting
+    CR->>CR: int(acc_num), int(acc_id)
+    CR->>TB: log_in(env, credentials, selectors)
+    TB-->>CR: TLAPI client (or the client's exception)
+    CR->>CR: build_signal_handler(client, one Lock)
+    CR->>WH: create_app(url, handler.handle)
+    WH-->>CR: FastAPI app
+    CR->>U: run(app, host="0.0.0.0", port)
+```
+
+A bad argument stops at step 2, a bad account selector at step 5, and a
+failed login at step 6. Each leaves every later step undone, so the server
+never starts on a half-built bot.
 
 ## Data flow
 
@@ -80,9 +125,10 @@ on.
 
 ```mermaid
 flowchart LR
-    TV[TradingView alert] -- "POST, 7 lines of text" --> WH[webhook route<br/>main_without_ssl.py]
+    TV[TradingView alert] -- "POST, 7 lines of text" --> WH[webhook route<br/>adapters.webhook]
     WH -- "200 OK at once" --> TV
-    WH -- "lines, in a background thread" --> P[parse_signal<br/>domain]
+    WH -- "lines, in a background thread" --> SH[SignalHandler<br/>adapters.signal_handler]
+    SH --> P[parse_signal<br/>domain]
     P -- "Err(InvalidSignal)" --> CON[PrintingConsole<br/>stdout]
     P -- "Ok(OpenSignal or CloseSignal)" --> LOCK{{global lock}}
     LOCK --> UC[ExecuteSignal<br/>application]
@@ -95,14 +141,14 @@ flowchart LR
 
 | Value                         | Made by                    | Read by                                   |
 |-------------------------------|----------------------------|-------------------------------------------|
-| webhook lines (`list[str]`)   | FastAPI route              | `parse_signal`                            |
+| webhook lines (`list[str]`)   | `create_app`'s route       | `SignalHandler.handle`, then `parse_signal` |
 | `OpenSignal` / `CloseSignal`  | `parse_signal`             | `ExecuteSignal`                           |
 | `InvalidSignal`               | `parse_signal`             | `PrintingConsole.rejected`                |
 | balance (`float` or `None`)   | `TradeLockerBroker`        | `ExecuteSignal`, then `LotSizing`         |
 | quantity (`float`)            | `LotSizing.quantity_for`   | `Broker.place_market_order`               |
 | instrument id (`int` or `None`) | `TradeLockerBroker`      | `ExecuteSignal`                           |
 | `Refusal`                     | `ExecuteSignal`, `LotSizing` | `PrintingConsole.rejected`              |
-| `BrokerFailure`               | `TradeLockerBroker`        | the legacy handler, which re-raises it    |
+| `BrokerFailure`               | `TradeLockerBroker`        | `SignalHandler`, which re-raises its cause |
 
 ## Handling one signal
 
@@ -111,7 +157,7 @@ flowchart LR
 ```mermaid
 sequenceDiagram
     autonumber
-    participant H as legacy handler
+    participant H as SignalHandler
     participant UC as ExecuteSignal
     participant B as Broker (TradeLockerBroker)
     participant C as OperatorConsole
@@ -153,7 +199,7 @@ defects for step 6.
 ```mermaid
 sequenceDiagram
     autonumber
-    participant H as legacy handler
+    participant H as SignalHandler
     participant UC as ExecuteSignal
     participant B as Broker
     participant C as OperatorConsole
@@ -255,19 +301,40 @@ design.
   - Only the client call runs inside the exception guard. A fault in the
     adapter's own handling of the answer raises, so it cannot pose as an
     outage.
+  - `log_in`, in the same module, logs in to the demo or live server, on the account that
+    `--acc_num` or `--acc_id` names. It refuses both at once before sending
+    any credentials.
 - `PrintingConsole` implements `OperatorConsole` as the legacy coloured
   stdout lines.
   - Its `rejected` prints one red line for an `InvalidSignal` or a
     `Refusal`, using the same "found, expected" shape for both.
   - Webhook text in that line is escaped with `repr` and cut after 40
     characters.
-- `main_without_ssl.py` still receives the webhook, logs in and holds the
-  lock. It parses the payload before the lock and runs a valid signal inside
-  it.
+- `create_app` (`webhook`) is the inbound HTTP adapter. It serves the
+  webhook path, splits the body into lines and starts one thread per
+  request. It keeps FastAPI's defaults, so the API docs are still served;
+  the roadmap lists that as a defect for step 6.
+- `SignalHandler` runs one request's lines. It parses them before the lock
+  and runs a valid signal inside it.
   - A rejection or a refusal gets one operator line.
   - A broker failure is re-raised as the client's own exception, so the
     webhook thread fails as before.
-  - Step 5 moves this into an inbound adapter and a composition root.
+- `ascii_alerts` holds the console's colours and the startup banners, and
+  `webhook_path` makes the random path for `--url generate`.
+
+## Composition root
+
+`tradelocker_bot/composition_root.py` is the only module that knows every
+layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
+
+- `main()` reads the arguments, prints the banners, logs in, builds the
+  app and starts the server, in the order the [startup](#startup) diagram
+  shows.
+- It creates the one lock that every request shares.
+- `build_signal_handler(client, lock)` builds the console, the broker adapter, the
+  use case and the handler once, at startup. The characterization tests
+  build theirs through the same function.
+- `main_without_ssl.py` imports `main` and calls it, and does nothing else.
 
 ## Decisions
 
@@ -282,3 +349,4 @@ design.
 | [0007](adr/0007-locked-runtime-dependencies.md) | Lock every runtime dependency |
 | [0008](adr/0008-validate-the-signal-before-any-broker-call.md) | Validate the whole signal before any broker call |
 | [0009](adr/0009-refuse-what-the-broker-rules-out-before-closing.md) | Refuse what the broker rules out before closing anything |
+| [0010](adr/0010-webhook-adapter-and-composition-root.md) | Inbound webhook adapter and a composition root |

@@ -23,12 +23,15 @@ import pytest
 PACKAGE = Path(__file__).resolve().parent.parent / "tradelocker_bot"
 
 # Layer -> the inner layers it may import. Adapters are outside this rule:
-# they exist to depend on third-party clients.
+# they exist to depend on third-party clients. The composition root is
+# outermost: it wires every layer together, and nothing imports it.
 LAYERS = {
     "domain": (),
     "application": ("domain",),
 }
-OUTER_LAYERS = {"adapters"}
+OUTER_LAYERS = {"adapters", "composition_root.py"}
+COMPOSITION_ROOT = f"{PACKAGE.name}.composition_root"
+ENTRYPOINT = "main_without_ssl"
 
 # Modules for values, types and arithmetic; whole modules that do I/O or read
 # the clock, randomness or concurrency stay out (`datetime` because of
@@ -88,6 +91,16 @@ def _forbidden_imports(source, path):
             yield module
 
 
+def _outward_imports(source, path):
+    # An adapter that reached for the root or the entrypoint script could pick
+    # up another adapter's wiring (the shared lock, the logged-in client)
+    # behind the root's back, and would make an import cycle with it.
+    for module in _imported_modules(ast.parse(source), path):
+        is_root = module == COMPOSITION_ROOT or module.startswith(COMPOSITION_ROOT + ".")
+        if is_root or module.split(".")[0] == ENTRYPOINT:
+            yield module
+
+
 def _scopes(table):
     yield table
     for child in table.get_children():
@@ -132,6 +145,19 @@ def test_layer_imports_only_allow_listed_modules(layer):
 @pytest.mark.parametrize("layer", LAYERS)
 def test_layer_reads_no_impure_builtins(layer):
     assert _violations(_impure_builtins_read, layer) == set()
+
+
+def test_adapters_import_neither_the_composition_root_nor_the_entrypoint():
+    assert _violations(_outward_imports, "adapters") == set()
+
+
+def test_the_package_itself_imports_neither_the_composition_root_nor_the_entrypoint():
+    # The package's own `__init__` runs before any layer's import, so the root
+    # imported there would load uvicorn and every adapter into the domain's
+    # tests, and close a cycle with each adapter. It belongs to no layer, so
+    # the rules above never read it.
+    init = PACKAGE / "__init__.py"
+    assert list(_outward_imports(init.read_text(encoding="utf-8"), init)) == []
 
 
 # The layers use none of these, so the checks above would pass even if the
@@ -179,6 +205,31 @@ def test_import_rule_on_probe_sources(source, expected):
 )
 def test_import_rule_on_application_probe_sources(source, expected):
     assert list(_forbidden_imports(source, APPLICATION_PROBE)) == expected
+
+
+ADAPTER_PROBE = PACKAGE / "adapters" / "probe.py"
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("from tradelocker_bot.composition_root import main", ["tradelocker_bot.composition_root.main"]),
+        ("from .. import composition_root", ["tradelocker_bot.composition_root"]),
+        (
+            "from ..composition_root import build_signal_handler",
+            ["tradelocker_bot.composition_root.build_signal_handler"],
+        ),
+        ("import tradelocker_bot.composition_root", ["tradelocker_bot.composition_root"]),
+        ("from tradelocker_bot import adapters, composition_root", ["tradelocker_bot.composition_root"]),
+        ("import main_without_ssl", ["main_without_ssl"]),
+        ("from main_without_ssl import main", ["main_without_ssl.main"]),
+        ("import tradelocker_bot.composition_rootx", []),
+        ("from .console import PrintingConsole\nfrom tradelocker import TLAPI", []),
+        ("from ..application.execute_signal import ExecuteSignal", []),
+    ],
+)
+def test_outward_import_rule_on_adapter_probe_sources(source, expected):
+    assert list(_outward_imports(source, ADAPTER_PROBE)) == expected
 
 
 @pytest.mark.parametrize(

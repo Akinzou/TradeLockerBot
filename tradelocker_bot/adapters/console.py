@@ -1,4 +1,4 @@
-from libs import AsciiAlerts
+from tradelocker_bot.adapters import ascii_alerts
 from tradelocker_bot.application.refusal import NoBalance, Refusal, UnknownSymbol
 from tradelocker_bot.domain.lot_sizing import UnusableQuantity
 from tradelocker_bot.domain.signal import InvalidSignal, Side
@@ -51,12 +51,12 @@ class PrintingConsole:
         print(f"Closing: {symbol}")
 
     def order_retry(self, side: Side) -> None:
-        print(AsciiAlerts.RED + f"{side.value.capitalize()} order was not successful, trying again...")
-        AsciiAlerts.resetStyle()
+        print(ascii_alerts.RED + f"{side.value.capitalize()} order was not successful, trying again...")
+        ascii_alerts.reset_style()
 
     def order_placed(self, order_id: int) -> None:
-        print(AsciiAlerts.GREEN + f"Order placed successfully, order ID: {order_id}")
-        AsciiAlerts.resetStyle()
+        print(ascii_alerts.GREEN + f"Order placed successfully, order ID: {order_id}")
+        ascii_alerts.reset_style()
 
     def unlocked(self) -> None:
         print("Normal: Unlocked")
@@ -72,4 +72,4 @@ class PrintingConsole:
         # One print with the reset inside, unlike the lines above: a payload
         # rejection is written outside the lock, so a thread printing in
         # between must not inherit the colour.
-        print(f"{AsciiAlerts.RED}Signal rejected: {_why(reason)}\n{AsciiAlerts.RESET}")
+        print(f"{ascii_alerts.RED}Signal rejected: {_why(reason)}\n{ascii_alerts.RESET}")

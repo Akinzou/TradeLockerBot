@@ -1,3 +1,4 @@
+from types import MappingProxyType
 from typing import Callable, TypeVar
 
 from tradelocker import TLAPI
@@ -94,3 +95,32 @@ class TradeLockerBroker:
             stop_loss_type="offset",
             take_profit_type="offset",
         ))
+
+
+# Read-only, so nothing at run time can point the login, and with it the
+# credentials, at another host.
+ENVIRONMENTS = MappingProxyType({
+    "demo": "https://demo.tradelocker.com",
+    "live": "https://live.tradelocker.com",
+})
+
+
+def log_in(environment: str, username: str, password: str, server: str, acc_num: int, acc_id: int) -> TLAPI:
+    """The logged-in client, on the account ``acc_num`` or ``acc_id`` names.
+
+    ``0`` leaves a selector unset, and with both unset the client picks the
+    account. The client raises when the login fails; that exception ends the
+    startup before the webhook is served.
+    """
+    # Both checked before the login, so a bad value never sends the
+    # credentials; the server first, in the legacy order.
+    if environment not in ENVIRONMENTS:
+        raise ValueError("Invalid environment specified. Use 'demo' or 'live'.")
+    if acc_num and acc_id:
+        raise ValueError("Please provide only the account number or ID (starting from 1).")
+    url = ENVIRONMENTS[environment]
+    if acc_num:
+        return TLAPI(environment=url, username=username, password=password, server=server, acc_num=acc_num)
+    if acc_id:
+        return TLAPI(environment=url, username=username, password=password, server=server, account_id=acc_id)
+    return TLAPI(environment=url, username=username, password=password, server=server)

@@ -1,4 +1,4 @@
-"""Characterization tests: they pin what ``handle_position_normal`` does today.
+"""Characterization tests: they pin what the webhook's signal handler does today.
 
 They are a safety net for the incremental migration, not a specification.
 Behaviour that looks wrong is still pinned here on purpose; changing it is a

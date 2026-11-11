@@ -162,6 +162,11 @@ ordering, with nothing between the two lookups that could change the answer.
   case.** Rejected: step 5's inbound adapter should be able to report a
   refusal to the caller too, so the use case returns it and the caller
   chooses.
+
+  *Update:* the inbound adapter exists since step 5
+  ([ADR 0010](0010-webhook-adapter-and-composition-root.md)). It still
+  reports a refusal by one operator line only. Answering the caller is a
+  behaviour change for step 6.
 - **Check the broker's minimum lot and lot step** from the instrument
   details. Deferred: it needs another broker call, and the broker already
   enforces both.

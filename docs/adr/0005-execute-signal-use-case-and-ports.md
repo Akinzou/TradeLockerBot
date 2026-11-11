@@ -96,6 +96,12 @@ reviewable against the legacy handler line by line.
 - `PrintingConsole` still uses the legacy `libs.AsciiAlerts` colours. Adapters
   may depend on legacy code until step 5 removes it.
 
+  *Update (step 5, [ADR 0010](0010-webhook-adapter-and-composition-root.md)):*
+  the colours moved to `tradelocker_bot/adapters/ascii_alerts.py`, and
+  `libs/` is gone. `handle_position_normal` became `SignalHandler.handle` in
+  the inbound adapter, and the harness reaches it through the composition
+  root.
+
 ## Alternatives considered
 
 - **One port method per legacy helper** (`close_positions(symbol)`,
