@@ -1,20 +1,18 @@
-"""The random webhook path ``--url generate`` serves.
+"""The random webhook path ``--url generate`` serves (ADR 0012).
 
-Moved from the legacy ``libs/`` package (ADR 0010); only the function's name
-changed, from ``generate_random_url``. It still draws
-from ``random``, not a cryptographically secure source, although the path is
-the only thing protecting the endpoint: a known defect that roadmap step 6
-fixes as a behaviour change of its own.
+The path is the only thing protecting the endpoint, so it comes from
+``secrets``, the standard library's source for secrets, and not from
+``random``, whose generator is meant for simulations and shares its state with
+any code in the process that seeds it. It is the same generator the README's
+Quick start advises for a path chosen by hand, so both ways give the same kind
+of path.
 """
 
-import random
-import string
+import secrets
+
+# 24 bytes give 192 bits and 32 URL-safe characters with no padding to escape.
+PATH_BYTES = 24
 
 
-def random_webhook_path(min_length=10, max_length=20):
-    length1 = random.randint(min_length, max_length)
-    random_string1 = ''.join(random.choices(string.ascii_lowercase + string.digits, k=length1))
-    length2 = random.randint(min_length, max_length)
-    random_string2 = ''.join(random.choices(string.ascii_lowercase + string.digits, k=length2))
-    url = f'/{random_string1}/{random_string2}'
-    return url
+def random_webhook_path():
+    return "/" + secrets.token_urlsafe(PATH_BYTES)

@@ -120,7 +120,7 @@ All settings are passed as environment variables (`-e name=value`).
 | `password` | yes      |             | TradeLocker password. Must not contain spaces or shell characters such as `*`, `?`, `$` or `;` (see below). |
 | `server`   | yes      |             | TradeLocker server name.                                                                            |
 | `env`      | yes      |             | `demo` or `live`.                                                                                   |
-| `url`      | no       | `/strategy` | Webhook path. Use a long secret path (see [Quick start](#quick-start)). It must start with `/`: without it the bot starts, but every alert gets `404 Not Found`. `generate` prints a new random path on every start. |
+| `url`      | no       | `/strategy` | Webhook path. Use a long secret path (see [Quick start](#quick-start)). It must start with `/`: without it the bot starts, but every alert gets `404 Not Found`. `generate` prints a new random path on every start, made the same way as in Quick start. |
 | `acc_id`   | no       | `0`         | Trade on the account with this ID. With both `acc_id` and `acc_num` at `0`, the first account listed for your login is used. |
 | `acc_num`  | no       | `0`         | Trade on the account with this number. Set either `acc_id` or `acc_num`, not both.                  |
 
@@ -270,9 +270,10 @@ alerts.
 - **Keep the webhook path secret.** It is the only thing protecting the
   endpoint: anyone who knows it can open and close trades on your account.
   Create it with a cryptographically secure generator, as in
-  [Quick start](#quick-start). `url=generate` is weaker: it uses Python's
-  non-cryptographic `random` module (a known defect, tracked in the
-  [migration roadmap](docs/migration-roadmap.md#known-defects)).
+  [Quick start](#quick-start). `url=generate` uses the same generator
+  ([ADR 0012](docs/adr/0012-generate-the-webhook-path-with-secrets.md)),
+  but prints a new path on every start, so every restart means updating
+  your alerts.
 - **The bot serves only the webhook.** It has no API documentation pages and
   no OpenAPI schema, so no page names the webhook path
   ([ADR 0011](docs/adr/0011-serve-no-api-docs.md)). Addresses it does not

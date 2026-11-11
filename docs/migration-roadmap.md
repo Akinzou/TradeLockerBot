@@ -26,7 +26,8 @@ migration pull request.
 | 4b | Broker failures as a Result at the port and use-case boundary; the legacy delegate re-raises the client's own exception ([ADR 0006](adr/0006-result-at-the-broker-boundary.md))| structure | done                                 |
 | 5a | Pin the startup and the webhook route through the real entrypoint: argument checks, banners, login, server start, the HTTP answer, body decoding and line splitting, one thread per request, one lock for every request, the API docs the app serves | safety | done |
 | 5  | Inbound HTTP adapter, signal handler and composition root; `libs/` moved into the adapters; `main_without_ssl.py` becomes a thin entrypoint ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)) | structure | done |
-| 6a | Serve no OpenAPI schema and no docs pages, so nothing names the webhook path ([ADR 0011](adr/0011-serve-no-api-docs.md)). Pin replaced: the four former docs addresses answer like any unknown one | behaviour | done |
+| 6a | Serve no OpenAPI schema and no docs pages, so no page names the webhook path ([ADR 0011](adr/0011-serve-no-api-docs.md)). Pin replaced: the four former docs addresses answer like any unknown one | behaviour | done |
+| 6b | Generate the `url=generate` path with `secrets`, as the README advises for a path chosen by hand ([ADR 0012](adr/0012-generate-the-webhook-path-with-secrets.md)). Pin replaced: one segment of 32 URL-safe characters; a new unit pin on the source | behaviour | done |
 | 6  | Remaining behaviour changes from the defect list below, one pull request and one ADR each                                                                   | behaviour | next                                 |
 
 ```mermaid
@@ -41,12 +42,13 @@ flowchart LR
     S3b --> S5a[5a pin startup and route]
     S5a --> S5[5 inbound adapter, composition root]
     S5 --> S6a[6a no API docs]
-    S6a --> S6[6 remaining defects]
+    S6a --> S6b[6b secrets path]
+    S6b --> S6[6 remaining defects]
     S2af -.-> S2g[2g base image digest]
     classDef done fill:#d4edda,stroke:#28a745,color:#155724
     classDef next fill:#fff3cd,stroke:#d39e00,color:#856404
     classDef todo fill:#f8f9fa,stroke:#6c757d,color:#383d41
-    class S1,S1abc,S2,S2af,S4,S4b,S3,S3b,S5a,S5,S6a done
+    class S1,S1abc,S2,S2af,S4,S4b,S3,S3b,S5a,S5,S6a,S6b done
     class S6 next
     class S2g todo
 ```
@@ -82,7 +84,6 @@ Fixed in behaviour steps, never during restructuring.
 | A rejected order raises inside the background handler *after* the existing position was closed, leaving the account flat; the `while not order_id` retry loop never runs because the client raises rather than returning an empty id | `test_broker_rejection_propagates_after_existing_position_was_closed`, `test_raising_path_call_sequence` |
 | Closing polls in a tight loop with no delay or limit, re-sending a close request on every poll until the broker fills it, while holding the global lock | `test_close_request_is_resent_on_every_poll_until_the_broker_fills_it` |
 | The webhook returns 200 before the signal is handled; a rejected or refused signal or a broker failure is reported only in the bot's log, and the caller never learns | `test_the_answer_is_200_with_a_null_body_before_the_signal_is_handled`, `test_a_broker_failure_ends_the_handler_thread_with_the_clients_exception`, `test_rejected_signals.py` |
-| The generated webhook path, the only thing protecting the endpoint, comes from `random` instead of a cryptographically secure source                                | `test_generated_webhook_url_has_two_lowercase_alphanumeric_segments`        |
 | uvicorn's access log, on by default, writes every request line to stdout, so the secret webhook path is in the log of every alert; anyone who can read the container's log can read the path | not pinned (the server is replaced in the tests) |
 | The webhook path with a trailing `/` is answered with a `307` redirect whose `Location` is built from the request's scheme; behind a TLS-terminating proxy that is `http://`, so a sender that follows it repeats the secret path and the signal in plain text | `test_a_trailing_slash_is_redirected_to_the_path_without_handling` |
 | A `url` without a leading `/` is accepted at startup, but the route can never match a request, so every alert gets `404` while the bot looks healthy | `test_a_path_without_a_leading_slash_starts_but_is_never_reachable` |
@@ -92,6 +93,14 @@ Fixed in behaviour steps, never during restructuring.
 
 ## Fixed defects
 
+- **The generated webhook path came from `random`** (step 6b), a
+  generator meant for simulations whose state any code in the process can
+  seed. It now comes from `secrets.token_urlsafe(24)`, the generator the
+  README advises. The old path is not known to be guessable; images built
+  before step 6b still use `random`, and an operator who wants the
+  stronger source there can pass a path made with the README's command
+  instead of `generate`
+  ([ADR 0012](adr/0012-generate-the-webhook-path-with-secrets.md)).
 - **The API docs named the webhook path** (step 6a). The app served
   FastAPI's default `/openapi.json`, `/docs`, `/docs/oauth2-redirect` and
   `/redoc`, and the schema listed the secret path. Images built before
