@@ -314,7 +314,9 @@ design.
   webhook path, splits the body into lines and starts one thread per
   request. It serves nothing else: no OpenAPI schema and no docs pages,
   because the schema would name the secret path
-  ([ADR 0011](adr/0011-serve-no-api-docs.md)).
+  ([ADR 0011](adr/0011-serve-no-api-docs.md)). It redirects nothing: a path
+  one slash away answers `404`, because the redirect pointed senders at
+  plain `http://` ([ADR 0013](adr/0013-no-trailing-slash-redirect.md)).
 - `SignalHandler` runs one request's lines. It parses them before the lock
   and runs a valid signal inside it.
   - A rejection or a refusal gets one operator line.
@@ -354,3 +356,4 @@ layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
 | [0010](adr/0010-webhook-adapter-and-composition-root.md) | Inbound webhook adapter and a composition root |
 | [0011](adr/0011-serve-no-api-docs.md) | Serve no API docs, so no page names the webhook path |
 | [0012](adr/0012-generate-the-webhook-path-with-secrets.md) | Generate the webhook path with `secrets` |
+| [0013](adr/0013-no-trailing-slash-redirect.md) | No trailing-slash redirect on the webhook |

@@ -134,7 +134,8 @@ request declares them:
 - The inbound adapter can change how it answers (step 6: the answer before
   handling, the API docs, the trailing-slash redirect) without touching the
   wiring or the use case. *Update:* the API docs went first, in `create_app`
-  alone ([ADR 0011](0011-serve-no-api-docs.md)).
+  alone ([ADR 0011](0011-serve-no-api-docs.md)), and the redirect
+  second, in the same place ([ADR 0013](0013-no-trailing-slash-redirect.md)).
 - Reporting a refusal or a broker failure to the caller, as ADR 0006 and
   ADR 0009 anticipated, is now a change to `SignalHandler` and `create_app`
   alone. It is still a behaviour change, so it waits for step 6.

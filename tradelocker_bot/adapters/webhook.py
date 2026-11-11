@@ -22,7 +22,12 @@ def create_app(path: str, handle: Callable[[list[str]], None]) -> FastAPI:
     # (ADR 0011). docs_url and redoc_url stay at their defaults because they
     # do nothing without the schema; setting them too would read as a second
     # line of defence that is not there.
-    app = FastAPI(openapi_url=None)
+    # No slash redirects either (ADR 0013): Starlette builds the redirect's
+    # address from the request's scheme, which is http:// behind a TLS proxy
+    # uvicorn does not trust, so a sender that follows it sends the secret
+    # path and the signal again in plain text. A path that differs by a
+    # slash answers 404 like any address the app does not serve.
+    app = FastAPI(openapi_url=None, redirect_slashes=False)
 
     @app.post(path)
     async def process_webhook(request: Request):

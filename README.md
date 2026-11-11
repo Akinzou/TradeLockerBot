@@ -236,7 +236,8 @@ Opening the webhook URL in a browser should return:
 ```
 
 That is expected: the webhook accepts only `POST` requests, which is what
-TradingView sends.
+TradingView sends. Open the URL exactly as `url` sets it: with a trailing `/`
+added or missing, the bot answers `{"detail":"Not Found"}` instead.
 
 ## Updating
 
@@ -280,13 +281,15 @@ alerts.
   serve answer `404 Not Found`. Its console log still shows the path of every
   request (a known defect), so treat the log as secret too.
 - **Use the exact path in your alerts, and forward only that path.** The bot
-  answers the webhook path with a trailing `/` by a `307` redirect to the
-  path without it. The redirect's address starts with `http://` even behind
-  an HTTPS proxy, so a sender that follows it sends the secret path and the
-  signal unencrypted (a known defect, tracked in the
-  [migration roadmap](docs/migration-roadmap.md#known-defects)). Configure
-  your reverse proxy to forward only the exact webhook path and to answer
-  every other path itself; that prevents this.
+  handles only the exact `url` path. A path that differs by a trailing `/`
+  gets `404 Not Found` like any other address, and the bot never redirects a
+  sender elsewhere
+  ([ADR 0013](docs/adr/0013-no-trailing-slash-redirect.md)). Images built
+  before that change answer such a path with a `307` redirect to an
+  `http://` address, so a sender that follows it sends the secret path and
+  the signal unencrypted. On those images, configure your reverse proxy to
+  forward only the exact webhook path and to answer every other path itself;
+  on any image, that is good practice.
 - **Use HTTPS.** The bot serves plain HTTP, so without TLS anyone on the
   network path can read the webhook path and send forged signals. Put the bot
   behind a reverse proxy such as Nginx or Caddy that terminates TLS. The bot's
@@ -308,7 +311,7 @@ alerts.
 | Position closed but no new one opened       | The broker rejected the order; the log shows its error. |
 | Bot does not start, login fails             | Wrong credentials or `env`, or a password with spaces or shell characters (see [Configuration](#configuration)). |
 | `Method Not Allowed` in the browser         | Expected; see [Verifying the setup](#verifying-the-setup).                                     |
-| Every alert gets `404 Not Found`            | The alert's URL does not match the `url` setting exactly (case included), or `url` does not start with `/`. A URL with a trailing `/` gets a `307` redirect to an `http://` address instead; see [Security](#security). |
+| Every alert gets `404 Not Found`            | The alert's URL does not match the `url` setting exactly (case included), or `url` does not start with `/`. A trailing `/` counts: `/strategy/` is not `/strategy`. |
 | Error about account number and ID at start  | Both `acc_id` and `acc_num` are set; keep only one.                                            |
 
 Known defects and their planned fixes are listed in the
