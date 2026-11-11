@@ -1,0 +1,7 @@
+# .gitignore does not apply to the Docker build context and `COPY . /app`
+# copies the whole working tree, so local-only files must be excluded here too.
+.git
+.claude
+**/CLAUDE.md
+**/CLAUDE.local.md
+**/AGENTS.md
