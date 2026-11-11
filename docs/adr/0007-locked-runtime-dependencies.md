@@ -42,8 +42,10 @@ minutes later.
      because a single-platform lock cannot show they were honoured.
      `tradelocker` is the version the broker fake mirrors.
    - The `docker-build` job compares `pip freeze --all` inside the image with
-     the lock, excluding `pip`, `setuptools` and `wheel`. The sets must be
-     equal. Together with the fitness tests, this replaces the earlier
+     the lock. The image must hold every locked package at its version, and
+     nothing else that the base image does not already hold at the same
+     version. The base image's own `pip`, `setuptools`, `wheel` and
+     `packaging` are its own, not ours to lock. Together with the fitness tests, this replaces the earlier
      image check of the `tradelocker` version alone.
    - The `tests` job installs the lock first, on Python 3.11 and 3.12, then
      the dev tools. It then checks that every locked package is still at its

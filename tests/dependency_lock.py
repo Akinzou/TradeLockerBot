@@ -4,8 +4,9 @@ tests and the CI checks, so all of them read the files the same way.
 Run as ``python -m tests.dependency_lock`` from the repository root, it
 compares installed packages with the lock:
 
-- ``--freeze FILE --exact``: a ``pip freeze --all`` of the image must hold
-  exactly the locked set.
+- ``--freeze IMAGE --base BASE --exact``: a ``pip freeze --all`` of the
+  image must hold the locked set, and nothing else that its base image
+  (``BASE``, frozen the same way) does not already hold at that version.
 - no arguments: this environment must hold every locked package at its
   locked version; the dev tools may add more.
 
@@ -25,8 +26,6 @@ LOCK = ROOT / "requirements-lock.txt"
 
 PIN = re.compile(r"^(?P<name>[A-Za-z0-9][A-Za-z0-9._-]*)==(?P<version>[^\s;\\]+)")
 DIRECT = "-r requirements.txt"
-# Installers that pip freeze --all lists but the lock does not manage.
-INSTALLERS = frozenset({"pip", "setuptools", "wheel"})
 
 
 def canonical(name):
@@ -80,9 +79,13 @@ def _freeze_pins(text):
     }
 
 
-def mismatches(installed, lock_pins, exact):
+def mismatches(installed, lock_pins, exact, base=None):
+    # The base image's own packages (pip, setuptools, wheel and what they
+    # need) are not ours to lock; anything else, or a base package at
+    # another version, is.
+    base = base or {}
     missing = {f"{n}=={v}" for n, v in lock_pins.items() if installed.get(n) != v}
-    extra = {f"{n}=={v}" for n, v in installed.items() if n not in lock_pins and n not in INSTALLERS}
+    extra = {f"{n}=={v}" for n, v in installed.items() if n not in lock_pins and base.get(n) != v}
     return sorted(missing), sorted(extra) if exact else []
 
 
@@ -99,6 +102,7 @@ def _installed_here(names):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--freeze", type=Path, help="pip freeze --all output to check instead of this environment")
+    parser.add_argument("--base", type=Path, help="pip freeze --all of the base image, whose packages are allowed")
     parser.add_argument("--exact", action="store_true", help="also fail on packages the lock does not list")
     args = parser.parse_args(argv)
     lock = read_lock()
@@ -106,7 +110,8 @@ def main(argv=None):
         installed = _freeze_pins(args.freeze.read_text(encoding="utf-8"))
     else:
         installed = _installed_here(lock.pins)
-    missing, extra = mismatches(installed, lock.pins, args.exact)
+    base = _freeze_pins(args.base.read_text(encoding="utf-8")) if args.base else {}
+    missing, extra = mismatches(installed, lock.pins, args.exact, base)
     print(f"locked, not installed at that version: {missing}")
     print(f"installed, not locked: {extra}")
     return 1 if missing or extra else 0

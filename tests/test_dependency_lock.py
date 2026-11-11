@@ -48,20 +48,22 @@ def test_the_lock_pins_the_characterized_client_version():
 
 
 LOCKED = {"fastapi": "1.0", "pyjwt": "2.0"}
+BASE = {"pip": "25.0", "setuptools": "70.0", "packaging": "26.3"}
 
 
 @pytest.mark.parametrize(
     ("installed", "exact", "expected"),
     [
-        ({"fastapi": "1.0", "pyjwt": "2.0", "pip": "25.0", "setuptools": "70.0", "wheel": "0.4"}, True, ([], [])),
-        ({"fastapi": "1.0", "pyjwt": "2.0", "pytest": "9.0"}, False, ([], [])),
-        ({"fastapi": "1.0", "pyjwt": "2.0", "colorama": "0.4"}, True, ([], ["colorama==0.4"])),
+        ({**LOCKED, **BASE}, True, ([], [])),
+        ({**LOCKED, "pytest": "9.0"}, False, ([], [])),
+        ({**LOCKED, "colorama": "0.4"}, True, ([], ["colorama==0.4"])),
+        ({**LOCKED, **BASE, "packaging": "27.0"}, True, ([], ["packaging==27.0"])),
         ({"fastapi": "1.1", "pyjwt": "2.0"}, False, (["fastapi==1.0"], [])),
         ({"fastapi": "1.0"}, True, (["pyjwt==2.0"], [])),
     ],
 )
 def test_installed_packages_are_compared_with_the_lock(installed, exact, expected):
-    assert mismatches(installed, LOCKED, exact) == expected
+    assert mismatches(installed, LOCKED, exact, BASE) == expected
 
 
 @pytest.mark.parametrize(
