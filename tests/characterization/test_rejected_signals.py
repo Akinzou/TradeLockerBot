@@ -1,6 +1,8 @@
-"""A signal that cannot be traded is refused before anything else happens
-(ADR 0008): no broker call, no critical section, no exception, and one
-operator line naming the line that stopped it.
+"""A signal that cannot be traded is refused with one operator line and no
+exception. A payload error is refused before anything else happens (ADR
+0008): no broker call and no critical section. What needs the broker's answer
+is refused once the broker has answered, before any close request or order
+(ADR 0009).
 
 Each row was a pinned defect before step 3: a crash in the webhook thread,
 an order on the wrong side, a nonsensical quantity sent to the broker, an
@@ -10,7 +12,12 @@ action silently ignored, or a position closed and then left flat.
 import pytest
 from tradelocker.exceptions import TLAPIException
 
+from tests.characterization.fake_tradelocker import NO_BALANCE_FIELD
 from tests.characterization.harness import (
+    BALANCE,
+    LOCK_ACQUIRED,
+    LOCK_RELEASED,
+    LOOKUP,
     XAUUSD_ID,
     RecordingLock,
     broker,
@@ -74,3 +81,54 @@ def test_a_rejection_comes_before_a_broker_that_would_fail():
     handle(fake, payload(lot="abc/100"))
 
     assert fake.calls == []
+
+
+NO_BALANCE = "the account balance is missing or not a number, expected a number to size the position from"
+NOT_LISTED = "expected an instrument the broker lists"
+NO_QUANTITY = "expected a quantity above 0"
+BALANCE_IS = "the account balance is"
+POSITIVE = "expected a positive number to size the position from"
+
+
+@pytest.mark.parametrize(
+    ("scenario", "fake_args", "lines", "calls", "line"),
+    [
+        # Each row raised or traded before step 3b: a TypeError from the lot
+        # sizing, the client's ValueError, or an order for 0 or inf lots.
+        ("no balance field", {"balance": NO_BALANCE_FIELD}, payload(), [BALANCE], NO_BALANCE),
+        ("balance reported as null", {"balance": None}, payload(), [BALANCE], NO_BALANCE),
+        ("balance reported as text", {"balance": "1000"}, payload(), [BALANCE], NO_BALANCE),
+        ("quantity rounds to zero", {"balance": 10.0}, payload(), [BALANCE],
+         f"line 3 (lot) gives 0.0 at a balance of 10.0, {NO_QUANTITY}"),
+        ("negative balance", {"balance": -500.0}, payload(), [BALANCE], f"{BALANCE_IS} -500.0, {POSITIVE}"),
+        ("zero balance", {"balance": 0}, payload(), [BALANCE], f"{BALANCE_IS} 0, {POSITIVE}"),
+        ("quantity overflows", {"balance": 1000.0}, payload(lot="1e306/1"), [BALANCE],
+         f"line 3 (lot) gives inf at a balance of 1000.0, {NO_QUANTITY}"),
+        ("unknown symbol on open", {}, payload(symbol="GBPUSD"), [BALANCE, LOOKUP],
+         f"line 1 (symbol) is 'GBPUSD', {NOT_LISTED}"),
+        ("unknown symbol on close", {}, payload(symbol="GBPUSD", action="close"), [LOOKUP],
+         f"line 1 (symbol) is 'GBPUSD', {NOT_LISTED}"),
+        ("symbol in another case", {}, payload(symbol="xauusd"), [BALANCE, LOOKUP],
+         f"line 1 (symbol) is 'xauusd', {NOT_LISTED}"),
+    ],
+)
+def test_a_signal_the_broker_answer_rules_out_closes_nothing(capsys, scenario, fake_args, lines, calls, line):
+    fake = broker(open_positions=[XAUUSD_ID], **fake_args)
+    lock = RecordingLock(fake)
+
+    handle(fake, lines, lock)
+
+    assert fake.calls == calls, scenario
+    assert lock.events == [("acquire", 0), ("release", len(calls))], scenario
+    assert fake.open_positions == [XAUUSD_ID], scenario
+    assert console_lines(capsys) == [LOCK_ACQUIRED, rejected(line), LOCK_RELEASED], scenario
+
+
+def test_an_unknown_symbol_on_open_is_found_after_the_quantity_check():
+    # The balance is read first, as before; a signal both unknown and unsized
+    # names the quantity, the first thing that stopped it.
+    fake = broker(balance=10.0)
+
+    handle(fake, payload(symbol="GBPUSD"))
+
+    assert fake.calls == [BALANCE]

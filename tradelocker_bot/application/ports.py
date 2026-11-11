@@ -21,14 +21,20 @@ class BrokerFailure:
 
 class Broker(Protocol):
     def account_balance(self) -> Result[float | None, BrokerFailure]:
-        """The account's projected balance exactly as the broker reports it.
+        """The account's projected balance as the broker reports it, or
+        ``Ok(None)`` when the answer holds no number (ADR 0009).
 
-        Returned uncoerced, possibly ``None``: the use case must fail where the
-        legacy handler failed, at lot sizing, not earlier.
+        Not coerced: a balance reported as text is not guessed at, it is
+        missing, and the use case refuses the signal.
         """
 
-    def instrument_id(self, symbol: str) -> Result[int, BrokerFailure]:
-        ...
+    def instrument_id(self, symbol: str) -> Result[int | None, BrokerFailure]:
+        """The id of the instrument with exactly this name, or ``Ok(None)``
+        when the broker lists none (ADR 0009).
+
+        ``Err`` only when the broker did not answer, so an outage can never
+        pass for an unknown symbol.
+        """
 
     def open_position_count(self, instrument_id: int) -> Result[int, BrokerFailure]:
         """How many position rows the broker lists for the instrument.

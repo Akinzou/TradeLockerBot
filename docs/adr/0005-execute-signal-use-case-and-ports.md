@@ -47,6 +47,15 @@ console.
 | `request_close(instrument_id)`                   | `close_all_positions(instrument_id)`                                 |
 | `place_market_order(instrument_id, quantity, side, stop_loss, take_profit)` | `create_order(..., type_="market", stop_loss_type="offset", take_profit_type="offset")` |
 
+*Update:* since step 3b
+([ADR 0009](0009-refuse-what-the-broker-rules-out-before-closing.md)), two
+rows have changed:
+
+- `account_balance()` returns `None` for any answer that is not a number.
+- `instrument_id(symbol)` matches the name in `get_all_instruments()` and
+  returns `None` for a name the broker does not list, so it no longer relies
+  on the client's `ValueError`.
+
 `OperatorConsole` has one method per legacy line: `locked`, `closing`,
 `order_retry`, `order_placed`, `unlocked`.
 

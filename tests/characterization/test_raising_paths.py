@@ -7,16 +7,15 @@ still change which calls happen before a failure: reading the balance on
 type is compared exactly, because ``pytest.raises`` alone would also accept a
 new subclass of the client's exception.
 
-Where two raise sites share a type, ``match`` names the site that must fail.
-Input errors no longer raise: step 3 refuses them before any broker call
-(``test_rejected_signals``). What still raises needs the broker's answer, and
-the unknown symbol and the missing balance are refused in step 3b.
+Input errors no longer raise: step 3 refuses them before any broker call, and
+step 3b refuses a missing balance, an unknown symbol and an unusable quantity
+before any close request (``test_rejected_signals``). What still raises is a
+broker failure; reporting it instead is roadmap step 6.
 """
 
 import pytest
 from tradelocker.exceptions import TLAPIOrderException
 
-from tests.characterization.fake_tradelocker import NO_BALANCE_FIELD
 from tests.characterization.harness import (
     BALANCE,
     CLOSE,
@@ -30,31 +29,23 @@ from tests.characterization.harness import (
     payload,
 )
 
-UNKNOWN_LOOKUP = ("get_instrument_id_from_symbol_name", "GBPUSD")
-
 
 @pytest.mark.parametrize(
-    ("scenario", "fake_args", "lines", "error", "match", "expected"),
+    ("scenario", "fake_args", "lines", "error", "expected"),
     [
-        ("unknown symbol on open", {}, payload(symbol="GBPUSD"),
-         ValueError, "No instrument found", [BALANCE, UNKNOWN_LOOKUP]),
-        ("unknown symbol on close: no balance read", {}, payload(symbol="GBPUSD", action="close"),
-         ValueError, "No instrument found", [UNKNOWN_LOOKUP]),
         ("broker rejects the order", {"order_results": (order_rejection(),)},
-         payload(), TLAPIOrderException, None,
-         [BALANCE, LOOKUP, POSITIONS, LOOKUP, ORDER]),
+         payload(), TLAPIOrderException,
+         [BALANCE, LOOKUP, POSITIONS, ORDER]),
         ("broker rejects the order after the position was closed",
          {"open_positions": [XAUUSD_ID], "order_results": (order_rejection(),)},
-         payload(), TLAPIOrderException, None,
-         [BALANCE, LOOKUP, POSITIONS, CLOSE, POSITIONS, LOOKUP, ORDER]),
-        ("account state without a balance field", {"balance": NO_BALANCE_FIELD},
-         payload(), TypeError, "NoneType", [BALANCE]),
+         payload(), TLAPIOrderException,
+         [BALANCE, LOOKUP, POSITIONS, CLOSE, POSITIONS, ORDER]),
     ],
 )
-def test_raising_path_call_sequence(scenario, fake_args, lines, error, match, expected):
+def test_raising_path_call_sequence(scenario, fake_args, lines, error, expected):
     fake = broker(**fake_args)
 
-    with pytest.raises(error, match=match) as raised:
+    with pytest.raises(error) as raised:
         handle(fake, lines)
 
     assert raised.type is error, scenario

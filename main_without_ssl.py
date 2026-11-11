@@ -8,6 +8,7 @@ from libs.URLgenerator import *
 from tradelocker_bot.adapters.console import PrintingConsole
 from tradelocker_bot.adapters.tradelocker_broker import TradeLockerBroker
 from tradelocker_bot.application.execute_signal import ExecuteSignal
+from tradelocker_bot.application.ports import BrokerFailure
 from tradelocker_bot.domain.result import Err
 from tradelocker_bot.domain.signal import parse_signal
 
@@ -47,11 +48,16 @@ def handle_position_normal(tl, payload_list, lock):
     with lock:
         result = ExecuteSignal(TradeLockerBroker(tl), console).execute(signal.value)
         if isinstance(result, Err):
-            # The client's own exception object, raised inside the lock: the
-            # webhook thread fails with the same type, message and attributes
-            # as before the Result (ADR 0006). Reporting broker failures
-            # instead is a behaviour change of its own (roadmap step 6).
-            raise result.error.cause
+            if isinstance(result.error, BrokerFailure):
+                # The client's own exception object, raised inside the lock: the
+                # webhook thread fails with the same type, message and attributes
+                # as before the Result (ADR 0006). Reporting broker failures
+                # instead is a behaviour change of its own (roadmap step 6).
+                raise result.error.cause
+            # The broker answered and ruled the signal out before any close
+            # request: reported like a payload rejection, without an
+            # exception (ADR 0009).
+            console.rejected(result.error)
 
 def main():
     args = parse_args()

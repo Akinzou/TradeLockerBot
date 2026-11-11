@@ -79,6 +79,12 @@ request:
   balance is too small for it to round above zero, infinite when the product
   overflows (`1e306/1`). Both are still sent to the broker.
 
+*Update:* step 3b
+([ADR 0009](0009-refuse-what-the-broker-rules-out-before-closing.md)) refuses
+all three before any close request. A broker-side refusal is a second error
+kind of `execute`, next to `BrokerFailure`, so decision 1's "only error" no
+longer holds.
+
 ## Consequences
 
 - The frozen webhook contract changes: lines 2 and 6 now ignore case and

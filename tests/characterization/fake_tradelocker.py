@@ -33,7 +33,7 @@ NO_BALANCE_FIELD = object()
 
 # The client calls the handler makes, each of which can be scheduled to fail.
 BROKER_CALLS = frozenset({
-    "get_account_state", "get_instrument_id_from_symbol_name", "get_all_positions",
+    "get_account_state", "get_all_instruments", "get_all_positions",
     "close_all_positions", "create_order",
 })
 
@@ -102,12 +102,15 @@ class FakeTradeLocker:
             return {}
         return {"projectedBalance": self._balance}
 
-    def get_instrument_id_from_symbol_name(self, *args, **kwargs):
-        symbol_name = _bind_to_real("get_instrument_id_from_symbol_name", *args, **kwargs)["symbol_name"]
-        self._record("get_instrument_id_from_symbol_name", symbol_name)
-        if symbol_name not in self._instrument_ids:
-            raise ValueError(f"No instrument found with {symbol_name=}")
-        return self._instrument_ids[symbol_name]
+    def get_all_instruments(self):
+        # The two columns the bot reads, typed as the client types them; the
+        # real frame has more.
+        _bind_to_real("get_all_instruments")
+        self._record("get_all_instruments")
+        return pd.DataFrame({
+            "tradableInstrumentId": pd.Series(list(self._instrument_ids.values()), dtype="int64"),
+            "name": pd.Series(list(self._instrument_ids), dtype="object"),
+        })
 
     def get_all_positions(self):
         _bind_to_real("get_all_positions")

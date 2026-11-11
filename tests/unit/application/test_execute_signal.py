@@ -7,7 +7,8 @@ import pytest
 
 from tradelocker_bot.application.execute_signal import ExecuteSignal
 from tradelocker_bot.application.ports import BrokerFailure
-from tradelocker_bot.domain.lot_sizing import LotSizing
+from tradelocker_bot.application.refusal import NoBalance, UnknownSymbol
+from tradelocker_bot.domain.lot_sizing import LotSizing, UnusableQuantity
 from tradelocker_bot.domain.result import Err, Ok
 from tradelocker_bot.domain.signal import CloseSignal, OpenSignal, Side
 
@@ -40,7 +41,7 @@ class FakeBroker:
         return self._answer(("balance",), self._balance)
 
     def instrument_id(self, symbol):
-        return self._answer(("instrument_id", symbol), XAUUSD)
+        return self._answer(("instrument_id", symbol), XAUUSD if symbol == "XAUUSD" else None)
 
     def open_position_count(self, instrument_id):
         return self._answer(("position_count", instrument_id), self._rows.pop(0))
@@ -73,63 +74,60 @@ class FakeConsole:
         self._journal.append(("unlocked",))
 
 
-def signal(side=Side.BUY, base_lot=0.01):
-    return OpenSignal(symbol="XAUUSD", side=side, sizing=LotSizing(base_lot=base_lot, balance_step=100.0),
+def signal(side=Side.BUY, base_lot=0.01, symbol="XAUUSD"):
+    return OpenSignal(symbol=symbol, side=side, sizing=LotSizing(base_lot=base_lot, balance_step=100.0),
                       take_profit=500, stop_loss=1000)
 
 
 CLOSE_SIGNAL = CloseSignal(symbol="XAUUSD")
 
 
+def execute(sig, **broker_args):
+    journal = []
+    result = ExecuteSignal(FakeBroker(journal, **broker_args), FakeConsole(journal)).execute(sig)
+    return result, journal
+
+
 def run(sig, **broker_args):
-    journal = []
-    assert ExecuteSignal(FakeBroker(journal, **broker_args), FakeConsole(journal)).execute(sig) == Ok(None)
+    result, journal = execute(sig, **broker_args)
+    assert result == Ok(None)
     return journal
 
 
-def run_raising(sig, error, **broker_args):
-    journal = []
-    with pytest.raises(error) as raised:
-        ExecuteSignal(FakeBroker(journal, **broker_args), FakeConsole(journal)).execute(sig)
-    assert raised.type is error
-    return journal
-
-
-START = [("balance",), ("locked",)]
 LOOKUP = ("instrument_id", "XAUUSD")
+START = [("balance",), LOOKUP, ("locked",)]
 NO_ROWS = ("position_count", XAUUSD)
 PLACE = ("place", XAUUSD, 0.1, Side.BUY, 1000, 500)
 
 
-def test_open_with_nothing_to_close_looks_up_twice_then_orders():
-    assert run(signal()) == [*START, LOOKUP, NO_ROWS, LOOKUP, PLACE, ("placed", 9001), ("unlocked",)]
+def test_open_with_nothing_to_close_looks_up_once_then_orders():
+    assert run(signal()) == [*START, NO_ROWS, PLACE, ("placed", 9001), ("unlocked",)]
 
 
 def test_open_requests_one_close_per_row_and_polls_until_none_are_left():
     assert run(signal(), rows=(2, 1, 0)) == [
-        *START, LOOKUP,
+        *START,
         NO_ROWS, ("request_close", XAUUSD), ("closing", "XAUUSD"), ("request_close", XAUUSD), ("closing", "XAUUSD"),
         NO_ROWS, ("request_close", XAUUSD), ("closing", "XAUUSD"),
         NO_ROWS,
-        LOOKUP, PLACE, ("placed", 9001), ("unlocked",),
+        PLACE, ("placed", 9001), ("unlocked",),
     ]
 
 
-def test_close_needs_no_balance_and_makes_no_second_lookup_or_order():
+def test_close_needs_no_balance_and_places_no_order():
     assert run(CLOSE_SIGNAL, rows=(1, 0)) == [
-        ("locked",), LOOKUP, NO_ROWS, ("request_close", XAUUSD), ("closing", "XAUUSD"), NO_ROWS, ("unlocked",),
+        LOOKUP, ("locked",), NO_ROWS, ("request_close", XAUUSD), ("closing", "XAUUSD"), NO_ROWS, ("unlocked",),
     ]
 
 
 def test_quantity_is_sized_from_the_balance():
-    assert run(signal(), balance=1234.0)[5] == ("place", XAUUSD, 0.12, Side.BUY, 1000, 500)
+    assert run(signal(), balance=1234.0)[4] == ("place", XAUUSD, 0.12, Side.BUY, 1000, 500)
 
 
 def test_the_signal_side_is_ordered_and_named_in_the_retry_line():
     journal = run(signal(side=Side.SELL), order_results=(None, 0, 9001))
 
     assert journal[4:] == [
-        LOOKUP,
         ("place", XAUUSD, 0.1, Side.SELL, 1000, 500), ("retry", Side.SELL),
         ("place", XAUUSD, 0.1, Side.SELL, 1000, 500), ("retry", Side.SELL),
         ("place", XAUUSD, 0.1, Side.SELL, 1000, 500), ("placed", 9001),
@@ -137,8 +135,19 @@ def test_the_signal_side_is_ordered_and_named_in_the_retry_line():
     ]
 
 
-def test_balance_reaches_the_lot_sizing_uncoerced():
-    assert run_raising(signal(), TypeError, balance=None) == [("balance",)]
+@pytest.mark.parametrize(
+    ("scenario", "sig", "balance", "refusal", "journal"),
+    [
+        ("no balance", signal(), None, NoBalance(), [("balance",)]),
+        ("quantity rounds to zero", signal(), 10.0, UnusableQuantity(balance=10.0, quantity=0.0), [("balance",)]),
+        ("unknown symbol on open", signal(symbol="GBPUSD"), 1000.0, UnknownSymbol("GBPUSD"),
+         [("balance",), ("instrument_id", "GBPUSD")]),
+        ("unknown symbol on close", CloseSignal(symbol="GBPUSD"), 1000.0, UnknownSymbol("GBPUSD"),
+         [("instrument_id", "GBPUSD")]),
+    ],
+)
+def test_a_refusal_is_returned_before_locked_and_any_close(scenario, sig, balance, refusal, journal):
+    assert execute(sig, balance=balance, rows=(1, 0)) == (Err(refusal), journal), scenario
 
 
 CLOSE = [("request_close", XAUUSD), ("closing", "XAUUSD")]
@@ -148,24 +157,23 @@ CLOSE = [("request_close", XAUUSD), ("closing", "XAUUSD")]
     ("scenario", "failing_call", "sig", "rows", "order_results", "expected"),
     [
         ("balance", ("balance", 1), signal(), (0,), (9001,), [("balance",)]),
-        ("first lookup", ("instrument_id", 1), signal(), (0,), (9001,), [*START, LOOKUP]),
-        ("position count", ("position_count", 1), signal(), (0,), (9001,), [*START, LOOKUP, NO_ROWS]),
+        ("lookup", ("instrument_id", 1), signal(), (0,), (9001,), [("balance",), LOOKUP]),
+        ("position count", ("position_count", 1), signal(), (0,), (9001,), [*START, NO_ROWS]),
         ("first close request: no closing line", ("request_close", 1), signal(), (2, 0), (9001,),
-         [*START, LOOKUP, NO_ROWS, ("request_close", XAUUSD)]),
+         [*START, NO_ROWS, ("request_close", XAUUSD)]),
         ("second close request", ("request_close", 2), signal(), (2, 0), (9001,),
-         [*START, LOOKUP, NO_ROWS, *CLOSE, ("request_close", XAUUSD)]),
-        ("recount", ("position_count", 2), signal(), (1, 0), (9001,), [*START, LOOKUP, NO_ROWS, *CLOSE, NO_ROWS]),
-        ("second lookup", ("instrument_id", 2), signal(), (0,), (9001,), [*START, LOOKUP, NO_ROWS, LOOKUP]),
-        ("order", ("place", 1), signal(), (0,), (9001,), [*START, LOOKUP, NO_ROWS, LOOKUP, PLACE]),
+         [*START, NO_ROWS, *CLOSE, ("request_close", XAUUSD)]),
+        ("recount", ("position_count", 2), signal(), (1, 0), (9001,), [*START, NO_ROWS, *CLOSE, NO_ROWS]),
+        ("order", ("place", 1), signal(), (0,), (9001,), [*START, NO_ROWS, PLACE]),
         ("order placed again", ("place", 2), signal(), (0,), (None, 9001),
-         [*START, LOOKUP, NO_ROWS, LOOKUP, PLACE, ("retry", Side.BUY), PLACE]),
-        ("lookup on close", ("instrument_id", 1), CLOSE_SIGNAL, (0,), (9001,), [("locked",), LOOKUP]),
+         [*START, NO_ROWS, PLACE, ("retry", Side.BUY), PLACE]),
+        ("lookup on close", ("instrument_id", 1), CLOSE_SIGNAL, (0,), (9001,), [LOOKUP]),
         ("position count on close", ("position_count", 1), CLOSE_SIGNAL, (0,), (9001,),
-         [("locked",), LOOKUP, NO_ROWS]),
+         [LOOKUP, ("locked",), NO_ROWS]),
         ("close request on close", ("request_close", 1), CLOSE_SIGNAL, (1, 0), (9001,),
-         [("locked",), LOOKUP, NO_ROWS, ("request_close", XAUUSD)]),
+         [LOOKUP, ("locked",), NO_ROWS, ("request_close", XAUUSD)]),
         ("recount on close", ("position_count", 2), CLOSE_SIGNAL, (1, 0), (9001,),
-         [("locked",), LOOKUP, NO_ROWS, *CLOSE, NO_ROWS]),
+         [LOOKUP, ("locked",), NO_ROWS, *CLOSE, NO_ROWS]),
     ],
 )
 def test_a_broker_failure_is_returned_at_once_without_unlocked(

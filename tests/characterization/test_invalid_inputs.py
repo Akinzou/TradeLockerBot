@@ -1,9 +1,8 @@
 """Payloads that legacy code mishandled, as roadmap step 3 decides them
-(ADR 0008). Payloads that are now refused are in ``test_rejected_signals``;
-these are the ones that still trade, and what they trade.
+(ADR 0008). Payloads that are now refused, before any broker call or once
+the broker has answered (ADR 0009), are in ``test_rejected_signals``; these
+are the ones that still trade, and what they trade.
 """
-
-import math
 
 import pytest
 
@@ -35,17 +34,3 @@ def test_spaces_around_the_lot_numbers_are_still_accepted():
     handle(fake, payload(lot=" 0.01 / 100 "))
 
     assert fake.orders()[0][2]["quantity"] == 0.1
-
-
-@pytest.mark.parametrize(
-    ("balance", "lot", "quantity"),
-    [(10.0, "0.01/100", 0.0), (1000.0, "1e306/1", math.inf)],
-)
-def test_an_unusable_quantity_is_still_sent_to_the_broker(balance, lot, quantity):
-    # Both lots are valid; only the balance makes the quantity unusable, so
-    # step 3b refuses them.
-    fake = broker(balance=balance)
-
-    handle(fake, payload(lot=lot))
-
-    assert fake.orders()[0][2]["quantity"] == quantity
