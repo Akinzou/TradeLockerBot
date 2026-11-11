@@ -1,0 +1,6 @@
+# Local agent configuration
+**/.claude/rules/
+.claude/settings.local.json
+CLAUDE.md
+CLAUDE.local.md
+AGENTS.md
