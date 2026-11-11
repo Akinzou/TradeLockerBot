@@ -2,7 +2,8 @@
 handler thread.
 
 The app under test is the one the startup hands to the server, built with the
-default arguments, so these pins cover the route as deployed: its path, its
+default arguments unless a test names its own path, so these pins cover the
+route as deployed: its path, its
 answer, how the body becomes payload lines, one thread per request, one lock
 for every request, and an exception that ends the thread rather than the
 response.
@@ -181,24 +182,18 @@ def test_a_close_signal_is_handled_through_the_route(monkeypatch):
     assert fake.calls == [LOOKUP, POSITIONS, CLOSE, POSITIONS]
 
 
-def test_the_default_api_docs_are_served_and_list_the_webhook_path(monkeypatch):
-    # Known defect: the bare FastAPI app serves /docs, /redoc and
-    # /openapi.json, and the schema names the webhook path, so a generated
-    # path, the endpoint's only protection, is readable by anyone who asks.
-    app = serve(monkeypatch, broker(), "--url", "/hook/secret")
-    client = TestClient(app)
+@pytest.mark.parametrize("path", ["/openapi.json", "/docs", "/redoc", "/docs/oauth2-redirect"])
+def test_no_api_docs_are_served_so_no_page_names_the_webhook_path(monkeypatch, path):
+    # ADR 0011: the OpenAPI schema named the webhook path, the endpoint's only
+    # protection. Each former docs address now answers exactly like an
+    # address the app never had, so a scan cannot tell it was ever there.
+    fake = broker()
+    app = serve(monkeypatch, fake, "--url", "/hook/secret")
+    client = TestClient(app, follow_redirects=False)
+    unknown = client.get("/no-such-page")
 
-    assert client.get("/docs").status_code == 200
-    assert client.get("/redoc").status_code == 200
-    assert client.get("/openapi.json").json() == {
-        "openapi": "3.1.0",
-        "info": {"title": "FastAPI", "version": "0.1.0"},
-        "paths": {"/hook/secret": {"post": {
-            "summary": "Process Webhook",
-            "operationId": "process_webhook_hook_secret_post",
-            "responses": {"200": {
-                "description": "Successful Response",
-                "content": {"application/json": {"schema": {}}},
-            }},
-        }}},
-    }
+    response = client.get(path)
+
+    assert (response.status_code, response.content) == (404, b'{"detail":"Not Found"}')
+    assert response.headers == unknown.headers
+    assert fake.calls == []
