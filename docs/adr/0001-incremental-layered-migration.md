@@ -28,8 +28,11 @@ pull request at a time**, never as a rewrite.
    caught.
 2. **Restructure without changing behaviour.** While code moves into layers,
    the characterization tests must stay green with their assertions unchanged.
-   Only their seam may move, meaning the module they import or patch, and the
-   pull request must call out that edit.
+   Only their seam (`tests/characterization/harness.py`, the one module that imports the code under test) may move, and the
+   pull request must call out that edit. "Behaviour-preserving" means, for
+   every input: the same sequence of broker calls with the same arguments, and
+   the same outcome, including the exact exception type when it raises. Only code that is identical under this rule
+   for *all* inputs, malformed ones included, moves in a structure step.
 3. **Change behaviour separately.** Each intentional behaviour change gets its
    own pull request, its own ADR, and an explicit update to the characterization
    test that pinned the old behaviour.

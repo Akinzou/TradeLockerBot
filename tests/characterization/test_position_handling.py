@@ -5,34 +5,13 @@ Behaviour that looks wrong is still pinned here on purpose; changing it is a
 separate, explicitly reviewed step (see docs/migration-roadmap.md).
 """
 
-import threading
-
 import pytest
 from tradelocker.exceptions import TLAPIOrderException
 
-import main_without_ssl as bot
-from tests.characterization.fake_tradelocker import FakeTradeLocker
-
-XAUUSD_ID = 101
-EURUSD_ID = 202
-
-
-def _payload(action="open", direction="buy", lot="0.01/100", tp="500", sl="1000", invert="NonInvert"):
-    return ["XAUUSD", direction, lot, tp, sl, action, invert]
-
-
-def _broker(balance=1000.0, open_positions=(), order_results=(9001,), close_requests_to_fill=1):
-    return FakeTradeLocker(
-        balance=balance,
-        instrument_ids={"XAUUSD": XAUUSD_ID, "EURUSD": EURUSD_ID},
-        open_positions=open_positions,
-        order_results=order_results,
-        close_requests_to_fill=close_requests_to_fill,
-    )
-
-
-def _handle(broker, payload):
-    bot.handle_position_normal(broker, payload, threading.Lock())
+from tests.characterization.harness import EURUSD_ID, XAUUSD_ID
+from tests.characterization.harness import broker as _broker
+from tests.characterization.harness import handle as _handle
+from tests.characterization.harness import payload as _payload
 
 
 def test_open_places_market_order_with_offset_protection():
@@ -105,10 +84,11 @@ def test_close_closes_positions_without_ordering():
     assert broker.orders() == []
 
 
-def test_unknown_action_neither_closes_nor_orders():
+@pytest.mark.parametrize("action", ["hold", "Open", "OPEN", "Close", " open"])
+def test_unknown_action_neither_closes_nor_orders(action):
     broker = _broker(open_positions=[XAUUSD_ID])
 
-    _handle(broker, _payload(action="hold"))
+    _handle(broker, _payload(action=action))
 
     assert broker.open_positions == [XAUUSD_ID]
     assert broker.orders() == []

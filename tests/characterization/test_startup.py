@@ -4,7 +4,7 @@ import re
 
 import pytest
 
-import main_without_ssl as bot
+from tests.characterization.harness import bot
 from libs.URLgenerator import generate_random_url
 
 
