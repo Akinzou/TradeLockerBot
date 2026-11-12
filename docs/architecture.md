@@ -162,11 +162,14 @@ flowchart LR
     UC -- "Err(Refusal)" --> CON
     UC -- "Err(BrokerFailure)" --> SH
     SH -- "Broker failed: line,<br/>then re-raised in the thread" --> CON
-    CON -- "red lines: notify(text)" --> NT[BackgroundNotifier<br/>its own thread]
+    CON -- "red lines, Closed after line:<br/>notify(text)" --> NT[BackgroundNotifier<br/>its own thread]
     NT -- "HTTPS, when set" --> TGAPI[(Telegram chat)]
 ```
 
-The console's red lines reach Telegram only when its settings are set,
+The console's red lines, and the green `Closed after` line that ends a
+`Still closing:` one
+([ADR 0028](adr/0028-say-when-a-slow-close-ended.md)), reach Telegram only
+when its settings are set,
 and only through the notifier's queue, so no signal waits on Telegram
 ([ADR 0027](adr/0027-send-the-red-lines-to-telegram.md)).
 
@@ -224,6 +227,10 @@ sequenceDiagram
                 UC->>K: sleep(1)
             end
         end
+        opt still_closing was printed
+            UC->>K: now()
+            UC->>C: closed("XAUUSD", seconds since the first requests)
+        end
     end
     UC->>B: place_market_order(101, 0.1, side, sl, tp), once
     alt the broker created the order
@@ -253,7 +260,10 @@ client waits before every request, and asks again only once 10 seconds
 have passed on the `Clock`. A minute after the first request it prints one
 red `Still closing:` line. A count or request that gets no answer still
 ends the loop as a `BrokerFailure`
-([ADR 0022](adr/0022-pace-the-close-loop-on-a-clock.md)).
+([ADR 0022](adr/0022-pace-the-close-loop-on-a-clock.md)). A close that
+printed that line ends with one green `Closed after N seconds:` line, at
+the count that lists no position; one that failed does not
+([ADR 0028](adr/0028-say-when-a-slow-close-ended.md)).
 
 The order is placed once. If the broker answers without creating it, the
 positions are already closed. The use case counts them again, since a
@@ -303,6 +313,7 @@ stateDiagram-v2
     Locked --> Failed: broker call failed before any close
     Locked --> Working: checks passed, Normal Locked line
     Working --> Working: position still open, Still closing line once after a minute
+    Working --> Working: closed after that line, Closed after line once
     Working --> Failed: broker call failed while closing or ordering
     Working --> OrderRejected: broker answered the order without creating it
     Working --> Handled: Normal Unlocked line
@@ -416,6 +427,10 @@ design.
   - Its `still_closing` prints one red line with the open positions, the
     whole seconds since the first close request, and that later signals
     wait.
+  - Its `closed` prints one green line with the whole seconds from the
+    first close request to the count that listed none, and hands it on
+    like a red line
+    ([ADR 0028](adr/0028-say-when-a-slow-close-ended.md)).
   - Its `broker_failed` and `bot_failed` print one red line each with the
     symbol and the exception's type, never its text.
   - Every red line goes through `_alert`, which prints it and hands its
@@ -559,3 +574,4 @@ layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
 | [0025](adr/0025-run-the-broker-client-at-info.md) | Run the broker client at `info`, and name the account in the bot's own line |
 | [0026](adr/0026-write-stdout-line-by-line.md) | Write the bot's output line by line, with or without a terminal |
 | [0027](adr/0027-send-the-red-lines-to-telegram.md) | Send the operator's red lines to Telegram, off the trading path |
+| [0028](adr/0028-say-when-a-slow-close-ended.md) | Say when a close that took a minute ended |
