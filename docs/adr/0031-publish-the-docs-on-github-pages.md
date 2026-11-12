@@ -66,8 +66,10 @@ are, and how it is published without new risk to the repository.
   3.5 MB would hold every page blank until it arrived.
 - **No web fonts.** `font: false` keeps the pages off Google Fonts; the
   system's own fonts are used.
-- **The README gets a docs badge, and the coverage badge a logo**, both on
-  the title line.
+- **The README gets a docs badge, and the coverage badge a logo.** The
+  coverage badge stays alone on the title line; the docs badge leads the
+  row of badges below it, and a plain link to the site follows the
+  warning, where a reader who misses the badges still finds it.
 
 ```mermaid
 flowchart LR

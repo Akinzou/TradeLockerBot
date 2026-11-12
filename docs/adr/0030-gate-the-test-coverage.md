@@ -26,7 +26,7 @@ CI checks.
   out. The step stays inside `tests`: `ci-ok` and the publish workflow
   depend on the job and workflow names.
 - **The badge states the floor, not the last figure.** It is a fixed
-  shields.io image beside the README's title, `coverage 99%`, linking to
+  shields.io image beside the README's title, `Code Coverage 99%`, linking to
   the README's *Test coverage* section. `tests/test_coverage_badge.py`
   fails when its number differs from `fail_under`, and when the workflow
   stops running `coverage report`. A green `master` therefore proves the
@@ -43,7 +43,7 @@ CI checks.
 ```mermaid
 flowchart LR
     PY["pyproject.toml<br/>fail_under = 99"] -- "coverage report<br/>fails a run below it" --> CI[tests job, 3.11 and 3.12]
-    PY -- "test_coverage_badge<br/>fails if they differ" --> B["README badge<br/>coverage 99%"]
+    PY -- "test_coverage_badge<br/>fails if they differ" --> B["README badge<br/>Code Coverage 99%"]
     CI -- "green on master" --> B
 ```
 

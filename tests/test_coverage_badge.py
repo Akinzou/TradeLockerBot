@@ -11,7 +11,7 @@ import tomllib
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-BADGE = re.compile(r"https://img\.shields\.io/badge/coverage-(\d+(?:\.\d+)?)%25-brightgreen")
+BADGE = re.compile(r"https://img\.shields\.io/badge/Code_Coverage-(\d+(?:\.\d+)?)%25-brightgreen")
 
 
 def _floor():
