@@ -103,6 +103,7 @@ def test_a_red_line_from_a_signal_is_sent_to_the_chat(monkeypatch, capsys, teleg
 
 def test_a_signal_does_not_wait_for_a_telegram_that_does_not_answer(monkeypatch, capsys, telegram, tmp_path):
     telegram.gate.clear()
+    monkeypatch.setattr(composition_root, "STOP_SECONDS", 0.1)
     startup = Startup(monkeypatch, broker())
     startup.run(_with_telegram(tmp_path))
     telegram.wait_for(1)
@@ -138,3 +139,27 @@ def test_settings_that_name_no_chat_stop_before_any_output(monkeypatch, capsys, 
     assert TOKEN not in err
     assert startup.logins == []
     assert telegram.messages == []
+
+
+def test_a_failed_login_is_sent_before_the_bot_stops(monkeypatch, capsys, telegram, tmp_path):
+    failure = ConnectionError("Max retries exceeded with url: /auth/jwt/token")
+    startup = Startup(monkeypatch, failure)
+
+    with pytest.raises(ConnectionError) as raised:
+        startup.run(_with_telegram(tmp_path))
+
+    # Already sent when the exception leaves: the stop waits for the queue.
+    assert raised.value is failure
+    assert telegram.messages == ["Login failed: ConnectionError; the bot stops, the log has the error"]
+    assert startup.served == []
+
+
+def test_once_the_server_stops_the_messages_still_queued_are_reported(monkeypatch, capsys, telegram, tmp_path):
+    telegram.gate.clear()
+    monkeypatch.setattr(composition_root, "STOP_SECONDS", 0.1)
+
+    # The recorded server start returns at once, as uvicorn does once stopped.
+    Startup(monkeypatch, broker()).run(_with_telegram(tmp_path))
+
+    assert ("Telegram: the bot stopped with 1 of its messages not sent; the log has them"
+            in console_lines(capsys))

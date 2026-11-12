@@ -62,10 +62,7 @@ class PrintingConsole:
         self._notify = notify
 
     def _alert(self, text: str) -> None:
-        # One print with the reset inside, rather than a reset line after:
-        # another thread's line can print in between, and it must not
-        # inherit the red.
-        print(f"{ascii_alerts.RED}{text}\n{ascii_alerts.RESET}")
+        ascii_alerts.print_red(text)
         self._notify(text)
 
     def locked(self) -> None:
@@ -126,4 +123,11 @@ class PrintingConsole:
         the host. The traceback after it still has the text, in the log.
         """
         self._alert(f"Broker failed: a call for {symbol} got no answer ({type(cause).__name__}); "
+                    f"the signal stopped there, check {symbol} in TradeLocker")
+
+    def bot_failed(self, symbol: str, error: Exception) -> None:
+        """Any other exception that ended the signal on ``symbol``, a bug for
+        one: by its type alone, as for ``broker_failed``, and with the same
+        advice, since the signal may have stopped after the close."""
+        self._alert(f"Bot failed: an error in the bot ({type(error).__name__}) while handling {symbol}; "
                     f"the signal stopped there, check {symbol} in TradeLocker")

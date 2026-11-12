@@ -146,6 +146,9 @@ def test_a_broker_call_without_an_answer_names_the_symbol_and_the_exception_type
         (lambda c: c.broker_failed("XAUUSD", ConnectionError("refused")),
          "Broker failed: a call for XAUUSD got no answer (ConnectionError); the signal stopped there, "
          "check XAUUSD in TradeLocker"),
+        (lambda c: c.bot_failed("XAUUSD", KeyError("access_token: eyJ...")),
+         "Bot failed: an error in the bot (KeyError) while handling XAUUSD; the signal stopped there, "
+         "check XAUUSD in TradeLocker"),
     ],
 )
 def test_each_red_line_is_handed_on_as_its_text_without_colours(capsys, call, text):

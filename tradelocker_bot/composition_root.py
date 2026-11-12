@@ -158,14 +158,25 @@ def no_notification(_text: str) -> None:
     """Telegram is off: the console line is the operator's only record."""
 
 
-def start_notifier(settings: TelegramSettings | None, clock) -> Callable[[str], None]:
-    """Where the operator's alerts go besides the console: Telegram's
-    notifier, started, or nowhere when its settings are not set (ADR 0027)."""
+# What the stop gives the notifier's queue: well inside the 10 seconds
+# `docker stop` waits before it kills the process.
+STOP_SECONDS = 5.0
+
+
+def start_notifier(settings: TelegramSettings | None, clock) -> BackgroundNotifier | None:
+    """Telegram's notifier, started, or ``None`` when its settings are not
+    set (ADR 0027)."""
     if settings is None:
-        return no_notification
-    notifier = BackgroundNotifier(Delivery(TelegramChat(settings, urlopen), clock, print_report), print_report)
+        return None
+    notifier = BackgroundNotifier(Delivery(TelegramChat(settings, urlopen), clock, print_report), clock,
+                                  print_report)
     notifier.start()
-    return notifier.notify
+    return notifier
+
+
+def stop_notifier(notifier: BackgroundNotifier | None) -> None:
+    if notifier is not None:
+        notifier.stop(STOP_SECONDS)
 
 
 def build_signal_handler(client, lock, clock, notify: Callable[[str], None]) -> SignalHandler:
@@ -194,7 +205,8 @@ def main():
         sys.stdout.reconfigure(line_buffering=True)
     args = parse_args()
     clock = SystemClock()
-    notify = start_notifier(args.telegram, clock)
+    notifier = start_notifier(args.telegram, clock)
+    notify = no_notification if notifier is None else notifier.notify
 
     if args.url == "generate":
         print(ascii_alerts.RED + ascii_alerts.ascii_art_url + ascii_alerts.RESET)
@@ -205,7 +217,16 @@ def main():
     if args.telegram is not None:
         print("Telegram: on; the account line and every red line also go to the chat")
 
-    client = log_in(args.env, args.username, args.password, args.server, int(args.acc_num), int(args.acc_id))
+    try:
+        client = log_in(args.env, args.username, args.password, args.server, int(args.acc_num), int(args.acc_id))
+    except Exception as failure:
+        # Sent, and given a few seconds to go, before the bot stops: an
+        # operator who reads the phone would otherwise only miss the
+        # `Logged in:` message. By type alone, as the broker's lines: the
+        # client's text can hold the server's answer (ADR 0025).
+        notify(f"Login failed: {type(failure).__name__}; the bot stops, the log has the error")
+        stop_notifier(notifier)
+        raise
     # The client names the account it chose only at debug, which also logs the
     # password (ADR 0025); the operator still needs to see which account trades.
     logged_in = f"Logged in: acc_id {client.account_id}, acc_num {client.acc_num}"
@@ -219,3 +240,5 @@ def main():
     app = create_app(args.url, build_signal_handler(client, threading.Lock(), clock, notify).handle)
 
     uvicorn.run(app, host="0.0.0.0", port=args.port, log_config=server_log_config())
+    # uvicorn returns once it has stopped, on `docker stop` for one.
+    stop_notifier(notifier)

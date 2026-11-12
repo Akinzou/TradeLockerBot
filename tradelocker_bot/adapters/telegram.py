@@ -1,19 +1,21 @@
 """The operator's Telegram chat: its settings and one message sent to it
 (ADR 0027).
 
-An adapter rather than a port: only adapters hand it text, the console's red
-lines and the startup's account line, and the use case knows nothing of
-it. The bot token is part of every request's path, so nothing here returns
+The adapter of the ``Chat`` port, which the notifier declares: only
+adapters hand it text, the console's red lines and the startup's account
+line, and the use case knows nothing of it. The bot token is part of every request's path, so nothing here returns
 or prints a request, a URL or an exception's text: a failure is the HTTP
 status with Telegram's own description, or the exception's type.
 """
 
 import json
+import math
 import re
 from dataclasses import dataclass, field
 from urllib.error import HTTPError, URLError
 from urllib.request import Request
 
+from tradelocker_bot.adapters.notifier import SendFailure
 from tradelocker_bot.adapters.secret_file import read_secret_file
 from tradelocker_bot.adapters.shown import SHOWN_REASON_CHARACTERS, shown
 from tradelocker_bot.domain.result import Err, Ok, Result
@@ -74,18 +76,8 @@ def telegram_from(env) -> Result[TelegramSettings | None, str]:
     return Ok(TelegramSettings(token.value, chat_id))
 
 
-@dataclass(frozen=True)
-class SendFailure:
-    """Why a message was not sent, and whether the same request may yet
-    succeed: a refused one, for a wrong chat or a blocked bot, would not."""
-
-    reason: str
-    retry: bool
-    retry_after: float | None = None
-
-
 class TelegramChat:
-    """Sends one message to the chat, as plain text."""
+    """The ``Chat`` port over Telegram: one message, as plain text."""
 
     def __init__(self, settings: TelegramSettings, urlopen, api: str = API, timeout: float = TIMEOUT_SECONDS):
         # `urlopen` has no default, so no test reaches Telegram by leaving it
@@ -148,6 +140,9 @@ def _outcome(status: int, answer: bytes) -> Result[None, SendFailure]:
         reason += f", {shown(description, SHOWN_REASON_CHARACTERS)}"
     parameters = parsed.get("parameters")
     retry_after = parameters.get("retry_after") if isinstance(parameters, dict) else None
-    if isinstance(retry_after, bool) or not isinstance(retry_after, int | float):
+    # Only a wait a server can mean: JSON readers accept NaN and Infinity,
+    # and a negative one would stop the sleep with an error.
+    if isinstance(retry_after, bool) or not isinstance(retry_after, int | float) \
+            or not math.isfinite(retry_after) or retry_after < 0:
         retry_after = None
     return Err(SendFailure(reason, retry=retry, retry_after=None if retry_after is None else float(retry_after)))
