@@ -169,6 +169,9 @@ def main():
     print(ascii_alerts.GREEN + ascii_alerts.ascii_art_hello + ascii_alerts.RESET)
 
     client = log_in(args.env, args.username, args.password, args.server, int(args.acc_num), int(args.acc_id))
+    # The client names the account it chose only at debug, which also logs the
+    # password (ADR 0025); the operator still needs to see which account trades.
+    print(f"Logged in: acc_id {client.account_id}, acc_num {client.acc_num}")
 
     # One lock for the whole process: every request's signal runs inside it,
     # so two alerts never interleave between closing and ordering.

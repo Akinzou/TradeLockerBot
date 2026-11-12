@@ -97,7 +97,8 @@ jobs:
       # A secret mounted read-only, as the README shows it (ADR 0024), must get
       # past the settings, and the image's own Python must read it as written,
       # less the line ending. The file is written outside the build context
-      # and after the build, so no image can hold it.
+      # and after the build, so no image can hold it. The client's failed
+      # login must be in the output, and the password must not (ADR 0025).
       - name: Start the image with a password file
         run: |
           printf 'p a $HOME *\n' > "$RUNNER_TEMP/password"
@@ -110,6 +111,8 @@ jobs:
           test "$status" != 0
           test "$status" != 2
           grep -qF '|_   _| __ __ _' out.txt
+          grep -qF 'Failed to fetch authentication tokens' err.txt
+          if grep -qF 'p a $HOME *' out.txt err.txt; then echo 'the password is in the output'; exit 1; fi
           docker run --rm --network none -e username=u -e server=s -e env=demo \
             --mount "$mount" -e password_file=/run/secrets/password --entrypoint python tradelocker_bot:ci \
             -c 'import sys; from tradelocker_bot.composition_root import parse_args; sys.exit(parse_args([]).password != "p a $HOME *")'
@@ -126,7 +129,8 @@ jobs:
           tail -n 1 err.txt | grep -q 'error: password_file: the file cannot be read (No such file or directory)$'
       # A password the old shell form split and globbed must get past the
       # settings: the greeting is printed, then the login fails for want of
-      # a network. The old image stopped at the settings with status 2.
+      # a network. The old image stopped at the settings with status 2. The
+      # client's failed login must be in the output, and the password must not.
       - name: Start the image with a password that has spaces and shell characters
         run: |
           status=0
@@ -136,6 +140,8 @@ jobs:
           test "$status" != 0
           test "$status" != 2
           grep -qF '|_   _| __ __ _' out.txt
+          grep -qF 'Failed to fetch authentication tokens' err.txt
+          if grep -qF 'p a $HOME *' out.txt err.txt; then echo 'the password is in the output'; exit 1; fi
       # The image installs with --no-deps (ADR 0017), so check there, with the
       # image's own interpreter reading the markers, that it holds what its
       # packages need. It uses the base image's own packaging, so nothing

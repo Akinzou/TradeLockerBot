@@ -132,6 +132,11 @@ ENVIRONMENTS = MappingProxyType({
     "live": "https://live.tradelocker.com",
 })
 
+# The client's default, debug, logs every request whole: the password in the
+# login, the refresh token and the bearer token (ADR 0025). Info keeps its
+# account of logins, refreshes and orders; warning would drop that too.
+CLIENT_LOG_LEVEL = "info"
+
 
 def log_in(environment: str, username: str, password: str, server: str, acc_num: int, acc_id: int) -> TLAPI:
     """The logged-in client, on the account ``acc_num`` or ``acc_id`` names.
@@ -148,7 +153,9 @@ def log_in(environment: str, username: str, password: str, server: str, acc_num:
         raise ValueError("Please provide only the account number or ID (starting from 1).")
     url = ENVIRONMENTS[environment]
     if acc_num:
-        return TLAPI(environment=url, username=username, password=password, server=server, acc_num=acc_num)
+        return TLAPI(environment=url, username=username, password=password, server=server, acc_num=acc_num,
+                     log_level=CLIENT_LOG_LEVEL)
     if acc_id:
-        return TLAPI(environment=url, username=username, password=password, server=server, account_id=acc_id)
-    return TLAPI(environment=url, username=username, password=password, server=server)
+        return TLAPI(environment=url, username=username, password=password, server=server, account_id=acc_id,
+                     log_level=CLIENT_LOG_LEVEL)
+    return TLAPI(environment=url, username=username, password=password, server=server, log_level=CLIENT_LOG_LEVEL)

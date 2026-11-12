@@ -79,7 +79,8 @@ def order_rejection():
     return TLAPIOrderException({}, {"errmsg": "Not enough margin"})
 
 
-def broker(balance=1000.0, open_positions=(), order_results=(9001,), close_requests_to_fill=1, failures=None):
+def broker(balance=1000.0, open_positions=(), order_results=(9001,), close_requests_to_fill=1, failures=None,
+           **account):
     return FakeTradeLocker(
         balance=balance,
         instrument_ids={"XAUUSD": XAUUSD_ID, "EURUSD": EURUSD_ID},
@@ -87,6 +88,7 @@ def broker(balance=1000.0, open_positions=(), order_results=(9001,), close_reque
         order_results=order_results,
         close_requests_to_fill=close_requests_to_fill,
         failures=failures,
+        **account,
     )
 
 
@@ -153,10 +155,12 @@ SERVE = "[serve]"
 # variables; tests add the optional ones. Read-only, so no test can alter it
 # for the tests after it.
 DEMO = MappingProxyType({"username": "u", "password": "p", "server": "s", "env": "demo"})
-# The login the client receives for them.
-DEMO_LOGIN = MappingProxyType(
-    {"environment": "https://demo.tradelocker.com", "username": "u", "password": "p", "server": "s"}
-)
+# The login the client receives for them, at a level that keeps the requests
+# and the secrets in them out of the log (ADR 0025).
+DEMO_LOGIN = MappingProxyType({
+    "environment": "https://demo.tradelocker.com", "username": "u", "password": "p", "server": "s",
+    "log_level": "info",
+})
 
 
 class Startup:

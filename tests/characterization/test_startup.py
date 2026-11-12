@@ -50,6 +50,9 @@ SAVE_URL = r"""
 
 HELLO_LINES = [line for line in HELLO.splitlines() if line.strip()]
 
+# The account the fake client chose, as the bot names it after the login.
+ACCOUNT = "Logged in: acc_id 76, acc_num 1"
+
 # One segment: 24 random bytes in URL-safe base64, unpadded (ADR 0012).
 GENERATED_PATH = re.compile(r"/[A-Za-z0-9_-]{32}")
 
@@ -75,7 +78,7 @@ def test_a_generated_path_is_one_segment_of_32_url_safe_characters():
 def test_startup_greets_logs_in_and_serves_on_every_interface_at_port_443(startup, capsys):
     startup.run(DEMO)
 
-    assert capsys.readouterr().out == f"{GREEN}{HELLO}{RESET}\n{LOGIN}\n{SERVE}\n"
+    assert capsys.readouterr().out == f"{GREEN}{HELLO}{RESET}\n{LOGIN}\n{ACCOUNT}\n{SERVE}\n"
     assert startup.logins == [DEMO_LOGIN]
     assert [{k: v for k, v in s.items() if k != "app"} for s in startup.served] == [
         {"host": "0.0.0.0", "port": 443, "options": {"log_config": LOG_CONFIG}},
@@ -116,7 +119,7 @@ def test_generated_path_is_announced_before_the_greeting_and_served(startup, cap
     assert out.startswith(url_banner)
     path, rest = out[len(url_banner):].split("\n", 1)
     assert GENERATED_PATH.fullmatch(path)
-    assert rest == f"{GREEN}{HELLO}{RESET}\n{LOGIN}\n{SERVE}\n"
+    assert rest == f"{GREEN}{HELLO}{RESET}\n{LOGIN}\n{ACCOUNT}\n{SERVE}\n"
     assert post(startup.app, path, b"")[0].status_code == 200
     assert post(startup.app, "/strategy", b"")[0].status_code == 404
 
