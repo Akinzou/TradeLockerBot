@@ -96,3 +96,19 @@ def test_a_rejected_order_ends_with_what_the_broker_lists_afterwards(capsys, ope
 
     out = capsys.readouterr().out
     assert out == f"{RED}Order rejected: the broker refused to buy XAUUSD ('Not enough margin'); {state}\n{RESET}\n"
+
+
+@pytest.mark.parametrize(
+    ("open_positions", "seconds", "state"),
+    [
+        (1, 60.0, "the broker lists 1 open XAUUSD position 60 seconds after the first close request; "
+                  "later signals wait until it closes, check it in TradeLocker"),
+        # Whole seconds: a real clock overshoots each pause by a little.
+        (3, 61.73, "the broker lists 3 open XAUUSD positions 61 seconds after the first close request; "
+                   "later signals wait until they close, check them in TradeLocker"),
+    ],
+)
+def test_a_position_still_open_says_how_long_and_that_later_signals_wait(capsys, open_positions, seconds, state):
+    PrintingConsole().still_closing("XAUUSD", open_positions, seconds)
+
+    assert capsys.readouterr().out == f"{RED}Still closing: {state}\n{RESET}\n"

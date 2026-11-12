@@ -70,6 +70,23 @@ class PrintingConsole:
         print(ascii_alerts.GREEN + f"Order placed successfully, order ID: {order_id}")
         ascii_alerts.reset_style()
 
+    def still_closing(self, symbol: str, open_positions: int, seconds: float) -> None:
+        """A close the broker has not filled a minute after the first request
+        (ADR 0022).
+
+        Says that later signals wait, because the lock is held until the
+        position closes, and a closed market can keep it shut for a weekend.
+        """
+        if open_positions == 1:
+            listed, closes, them = f"1 open {symbol} position", "it closes", "it"
+        else:
+            listed, closes, them = f"{open_positions} open {symbol} positions", "they close", "them"
+        # One print with the reset inside, as for a rejected order: another
+        # thread's rejection can print in between.
+        print(f"{ascii_alerts.RED}Still closing: the broker lists {listed} {int(seconds)} seconds after the "
+              f"first close request; later signals wait until {closes}, check {them} in TradeLocker\n"
+              f"{ascii_alerts.RESET}")
+
     def unlocked(self) -> None:
         print("Normal: Unlocked")
 

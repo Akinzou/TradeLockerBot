@@ -36,7 +36,8 @@ migration pull request.
 | 6g | Start the image with no shell and no arguments, and read the settings from the environment; the password only from there, `--password` refused without its value ([ADR 0018](adr/0018-read-the-settings-from-the-environment.md)). Pins replaced: the startup pins set the image's variables, the usage line drops `--password`; new pins on verbatim credentials, the option winning over its variable, a missing or empty password, and the image's `CMD` | behaviour | done |
 | 6h | Refuse a `url` with `?`, `#` or `%` at startup, with exit status `2` and a message that leaves the value out, so an accepted `url` is reached as typed ([ADR 0020](adr/0020-refuse-query-fragment-and-escape-characters-in-the-webhook-path.md)). New pins: each character stops the bot before any output, the login and the server; the slash, brace and new checks run in that order | behaviour | done |
 | 6i | Report an order the broker rejects in one operator line instead of a traceback, and place the order once rather than again until an id comes back ([ADR 0021](adr/0021-report-a-rejected-order-and-place-it-once.md)). Flipped pins: the rejected order after the close raises nothing; new pins for the line, the thread and the adapter's mapping; an order request that gets no answer still raises | behaviour | done |
-| 6  | Remaining behaviour changes, one pull request and one ADR each: the two defects below, then a password file in place of the `password` variable ([ADR 0018](adr/0018-read-the-settings-from-the-environment.md)) | behaviour | next |
+| 6j | Pace the close loop on a `Clock` port: count again at once after a request, then a second apart, ask again only every 10 seconds of the clock, and log one `Still closing:` line a minute after the first request; no upper limit ([ADR 0022](adr/0022-pace-the-close-loop-on-a-clock.md)). Flipped pins: a close requested again every 10 seconds, with each pause pinned among the broker calls; new pins for the line, the clock's seconds rather than polls, and a failure after a pause | behaviour | done |
+| 6  | Remaining behaviour changes, one pull request and one ADR each: the defect below, then a password file in place of the `password` variable ([ADR 0018](adr/0018-read-the-settings-from-the-environment.md)) | behaviour | next |
 
 ```mermaid
 flowchart LR
@@ -58,12 +59,13 @@ flowchart LR
     S6f --> S6g[6g settings from the environment]
     S6g --> S6h["6h no ?, # or %"]
     S6h --> S6i[6i rejected order]
-    S6i --> S6[6 remaining defects]
+    S6i --> S6j[6j paced close loop]
+    S6j --> S6[6 remaining defects]
     S2af --> S2g[2g base image digest]
     S2af --> S2h[2h patched client pins]
     classDef done fill:#d4edda,stroke:#28a745,color:#155724
     classDef next fill:#fff3cd,stroke:#d39e00,color:#856404
-    class S1,S1abc,S2,S2af,S2g,S2h,S4,S4b,S3,S3b,S5a,S5,S6a,S6b,S6c,S6d,S6e,S6f,S6g,S6h,S6i done
+    class S1,S1abc,S2,S2af,S2g,S2h,S4,S4b,S3,S3b,S5a,S5,S6a,S6b,S6c,S6d,S6e,S6f,S6g,S6h,S6i,S6j done
     class S6 next
 ```
 
@@ -95,11 +97,20 @@ Fixed in behaviour steps, never during restructuring.
 
 | Defect                                                                                                                                                              | Pinned by                                                                   |
 |---------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------|
-| Closing polls in a tight loop with no delay or limit, re-sending a close request on every poll until the broker fills it, while holding the global lock | `test_close_request_is_resent_on_every_poll_until_the_broker_fills_it` |
 | The webhook returns 200 before the signal is handled; a rejected or refused signal or a broker failure is reported only in the bot's log, and the caller never learns | `test_the_answer_is_200_with_a_null_body_before_the_signal_is_handled`, `test_a_broker_failure_ends_the_handler_thread_with_the_clients_exception`, `test_rejected_signals.py` |
 
 ## Fixed defects
 
+- **A close that did not fill was requested again every other second,
+  with no word in the log** (step 6j). The bot's loop had no pause; the
+  client's own second before each request set its pace. With the market
+  closed, that was up to 43,200 close requests and `Closing:` lines a day,
+  while every other signal waited on the lock. The bot now counts again at
+  once after a request, then a second apart, and asks again only every 10
+  seconds of a monotonic clock. A close still open a minute after the first
+  request logs one red `Still closing: ...` line. There is still no upper
+  limit, by decision: later signals keep waiting until the close fills
+  ([ADR 0022](adr/0022-pace-the-close-loop-on-a-clock.md)).
 - **A rejected order ended the handler thread with a traceback** (step
   6i). The close had already run, and no line said what the account
   held. The bot now counts the positions again and logs one red line, such

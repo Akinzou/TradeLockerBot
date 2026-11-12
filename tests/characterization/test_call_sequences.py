@@ -17,6 +17,7 @@ from tests.characterization.harness import (
     LOCK_RELEASED,
     LOOKUP,
     ORDER,
+    PAUSE,
     POSITIONS,
     XAUUSD_ID,
     RecordingLock,
@@ -40,8 +41,10 @@ from tests.characterization.harness import (
         # close sizes nothing, so it no longer reads the balance (ADR 0008).
         ("close", [XAUUSD_ID], 1, "close",
          [LOOKUP, POSITIONS, CLOSE, POSITIONS]),
-        ("close re-requested until filled", [XAUUSD_ID], 3, "close",
-         [LOOKUP, POSITIONS, CLOSE, POSITIONS, CLOSE, POSITIONS, CLOSE, POSITIONS]),
+        # Counted again at once, then once a second, and asked again only
+        # every 10 seconds (ADR 0022).
+        ("close requested again after 10 seconds", [XAUUSD_ID], 2, "close",
+         [LOOKUP, POSITIONS, CLOSE, POSITIONS, *[PAUSE, POSITIONS] * 10, CLOSE, POSITIONS]),
         ("one close request per position row", [XAUUSD_ID, XAUUSD_ID], 1, "close",
          [LOOKUP, POSITIONS, CLOSE, CLOSE, POSITIONS]),
     ],
@@ -119,6 +122,8 @@ UNLOCKED = ["Normal: Unlocked", LOCK_RELEASED]
 CLOSING = "Closing: XAUUSD"
 PLACED = "Order placed successfully, order ID: 9001"
 FLAT = "no XAUUSD position is open"
+STILL_OPEN = ("Still closing: the broker lists 1 open XAUUSD position 60 seconds after the first close request; "
+              "later signals wait until it closes, check it in TradeLocker")
 REJECTED = f"Order rejected: the broker refused to buy XAUUSD ('Not enough margin'); {FLAT}"
 
 
@@ -133,9 +138,15 @@ REJECTED = f"Order rejected: the broker refused to buy XAUUSD ('Not enough margi
          [*LOCKED, f"Order rejected: the broker refused to buy XAUUSD (no reason given); {FLAT}", *UNLOCKED]),
         ("inverted order answered without an id", {"order_results": (None, 9001)}, payload(invert="Invert"), None,
          [*LOCKED, f"Order rejected: the broker refused to sell XAUUSD (no reason given); {FLAT}", *UNLOCKED]),
-        ("close re-requested until filled", {"open_positions": [XAUUSD_ID], "close_requests_to_fill": 3},
+        ("close requested again every 10 seconds", {"open_positions": [XAUUSD_ID], "close_requests_to_fill": 3},
          payload(action="close"), None,
          [*LOCKED, CLOSING, CLOSING, CLOSING, *UNLOCKED]),
+        # One line a minute after the first request, then none however long
+        # the close takes (ADR 0022).
+        ("still open a minute after the first request",
+         {"open_positions": [XAUUSD_ID], "close_requests_to_fill": 8},
+         payload(action="close"), None,
+         [*LOCKED, *[CLOSING] * 6, STILL_OPEN, CLOSING, CLOSING, *UNLOCKED]),
         # One line in place of the traceback, inside Locked and Unlocked, since
         # the handling ends there (ADR 0021).
         ("broker rejects the order after the close",
