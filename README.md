@@ -43,8 +43,9 @@ flowchart LR
 ```
 
 1. A TradingView strategy fires an alert with a seven-line message.
-2. The bot receives it on its webhook URL and replies immediately; the signal
-   is handled in the background.
+2. The bot receives it on its webhook URL and replies `200` at once; the
+   signal is handled in the background. The reply says the alert arrived,
+   not what came of it.
 3. The bot checks the message first. An invalid one is logged and ignored.
 4. Valid signals are handled one at a time:
    - For `close`, the bot looks up the instrument, then closes every open
@@ -217,7 +218,10 @@ What each action does:
 > Signal rejected: the account balance is missing or not a number, expected a number to size the position from
 > ```
 >
-> The webhook still answers `200 OK`, so check the bot's log.
+> The webhook answers `200 OK` all the same, so TradingView's alert log
+> shows the alert as delivered. The answer says the alert arrived, not what
+> came of it; the outcome is in the bot's log only
+> ([ADR 0023](docs/adr/0023-the-webhook-answer-acknowledges-receipt.md)).
 
 ### Dynamic lot size
 
@@ -367,13 +371,14 @@ alerts.
 
 | Symptom                                     | Likely cause                                                                                   |
 |---------------------------------------------|------------------------------------------------------------------------------------------------|
-| No trade after an alert                     | The log shows `Signal rejected:` with the line to fix, or `Order rejected:` with the broker's reason. Otherwise a broker call got no answer, and the log shows the client's error. |
+| No trade after an alert                     | The log shows `Signal rejected:` with the line to fix, or `Order rejected:` with the broker's reason. Otherwise a broker call got no answer, and the log shows the client's error. TradingView shows the webhook as delivered in each case: the bot answers once the alert arrives, not once it is traded. |
 | `Signal rejected: line 1 (symbol) ...`      | The broker lists no instrument with that exact name. Copy it from TradeLocker, case included. If the name is right, restart the bot: it reads the instrument list once at startup, so an instrument added later stays unknown until a restart. |
 | `Signal rejected: line 3 (lot) gives 0.0 ...` | The balance is too small for this lot. Raise the lot or lower the balance step on line 3. |
 | `Signal rejected: the account balance is ...` | The broker reported no balance, a balance that is not a number, or one that is not above zero. Check the account in TradeLocker, then send the alert again. |
 | `Order rejected: the broker refused to buy XAUUSD (...); no XAUUSD position is open` | The broker answered the order without creating it, for the reason in brackets; margin, its minimum lot or a closed market are the likely causes. The positions on the instrument were closed first, and the broker lists none now. The bot does not send the order again; open the position by hand or wait for the next alert. |
 | `Order rejected: ...; the broker lists 1 open XAUUSD position, check it in TradeLocker` | The order was rejected, but a position is open on the instrument: an earlier attempt of the same order may have filled before the client resent it, or one was opened by hand. Check it in TradeLocker before you open another. With `the position count got no answer`, the bot could not count, and a traceback follows. |
 | `Still closing: the broker lists 1 open XAUUSD position 60 seconds after the first close request; ...` | The broker has not filled the close. A closed market, a weekend for example, is the likely cause. The bot keeps asking every 10 seconds, with no time limit, and every alert that arrives meanwhile waits. Once the position closes they all run, one at a time but in no set order, on alerts that may be old. If they should not, restart the container: that drops them, but the bot then stops asking, so an `open` that was closing never places its order. A plain stop waits for the close and needs Docker's timeout to kill the process. What the broker does with the close requests already sent was not observed: check the instrument in TradeLocker. If a check gets no answer, the wait ends with the client's error instead. |
+| One alert traded more than once | TradingView sends an alert again, up to three times, after a `5xx` other than `504`. The bot answers `5xx` only when it started nothing, but a reverse proxy in front of it can answer `502` or `503` after passing the alert on, for example when its connection to the bot drops. Check the proxy's error log and TradingView's alert log for those times ([ADR 0023](docs/adr/0023-the-webhook-answer-acknowledges-receipt.md)). |
 | Position closed but no new one opened, and no `Order rejected:` line | The order request got no answer, and the log shows the client's error. The order may still have been placed: check the account in TradeLocker. |
 | Bot does not start, login fails             | Wrong credentials or `env`. On images built before [ADR 0018](docs/adr/0018-read-the-settings-from-the-environment.md), also a password with spaces or shell characters (see [Configuration](#configuration)). |
 | Container keeps restarting, `docker logs` shows `the password environment variable is not set or is empty` | Set `password` with `-e` or in the `--env-file`. The bot does not read `--password`. |
@@ -386,7 +391,8 @@ alerts.
 | Error about account number and ID at start  | Both `acc_id` and `acc_num` are set; keep only one.                                            |
 
 Known defects and their planned fixes are listed in the
-[migration roadmap](docs/migration-roadmap.md#known-defects).
+[migration roadmap](docs/migration-roadmap.md#known-defects), and those kept
+by decision [after them](docs/migration-roadmap.md#kept-by-decision).
 
 ## Development
 

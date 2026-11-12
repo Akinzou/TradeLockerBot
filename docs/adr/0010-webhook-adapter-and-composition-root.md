@@ -136,9 +136,13 @@ request declares them:
   wiring or the use case. *Update:* the API docs went first, in `create_app`
   alone ([ADR 0011](0011-serve-no-api-docs.md)), and the redirect
   second, in the same place ([ADR 0013](0013-no-trailing-slash-redirect.md)).
+  The answer before handling stays, by decision
+  ([ADR 0023](0023-the-webhook-answer-acknowledges-receipt.md)).
 - Reporting a refusal or a broker failure to the caller, as ADR 0006 and
   ADR 0009 anticipated, is now a change to `SignalHandler` and `create_app`
   alone. It is still a behaviour change, so it waits for step 6.
+  *Update:* step 6k decided against it: the answer acknowledges receipt,
+  and the outcome is in the log only ([ADR 0023](0023-the-webhook-answer-acknowledges-receipt.md)).
 
 ## Alternatives considered
 

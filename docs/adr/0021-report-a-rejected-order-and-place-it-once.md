@@ -195,7 +195,8 @@ The tests changed with it:
   was not observed.
 - **The webhook still answers `200` before the signal is handled**, so the
   sender never learns of the rejection. That is the next decision on the
-  roadmap.
+  roadmap. *Update:* decided in step 6k: the answer acknowledges receipt,
+  not the outcome ([ADR 0023](0023-the-webhook-answer-acknowledges-receipt.md)).
 - **Nothing outside the log is told.** An operator who does not read the
   log does not see the line.
 

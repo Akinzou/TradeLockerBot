@@ -172,7 +172,9 @@ ordering, with nothing between the two lookups that could change the answer.
   *Update:* the inbound adapter exists since step 5
   ([ADR 0010](0010-webhook-adapter-and-composition-root.md)). It still
   reports a refusal by one operator line only. Answering the caller is a
-  behaviour change for step 6.
+  behaviour change for step 6. Step 6k decided against it: the answer
+  acknowledges receipt, not the outcome
+  ([ADR 0023](0023-the-webhook-answer-acknowledges-receipt.md)).
 - **Check the broker's minimum lot and lot step** from the instrument
   details. Deferred: it needs another broker call, and the broker already
   enforces both.
