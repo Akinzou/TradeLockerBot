@@ -9,7 +9,6 @@ status with Telegram's own description, or the exception's type.
 """
 
 import json
-import math
 import re
 from dataclasses import dataclass, field
 from urllib.error import HTTPError, URLError
@@ -140,9 +139,8 @@ def _outcome(status: int, answer: bytes) -> Result[None, SendFailure]:
         reason += f", {shown(description, SHOWN_REASON_CHARACTERS)}"
     parameters = parsed.get("parameters")
     retry_after = parameters.get("retry_after") if isinstance(parameters, dict) else None
-    # Only a wait a server can mean: JSON readers accept NaN and Infinity,
-    # and a negative one would stop the sleep with an error.
-    if isinstance(retry_after, bool) or not isinstance(retry_after, int | float) \
-            or not math.isfinite(retry_after) or retry_after < 0:
+    # A number, as Telegram gave it; which waits to keep is the notifier's
+    # to decide, in one place.
+    if isinstance(retry_after, bool) or not isinstance(retry_after, int | float):
         retry_after = None
     return Err(SendFailure(reason, retry=retry, retry_after=None if retry_after is None else float(retry_after)))

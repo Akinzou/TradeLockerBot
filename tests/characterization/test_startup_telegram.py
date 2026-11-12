@@ -8,6 +8,7 @@ server on this machine.
 import io
 import json
 import threading
+from types import SimpleNamespace
 
 import pytest
 
@@ -49,10 +50,28 @@ class Telegram:
         return self.messages
 
 
+class Exit:
+    """``atexit`` for the composition root: records the exit functions, so
+    a test runs them as Python would once ``main`` and the webhook's
+    threads have ended, rather than at the end of the test run."""
+
+    def __init__(self):
+        self.functions = []
+
+    def register(self, function, *args):
+        self.functions.append((function, args))
+
+    def run(self):
+        for function, args in reversed(self.functions):
+            function(*args)
+
+
 @pytest.fixture
 def telegram(monkeypatch):
     fake = Telegram()
+    fake.exit = Exit()
     monkeypatch.setattr(composition_root, "urlopen", fake.urlopen)
+    monkeypatch.setattr(composition_root, "atexit", SimpleNamespace(register=fake.exit.register))
     yield fake
     fake.gate.set()
 
@@ -73,6 +92,7 @@ def test_without_the_settings_nothing_is_sent_and_no_thread_starts(monkeypatch, 
     Startup(monkeypatch, broker()).run(DEMO)
 
     assert _notifiers() == before
+    assert telegram.exit.functions == []
     assert telegram.messages == []
     assert "Telegram" not in capsys.readouterr().out
 
@@ -103,7 +123,6 @@ def test_a_red_line_from_a_signal_is_sent_to_the_chat(monkeypatch, capsys, teleg
 
 def test_a_signal_does_not_wait_for_a_telegram_that_does_not_answer(monkeypatch, capsys, telegram, tmp_path):
     telegram.gate.clear()
-    monkeypatch.setattr(composition_root, "STOP_SECONDS", 0.1)
     startup = Startup(monkeypatch, broker())
     startup.run(_with_telegram(tmp_path))
     telegram.wait_for(1)
@@ -147,37 +166,24 @@ def test_a_failed_login_is_sent_before_the_bot_stops(monkeypatch, capsys, telegr
 
     with pytest.raises(ConnectionError) as raised:
         startup.run(_with_telegram(tmp_path))
+    telegram.exit.run()
 
-    # Already sent when the exception leaves: the stop waits for the queue.
+    # Sent by the time the exit function returns: the stop waits for it.
     assert raised.value is failure
     assert telegram.messages == ["Login failed: ConnectionError; the bot stops, the log has the error"]
     assert startup.served == []
+    assert console_lines(capsys)[-1] != "Telegram: the bot stopped with 1 of its messages not sent; the log has them"
 
 
-def test_once_the_server_stops_the_messages_still_queued_are_reported(monkeypatch, capsys, telegram, tmp_path):
+def test_at_exit_the_queue_gets_its_seconds_and_what_is_left_is_reported(monkeypatch, capsys, telegram, tmp_path):
     telegram.gate.clear()
     monkeypatch.setattr(composition_root, "STOP_SECONDS", 0.1)
-
-    # The recorded server start returns at once, as uvicorn does once stopped.
     Startup(monkeypatch, broker()).run(_with_telegram(tmp_path))
+    [(stop, (seconds,))] = telegram.exit.functions
 
-    assert ("Telegram: the bot stopped with 1 of its messages not sent; the log has them"
-            in console_lines(capsys))
+    telegram.exit.run()
 
-
-def test_the_queue_gets_its_seconds_when_the_server_ends_on_ctrl_c(monkeypatch, capsys, telegram, tmp_path):
-    telegram.gate.clear()
-    monkeypatch.setattr(composition_root, "STOP_SECONDS", 0.1)
-    startup = Startup(monkeypatch, broker())
-
-    def interrupted(app, **options):
-        raise KeyboardInterrupt
-
-    monkeypatch.setattr(composition_root.uvicorn, "run", interrupted)
-
-    with pytest.raises(KeyboardInterrupt):
-        startup.run(_with_telegram(tmp_path))
-
+    assert seconds == 0.1
     assert ("Telegram: the bot stopped with 1 of its messages not sent; the log has them"
             in console_lines(capsys))
 
@@ -187,6 +193,7 @@ def test_a_selector_that_is_no_number_is_a_bad_setting_not_a_failed_login(monkey
 
     with pytest.raises(ValueError):
         startup.run(_with_telegram(tmp_path, acc_num="first"))
+    telegram.exit.run()
 
     assert startup.logins == []
     assert telegram.messages == []

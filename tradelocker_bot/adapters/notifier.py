@@ -48,7 +48,9 @@ NAMED_CHARACTERS = 40
 @dataclass(frozen=True)
 class SendFailure:
     """Why a message was not sent, and whether the same request may yet
-    succeed: a refused one, for a wrong chat or a blocked bot, would not."""
+    succeed: a refused one, for a wrong chat or a blocked bot, would not.
+    ``retry_after`` is the chat's own wait, as it gave it; the notifier
+    decides which waits it keeps."""
 
     reason: str
     retry: bool
@@ -108,7 +110,8 @@ class Delivery:
         late = self._clock.now() - logged_at
         if late < LATE_SECONDS:
             return text
-        return f"{text}\n(sent {int(late)} seconds after the bot logged it)"
+        # First, so the cut to the chat's longest message never takes it.
+        return f"(sent {int(late)} seconds after the bot logged it)\n{text}"
 
 
 class BackgroundNotifier:
@@ -125,73 +128,71 @@ class BackgroundNotifier:
         self._clock = clock
         self._report = report
         self._queue = queue.Queue(maxsize=capacity)
-        # Counted under one lock: notify runs on every webhook thread.
+        # One condition over both counts: notify runs on every webhook
+        # thread, and a message counts as pending from its put until its
+        # delivery ends, so no moment between the two loses it from the count.
+        self._state = threading.Condition()
+        self._pending = 0
         self._dropped = 0
-        self._sending = 0
-        self._state = threading.Lock()
 
     def start(self) -> None:
         threading.Thread(target=self._run, name="telegram-notifier", daemon=True).start()
 
     def notify(self, text: str) -> None:
-        try:
-            self._queue.put_nowait((text, self._clock.now()))
-        except queue.Full:
-            with self._state:
+        with self._state:
+            queued = self._put(text)
+            if not queued:
                 self._dropped += 1
+        if not queued:
             self._report(f'Telegram: the "{_name(text)}" message was not sent: '
-                         f"{self._queue.maxsize} messages were already waiting")
+                         f"the queue of {self._queue.maxsize} was full")
 
     def stop(self, seconds: float) -> None:
-        """Waits up to ``seconds`` for the queue to empty, then reports the
-        messages still in it, which the stop loses, and a count of dropped
-        messages the chat has not heard of yet."""
-        done = threading.Event()
-        # A marker put behind the messages: once the thread reaches it, every
-        # message before it has been handled.
-        try:
-            self._queue.put_nowait((done, self._clock.now()))
-            marker = 1
-        except queue.Full:
-            marker = 0
-        drained = done.wait(seconds)
+        """Waits up to ``seconds`` for every queued message to be handled,
+        then reports those still pending, which the stop loses, and a count
+        of dropped messages the chat has not heard of yet."""
         with self._state:
-            left = 0 if drained else max(self._queue.qsize() - marker, 0) + self._sending
-            dropped, self._dropped = self._dropped, 0
+            self._state.wait_for(lambda: self._pending == 0, seconds)
+            left, dropped = self._pending, self._dropped
+            self._dropped = 0
         if left:
             self._report(f"Telegram: the bot stopped with {left} of its messages not sent; the log has them")
         if dropped:
             self._report(f"Telegram: the queue was full and dropped {dropped} of the bot's messages; "
                          "the log has them")
 
+    def _put(self, text: str) -> bool:
+        # Called holding the condition, so the put and the count are one step.
+        try:
+            self._queue.put_nowait((text, self._clock.now()))
+        except queue.Full:
+            return False
+        self._pending += 1
+        return True
+
     def _run(self) -> None:
         while True:
             text, logged_at = self._queue.get()
-            if isinstance(text, threading.Event):
-                text.set()
-                continue
             # Any exception, so one message's failure cannot end the thread
             # and silence every message after it. By type alone: its text
             # could hold the request, and the token in it.
-            with self._state:
-                self._sending = 1
             try:
                 self._deliver(text, logged_at)
             except Exception as error:
                 self._report(f'Telegram: the "{_name(text)}" message was not sent: '
                              f"an error in the bot ({type(error).__name__})")
             with self._state:
-                self._sending = 0
-            self._send_dropped()
+                self._pending -= 1
+                self._queue_dropped_count()
+                self._state.notify_all()
 
-    def _send_dropped(self) -> None:
-        # Once the queue is empty, the phone hears that messages were lost,
+    def _queue_dropped_count(self) -> None:
+        # Once the queue has room, the phone hears that messages were lost,
         # not only the log: a flood of rejections may have pushed out the one
-        # that needed action. Not before: in a full queue this message would
-        # be dropped too.
-        if not self._queue.empty():
+        # that needed action. The count is cleared only once the message
+        # holding it is queued, so a full queue keeps it for the next try.
+        if not self._dropped:
             return
-        with self._state:
-            dropped, self._dropped = self._dropped, 0
-        if dropped:
-            self.notify(f"Telegram: the queue was full and dropped {dropped} of the bot's messages; the log has them")
+        if self._put(f"Telegram: the queue was full and dropped {self._dropped} of the bot's messages; "
+                     "the log has them"):
+            self._dropped = 0

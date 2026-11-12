@@ -137,10 +137,9 @@ def test_a_text_longer_than_telegram_takes_is_cut_rather_than_refused(telegram):
         ((200, {"ok": False}), SendFailure("HTTP 200", retry=True)),
         ((200, [1]), SendFailure("HTTP 200, an answer that is not Telegram's", retry=True)),
         ((429, {"ok": False, "parameters": {"retry_after": "soon"}}), SendFailure("HTTP 429", retry=True)),
-        # A wait no server means, which would stop the sleep with an error.
-        ((429, {"ok": False, "parameters": {"retry_after": -1}}), SendFailure("HTTP 429", retry=True)),
-        ((429, b'{"ok": false, "parameters": {"retry_after": NaN}}'), SendFailure("HTTP 429", retry=True)),
-        ((429, b'{"ok": false, "parameters": {"retry_after": Infinity}}'), SendFailure("HTTP 429", retry=True)),
+        # Passed on as given: the notifier decides which waits it keeps.
+        ((429, {"ok": False, "parameters": {"retry_after": -1}}),
+         SendFailure("HTTP 429", retry=True, retry_after=-1.0)),
     ],
 )
 def test_an_answer_that_is_not_a_sent_message_is_a_failure_that_says_whether_to_try_again(

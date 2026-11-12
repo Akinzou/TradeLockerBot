@@ -6,6 +6,7 @@ it; ``main_without_ssl.py``, the container's command, only calls ``main``.
 """
 
 import argparse
+import atexit
 import io
 import sys
 import threading
@@ -171,12 +172,12 @@ def start_notifier(settings: TelegramSettings | None, clock) -> BackgroundNotifi
     notifier = BackgroundNotifier(Delivery(TelegramChat(settings, urlopen), clock, print_report), clock,
                                   print_report)
     notifier.start()
+    # At exit rather than after the server: Python runs exit functions only
+    # once the webhook's threads have ended, so their last red lines are
+    # queued too, and it runs them however `main` ends, a failed login or
+    # Ctrl+C included.
+    atexit.register(notifier.stop, STOP_SECONDS)
     return notifier
-
-
-def stop_notifier(notifier: BackgroundNotifier | None) -> None:
-    if notifier is not None:
-        notifier.stop(STOP_SECONDS)
 
 
 def build_signal_handler(client, lock, clock, notify: Callable[[str], None]) -> SignalHandler:
@@ -223,12 +224,11 @@ def main():
     try:
         client = log_in(args.env, args.username, args.password, args.server, acc_num, acc_id)
     except Exception as failure:
-        # Sent, and given a few seconds to go, before the bot stops: an
+        # Sent, and given a few seconds at exit, before the bot stops: an
         # operator who reads the phone would otherwise only miss the
         # `Logged in:` message. By type alone, as the broker's lines: the
         # client's text can hold the server's answer (ADR 0025).
         notify(f"Login failed: {type(failure).__name__}; the bot stops, the log has the error")
-        stop_notifier(notifier)
         raise
     # The client names the account it chose only at debug, which also logs the
     # password (ADR 0025); the operator still needs to see which account trades.
@@ -242,11 +242,4 @@ def main():
     # so two alerts never interleave between closing and ordering.
     app = create_app(args.url, build_signal_handler(client, threading.Lock(), clock, notify).handle)
 
-    # The queue gets its few seconds however the server ends: uvicorn returns
-    # once it has stopped, or Ctrl+C leaves it as KeyboardInterrupt. After a
-    # SIGTERM uvicorn raises the signal again, which ends the process at once
-    # unless Python is PID 1, as in the image without --init (ADR 0027).
-    try:
-        uvicorn.run(app, host="0.0.0.0", port=args.port, log_config=server_log_config())
-    finally:
-        stop_notifier(notifier)
+    uvicorn.run(app, host="0.0.0.0", port=args.port, log_config=server_log_config())

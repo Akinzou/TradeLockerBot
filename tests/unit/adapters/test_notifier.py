@@ -106,7 +106,8 @@ def test_a_message_sent_a_minute_or_more_after_it_was_logged_says_how_late_it_is
     # The last try is the one that goes, after 2 more seconds.
     deliver(TEXT, 0.0)
 
-    assert chat.sent == [TEXT, TEXT, f"{TEXT}\n(sent 61 seconds after the bot logged it)"]
+    # First, so the cut to Telegram's longest message never takes it.
+    assert chat.sent == [TEXT, TEXT, f"(sent 61 seconds after the bot logged it)\n{TEXT}"]
 
 
 @pytest.mark.parametrize("text", ["Still closing: XAUUSD", "Still closing"])
@@ -176,8 +177,8 @@ def test_a_message_beyond_the_queue_is_dropped_and_the_chat_hears_how_many_once_
     notifier.notify("Order rejected: the broker refused to buy XAUUSD")
     notifier.notify("Broker failed: a call for XAUUSD got no answer")
 
-    assert reports == ['Telegram: the "Order rejected" message was not sent: 2 messages were already waiting',
-                       'Telegram: the "Broker failed" message was not sent: 2 messages were already waiting']
+    assert reports == ['Telegram: the "Order rejected" message was not sent: the queue of 2 was full',
+                       'Telegram: the "Broker failed" message was not sent: the queue of 2 was full']
     deliver.gate.set()
     assert deliver.done.wait(WAIT_SECONDS)
     assert [text for text, _ in deliver.delivered] == [
