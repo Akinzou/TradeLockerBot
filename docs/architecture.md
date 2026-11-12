@@ -451,9 +451,9 @@ design.
   with each later drop and taking no line's slot (ADR 0029). `Delivery`
   tries a message three times, waiting 2 s and 10 s or Telegram's
   `retry_after` up to 10 minutes, marks a message a minute late or more,
-  and reports one it
-  could not send in a red line that is never sent itself. It begins no
-  try once the notifier has stopped. `end(seconds)` sets the stop's
+  and returns the report of one it could not send. It begins no try once
+  the notifier has stopped. The notifier prints that report, in a red line
+  that is never sent itself, unless the stop has counted the message. `end(seconds)` sets the stop's
   deadline; `stop()` waits for the queue until then, and at least the
   floor, then reports the lines it loses and a dropped count the chat has
   not heard of, and ends the thread. One condition guards the queue, the

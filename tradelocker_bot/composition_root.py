@@ -175,7 +175,7 @@ def start_notifier(settings: TelegramSettings | None, clock) -> BackgroundNotifi
     set (ADR 0027)."""
     if settings is None:
         return None
-    notifier = BackgroundNotifier(Delivery(TelegramChat(settings, urlopen), clock, print_report), clock,
+    notifier = BackgroundNotifier(Delivery(TelegramChat(settings, urlopen), clock), clock,
                                   print_report, floor=STOP_FLOOR_SECONDS)
     notifier.start()
     # At exit rather than after the server: Python runs exit functions only

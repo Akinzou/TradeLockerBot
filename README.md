@@ -348,7 +348,8 @@ message, in order, after the messages that were waiting
 ([ADR 0027](docs/adr/0027-send-the-red-lines-to-telegram.md),
 [ADR 0029](docs/adr/0029-tighten-the-notifiers-stop-and-dropped-count.md)).
 When the bot stops, it gives the waiting messages up to 5 seconds, and at
-least 2, then logs how many it could not send and sends nothing more.
+least 2, then logs how many it could not send and starts no new try. One
+that was being sent at that moment can still arrive.
 
 1. In Telegram, open a chat with **@BotFather**, send `/newbot` and
    follow its questions. It answers with the bot's token, such as
@@ -478,8 +479,9 @@ alerts.
 >
 > Since [ADR 0029](docs/adr/0029-tighten-the-notifiers-stop-and-dropped-count.md),
 > the chat hears of dropped messages right after the ones that were
-> waiting, not once the queue is empty, and the bot sends nothing after
-> its `Telegram: the bot stopped with N of its messages not sent` line.
+> waiting, not once the queue is empty, and the bot starts no new try
+> after its `Telegram: the bot stopped with N of its messages not sent`
+> line.
 
 ## Security
 

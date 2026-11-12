@@ -62,15 +62,34 @@ functions.
     once, by one message.
   - A count is dated by its first drop. If it goes a minute late, its
     lateness note covers every drop in it.
-- **Nothing sent after the stop's report.**
+  - A drop joins the waiting count even when lines were queued behind it
+    since its first drop. The chat then reads the count before a line
+    the log has before some of the drops it counts. A new count after
+    each such line would keep the log's order exactly, but in a long
+    flood with a slow chat every freed slot would alternate a line and a
+    count. The count says how many were dropped; the log has the order.
+- **No try begins after the stop's report, and each message gets one
+  red line.**
   - The stop sets a flag in the same step in which it counts what is left.
   - From then on the thread takes nothing more from the queue and ends.
-  - `Delivery` reads the flag before each try. When it is set, it stops
-    trying without a report of its own, because the stop's report already
-    counts the message.
-  - The flag reaches `Delivery` as a third argument, read by a function
-    the notifier passes in. Building one flag in the composition root and
-    handing it to both would have put the notifier's state in two owners.
+  - `Delivery` reads the flag before each try, and stops trying when it is
+    set.
+  - `Delivery` returns the report of a message it did not send, rather
+    than printing it. The thread prints it only if the stop has not
+    counted that message. It decides this in the same step in which it
+    marks the message as handled, under the condition the stop counts
+    under. A try under way at the stop that then fails, or raises, adds
+    no second red line to the stop's.
+  - The flag is a `threading.Event`, set while the condition is held.
+    `Delivery` reads it before each try without taking the lock that
+    `notify` takes on the trading path.
+  - The flag reaches `Delivery` as a third argument, the event's
+    `is_set`. Building one flag in the composition root and handing it to
+    both would have put the notifier's state in two owners.
+- **A third Ctrl+C cuts the stop's wait, not its report.** An operator
+  who presses it during the floor wants out sooner, and still has to
+  learn what was lost. The stop catches the interrupt around its wait,
+  then counts and reports as usual.
 - **A line queued after the stop is reported, not queued.** The thread
   has ended, so a queued line would wait for nobody, without a word. It
   gets the usual red report instead:
@@ -93,6 +112,10 @@ flowchart TD
     L --> T["the thread takes the oldest;<br/>a count's text is final now"]
     NC --> T
     T --> D["Delivery: before each try,<br/>stopped? then stop trying"]
+    D --> REP{"a report returned,<br/>and the stop has<br/>not counted it?"}
+    REP -- "yes" --> R3["red line: not sent"]
+    REP -- "no" --> T
+    R3 --> T
 ```
 
 ```mermaid
@@ -120,6 +143,8 @@ sequenceDiagram
 | A full queue drops lines | One count queued once the queue is empty, in a free slot | One count queued at the first drop, behind the lines that filled the queue; it grows while it waits and takes no slot |
 | What the chat sees in a flood | The lines, then the count | The lines that fit, the count, then the lines queued after it |
 | The stop's report, then a try | The thread could still send a message the report named | No try begins after the report |
+| A try under way at the stop fails after it | Two red lines for one message: the stop's and the delivery's | The stop's only |
+| A third Ctrl+C during the stop's wait | (no wait to cut) | The wait ends, and the report still comes |
 | `notify` after the stop | Queued; sent if the thread got to it | A red line: `not sent: the bot had stopped` |
 
 The texts of every report are unchanged. The one new text is the last
@@ -135,6 +160,10 @@ row's reason.
   - after the stop the thread ends, and the message behind the one being
     sent is never sent;
   - `Delivery` learns of the stop between its tries;
+  - a try under way at the stop that then fails, or raises, adds no
+    second red line;
+  - a delivery's report is printed when no stop counted the message;
+  - an interrupt during the stop's wait cuts the wait, not the report;
   - a line after the stop is reported;
   - a count being sent and one waiting are reported as one count, the
     line between them as a line.
@@ -147,14 +176,17 @@ row's reason.
     since it pinned the order this ADR reverses.
 - **`tests/unit/adapters/test_notifier.py`**:
   - no try begins once the notifier has stopped;
-  - a stop during the wait between tries ends them, with no second report.
+  - a stop during the wait between tries ends them;
+  - its other tests read the report `Delivery` returns, where they read
+    the one it printed before.
 - **`tests/characterization/test_notifier_at_exit.py`** runs a real
   interpreter twice more, with `end(0)` and with no `end`. In both, the
   last line of a signal still running is sent before the process ends.
   Its fake `urlopen` now takes 0.3 seconds, so the stop really has to wait.
   Both runs failed before this change.
 - **`tests/unit/adapters/notifier_doubles.py`** holds the gated
-  deliveries both unit files share.
+  deliveries both unit files share, and finds the notifier's thread by
+  its name.
 
 Each of these mutations of the code fails at least one test:
 
@@ -164,6 +196,9 @@ Each of these mutations of the code fails at least one test:
 - `Delivery` trying after the stop;
 - the thread going on after the stop;
 - `Delivery` never told of the stop;
+- a delivery's report printed after the stop counted its message;
+- a delivery's report never printed;
+- a third Ctrl+C skipping the report;
 - a line after the stop queued for nobody;
 - the count taking a line's slot;
 - a new count for every drop;
@@ -180,6 +215,13 @@ Each of these mutations of the code fails at least one test:
   recall a request already sent: its message can still arrive after the
   report has named it as not sent. The same holds for a try that began a
   moment before the flag was set.
+- **A thread that outlives `main` under `docker stop`.** The floor rests
+  on uvicorn waiting for every request at a SIGTERM, which holds for
+  0.54.0, and on anyio ending its worker threads with the event loop. If
+  a later version let a thread run on, and Python reached the exit
+  function more than 3 seconds after `end`, the floor would add up to
+  2 seconds past the deadline, inside `docker stop`'s 10. A run that long
+  could then be killed before its report.
 - **A connection that hangs.** A try can take the full 10-second timeout,
   longer than the floor. Its message is reported as not sent, and may
   still arrive.
@@ -201,10 +243,20 @@ Each of these mutations of the code fails at least one test:
   fit in 2 seconds.
 - **Keep the count out of the queue, sent whenever a slot is free.**
   Rejected. It would go ahead of lines logged before it, or wait like the
-  old count. A queued count keeps the chat's order the log's order.
+  old count. A queued count goes out where the first drop was, after the
+  lines logged before it.
+- **A new count after each line queued behind the waiting one.** Rejected,
+  above: in a long flood the chat would get a count after every line.
 - **Let the count take a slot.** Rejected. In a flood, each slot freed
   would go to a count rather than a line.
 - **Wait at the stop for the try under way.** Rejected. A hung connection
   holds it for 10 seconds, the whole floor and more.
 - **A flag shared through the composition root.** Rejected, as above. The
   third argument keeps the stop in one owner.
+- **`Delivery` checking the flag before it prints its report.** Rejected:
+  the stop could count the message between that check and the print,
+  and the message would get two red lines. Only a decision made under
+  the stop's own condition is exact.
+- **Cap the floor at the deadline when `end` ran.** Rejected: a signal's
+  line queued after the deadline, the case the floor is for, would again
+  get no time.

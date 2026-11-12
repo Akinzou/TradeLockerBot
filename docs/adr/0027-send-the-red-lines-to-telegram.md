@@ -123,7 +123,7 @@ flowchart LR
     for the queue to empty. It then logs how many of the bot's lines it
     could not send, and any dropped count the chat has not heard of.
     *Update:* it waits at least 2 seconds, also without an `end`, and the
-    thread sends nothing after its report
+    thread starts no try after its report
     ([ADR 0029](0029-tighten-the-notifiers-stop-and-dropped-count.md)).
   - An exit function rather than code after `uvicorn.run`. Python runs
     exit functions only once every webhook thread has ended, so a signal
@@ -388,8 +388,8 @@ at least one test:
     still sends it during the rest of the shutdown.
 
   *Update:* [ADR 0029](0029-tighten-the-notifiers-stop-and-dropped-count.md)
-  removes all four. What is left is a try already under way when the stop
-  reports, which can still deliver its message.
+  removes the first three. Of the fourth, what is left is a try already
+  under way when the stop reports, which can still deliver its message.
 - **A daemon thread that prints at exit.** If the notifier's thread is in
   the middle of a `print` while Python ends, Python can stop with "could
   not acquire lock for stdout". That happens only at shutdown, after the

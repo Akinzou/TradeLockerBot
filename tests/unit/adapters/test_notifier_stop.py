@@ -199,3 +199,71 @@ def test_a_dropped_count_at_the_stop_is_reported_as_a_count_not_as_a_line():
     assert reports == [NOT_SENT_1,
                        "Telegram: the queue was full and dropped 2 of the bot's messages; the log has them"]
     deliver.allowed.release()
+
+
+def _stopped_while_sending(outcome):
+    """A delivery that is under way when the stop reports, and then ends
+    with ``outcome``: a report of its own, or an exception."""
+    entered, stopping = threading.Event(), threading.Event()
+
+    def deliver(text, logged_at, stopped):
+        entered.set()
+        stopping.wait(WAIT_SECONDS)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    return deliver, entered, stopping
+
+
+def test_a_message_the_stop_reported_is_not_reported_again_when_its_try_fails_after():
+    # One message, one red line: the stop counted it, so the delivery's own
+    # report, or its exception's, would count it twice (ADR 0029).
+    for outcome in ['Telegram: the "first" message was not sent after 3 tries: HTTP 502', RuntimeError("a bug")]:
+        deliver, entered, stopping = _stopped_while_sending(outcome)
+        notifier, _, reports, thread = started(deliver)
+        notifier.notify("first")
+        assert entered.wait(WAIT_SECONDS)
+        notifier.end(0.0)
+        notifier.stop()
+
+        stopping.set()
+        thread.join(WAIT_SECONDS)
+
+        assert not thread.is_alive()
+        assert reports == [NOT_SENT_1]
+
+
+def test_a_delivery_s_report_is_printed_when_no_stop_counted_the_message():
+    notifier, _, reports, _ = started(lambda text, logged_at, stopped: f'Telegram: the "{text}" message was not sent')
+
+    notifier.notify("first")
+    notifier.end(WAIT_SECONDS)
+    notifier.stop()
+
+    assert reports == ['Telegram: the "first" message was not sent']
+
+
+def test_an_interrupt_during_the_stop_s_wait_cuts_the_wait_not_the_report(monkeypatch):
+    # A third Ctrl+C on a terminal, while the floor runs: the operator wants
+    # out sooner, and still needs to know what was lost.
+    deliver = GatedDelivery()
+    notifier, _, reports, thread = started(deliver, floor=WAIT_SECONDS)
+    notifier.notify("first")
+    assert deliver.entered.wait(WAIT_SECONDS)
+
+    # Only the stop's own wait, on this thread, as Python delivers Ctrl+C.
+    wait_for = notifier._state.wait_for
+
+    def interrupted(predicate, timeout=None):
+        if threading.current_thread() is threading.main_thread():
+            raise KeyboardInterrupt
+        return wait_for(predicate, timeout)
+
+    monkeypatch.setattr(notifier._state, "wait_for", interrupted)
+    notifier.stop()
+
+    assert reports == [NOT_SENT_1]
+    deliver.gate.set()
+    thread.join(WAIT_SECONDS)
+    assert not thread.is_alive()

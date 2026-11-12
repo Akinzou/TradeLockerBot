@@ -86,30 +86,32 @@ def _wait(failure: SendFailure, attempt: int) -> float:
 
 class Delivery:
     """Sends one message, trying it again on a failure the chat may get
-    over, and reports it when it is not sent."""
+    over, and returns the report of one it did not send.
 
-    def __init__(self, chat: Chat, clock: Clock, report: Callable[[str], None]):
+    Returned rather than printed: the notifier decides, in one step with
+    its stop, whether the stop has already counted the message, so each
+    message gets one red line, never two.
+    """
+
+    def __init__(self, chat: Chat, clock: Clock):
         self._chat = chat
         self._clock = clock
-        self._report = report
 
-    def __call__(self, text: str, logged_at: float, stopped: Callable[[], bool]) -> None:
+    def __call__(self, text: str, logged_at: float, stopped: Callable[[], bool]) -> str | None:
         for attempt in range(1, ATTEMPTS + 1):
             # The notifier's stop has reported this message as not sent, so
-            # a try after it could only make that report wrong, and a report
-            # of its own here would count the message twice.
+            # a try after it could only make that report wrong.
             if stopped():
-                return
+                return None
             sent = self._chat.send(self._dated(text, logged_at))
             if not isinstance(sent, Err):
-                return
+                return None
             failure = sent.error
             if not failure.retry:
-                self._report(f'Telegram: the "{_name(text)}" message was not sent: {failure.reason}')
-                return
+                return f'Telegram: the "{_name(text)}" message was not sent: {failure.reason}'
             if attempt < ATTEMPTS:
                 self._clock.sleep(_wait(failure, attempt))
-        self._report(f'Telegram: the "{_name(text)}" message was not sent after {ATTEMPTS} tries: {failure.reason}')
+        return f'Telegram: the "{_name(text)}" message was not sent after {ATTEMPTS} tries: {failure.reason}'
 
     def _dated(self, text: str, logged_at: float) -> str:
         late = self._clock.now() - logged_at
@@ -157,7 +159,7 @@ class BackgroundNotifier:
     from the count.
     """
 
-    def __init__(self, deliver: Callable[[str, float, Callable[[], bool]], None], clock: Clock,
+    def __init__(self, deliver: Callable[[str, float, Callable[[], bool]], str | None], clock: Clock,
                  report: Callable[[str], None], floor: float, capacity: int = CAPACITY):
         self._deliver = deliver
         self._clock = clock
@@ -172,7 +174,11 @@ class BackgroundNotifier:
         self._count: _Count | None = None
         self._sending: _Line | _Count | None = None
         self._deadline: float | None = None
-        self._stopped = False
+        # An event rather than a bool under the condition: `Delivery` reads
+        # it before every try without taking the lock that `notify` takes on
+        # the trading path. It is set while the condition is held, so the
+        # notifier's own checks still see it in step with the queue.
+        self._stopped = threading.Event()
 
     def start(self) -> None:
         threading.Thread(target=self._run, name="telegram-notifier", daemon=True).start()
@@ -200,16 +206,24 @@ class BackgroundNotifier:
         no ``end`` at all: both happen only after a second Ctrl+C, on a
         terminal, which kills nothing after a grace period. Under
         ``docker stop`` the server waits for every signal, so ``end`` comes
-        after the last line and the floor is never reached.
+        after the last line and the floor is not reached (ADR 0029).
         """
         with self._state:
             now = self._clock.now()
             left = self._floor if self._deadline is None else max(self._deadline - now, self._floor)
-            self._state.wait_for(lambda: not self._waiting and self._sending is None, left)
+            # A third Ctrl+C during the floor cuts the wait, not the report:
+            # the operator wants out sooner, and still has to learn what was
+            # lost. The process is ending, so nothing else needs the
+            # interrupt.
+            try:
+                self._state.wait_for(lambda: not self._waiting and self._sending is None, left)
+            except KeyboardInterrupt:
+                pass
             pending = [*self._waiting, *([self._sending] if self._sending else [])]
             # In the same step as the count, so a line queued from here on
-            # is refused with a report rather than lost without one.
-            self._stopped = True
+            # is refused with a report rather than lost without one, and the
+            # message being sent is reported here and not by its delivery.
+            self._stopped.set()
             self._state.notify_all()
         lines = sum(isinstance(message, _Line) for message in pending)
         dropped = sum(message.dropped for message in pending if isinstance(message, _Count))
@@ -222,7 +236,7 @@ class BackgroundNotifier:
         # The caller holds the condition, so the checks and the change they
         # allow are one step for every thread. Returns why the line was
         # not queued, or None.
-        if self._stopped:
+        if self._stopped.is_set():
             return "the bot had stopped"
         now = self._clock.now()
         # The count takes no line's slot: the queue holds `capacity` lines
@@ -242,15 +256,11 @@ class BackgroundNotifier:
             self._count.dropped += 1
         return f"the queue of {self._capacity} was full"
 
-    def _has_stopped(self) -> bool:
-        with self._state:
-            return self._stopped
-
     def _run(self) -> None:
         while True:
             with self._state:
-                self._state.wait_for(lambda: self._waiting or self._stopped)
-                if self._stopped:
+                self._state.wait_for(lambda: self._waiting or self._stopped.is_set())
+                if self._stopped.is_set():
                     return
                 message = self._sending = self._waiting.popleft()
                 if message is self._count:
@@ -262,10 +272,15 @@ class BackgroundNotifier:
             # and silence every message after it. By type alone: its text
             # could hold the request, and the token in it.
             try:
-                self._deliver(text, message.logged_at, self._has_stopped)
+                report = self._deliver(text, message.logged_at, self._stopped.is_set)
             except Exception as error:
-                self._report(f'Telegram: the "{_name(text)}" message was not sent: '
-                             f"an error in the bot ({type(error).__name__})")
+                report = (f'Telegram: the "{_name(text)}" message was not sent: '
+                          f"an error in the bot ({type(error).__name__})")
             with self._state:
                 self._sending = None
+                # Read in one step with the stop's count: a stop before this
+                # point counted the message, so its report is already out.
+                counted = self._stopped.is_set()
                 self._state.notify_all()
+            if report and not counted:
+                self._report(report)

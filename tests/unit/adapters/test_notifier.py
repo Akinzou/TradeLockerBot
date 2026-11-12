@@ -27,9 +27,17 @@ class Chat:
 
 
 def _deliver(chat):
+    """A delivery whose returned report, if any, lands in ``reports``."""
     sleeps, reports = [], []
     clock = FakeClock(sleeps.append)
-    return Delivery(chat, clock, reports.append), clock, sleeps, reports
+    delivery = Delivery(chat, clock)
+
+    def deliver(text, logged_at, stopped):
+        report = delivery(text, logged_at, stopped)
+        if report is not None:
+            reports.append(report)
+
+    return deliver, clock, sleeps, reports
 
 
 def _running():
@@ -47,16 +55,14 @@ def test_no_try_begins_once_the_notifier_has_stopped():
     assert (chat.sent, sleeps, reports) == ([], [], [])
 
 
-def test_a_stop_during_the_wait_between_tries_ends_the_tries_without_a_report_of_its_own():
-    # The stop's report already counts this message; a second report, after
-    # the last try, would count it twice.
+def test_a_stop_during_the_wait_between_tries_ends_the_tries():
     stopped = []
     chat = Chat(Err(SendFailure("HTTP 502", retry=True)), Ok(None))
-    deliver = Delivery(chat, FakeClock(stopped.append), (reports := []).append)
+    deliver = Delivery(chat, FakeClock(stopped.append))
 
-    deliver(TEXT, 0.0, lambda: bool(stopped))
+    report = deliver(TEXT, 0.0, lambda: bool(stopped))
 
-    assert (chat.sent, stopped, reports) == ([TEXT], [("sleep", 2.0)], [])
+    assert (chat.sent, stopped, report) == ([TEXT], [("sleep", 2.0)], None)
 
 
 def test_a_sent_message_is_sent_once_and_not_reported():

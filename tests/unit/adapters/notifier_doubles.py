@@ -59,5 +59,7 @@ def started(deliver, capacity=10, floor=0.0):
     notifier = BackgroundNotifier(deliver, clock, reports.append, floor=floor, capacity=capacity)
     before = set(threading.enumerate())
     notifier.start()
-    [thread] = set(threading.enumerate()) - before
+    # By name among the new threads: a timer or a plugin's thread can start
+    # at the same moment.
+    [thread] = [thread for thread in set(threading.enumerate()) - before if thread.name == "telegram-notifier"]
     return notifier, clock, reports, thread
