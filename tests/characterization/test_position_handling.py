@@ -6,7 +6,6 @@ separate, explicitly reviewed step (see docs/migration-roadmap.md).
 """
 
 import pytest
-from tradelocker.exceptions import TLAPIOrderException
 
 from tests.characterization.harness import DEFAULT_ORDER, EURUSD_ID, XAUUSD_ID
 from tests.characterization.harness import broker as _broker
@@ -98,11 +97,12 @@ def test_close_ignores_case_and_spaces_in_the_action(action):
     assert broker.orders() == []
 
 
-def test_broker_rejection_propagates_after_existing_position_was_closed():
-    broker = _broker(open_positions=[XAUUSD_ID], order_results=(order_rejection(),))
+def test_a_rejected_order_after_the_close_leaves_no_position_and_raises_nothing():
+    # Before step 6i the client's exception ended the webhook thread with a
+    # traceback; the account was flat all the same (ADR 0021).
+    broker = _broker(open_positions=[XAUUSD_ID], order_results=(order_rejection(), 9001))
 
-    with pytest.raises(TLAPIOrderException):
-        _handle(broker, _payload())
+    _handle(broker, _payload())
 
     assert broker.open_positions == []
     assert len(broker.orders()) == 1

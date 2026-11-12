@@ -2,8 +2,9 @@ from types import MappingProxyType
 from typing import Callable, TypeVar
 
 from tradelocker import TLAPI
+from tradelocker.exceptions import TLAPIOrderException
 
-from tradelocker_bot.application.ports import BrokerFailure
+from tradelocker_bot.application.ports import BrokerFailure, OrderRejected
 from tradelocker_bot.domain.result import Err, Ok, Result
 from tradelocker_bot.domain.signal import Side
 
@@ -31,7 +32,9 @@ class TradeLockerBroker:
     Each method is the legacy handler's call, unchanged: the same arguments
     and defaults left to the client. The exception is the instrument lookup,
     which reads the instrument list instead (ADR 0009). A client exception
-    comes back as ``Err(BrokerFailure)`` holding that very exception object.
+    comes back as ``Err(BrokerFailure)`` holding that very exception object,
+    but for an order the broker rejected, which is ``Err(OrderRejected)``
+    (ADR 0021).
     """
 
     def __init__(self, client: TLAPI):
@@ -84,8 +87,8 @@ class TradeLockerBroker:
 
     def place_market_order(
         self, instrument_id: int, quantity: float, side: Side, stop_loss: int, take_profit: int
-    ) -> Result[int | None, BrokerFailure]:
-        return _answer(lambda: self._client.create_order(
+    ) -> Result[int, BrokerFailure | OrderRejected]:
+        order_id = _answer(lambda: self._client.create_order(
             instrument_id,
             quantity=quantity,
             side=side.value,
@@ -95,6 +98,31 @@ class TradeLockerBroker:
             stop_loss_type="offset",
             take_profit_type="offset",
         ))
+        if isinstance(order_id, Err):
+            # Only this exception is a rejection: the client raises it for an
+            # answer that holds no order id. A request that got no answer may
+            # have placed the order, so it stays a failure (ADR 0021).
+            cause = order_id.error.cause
+            if isinstance(cause, TLAPIOrderException):
+                return Err(OrderRejected(_rejection_reason(cause.response_json)))
+            return order_id
+        # `None` is the client's "no order created", on its netting path only.
+        if order_id.value is None:
+            return Err(OrderRejected(None))
+        return Ok(order_id.value)
+
+
+def _rejection_reason(answer: object) -> str:
+    # The broker's `errmsg` when it gave one, else its whole answer: the
+    # traceback this replaces printed that answer, and nothing else logs it,
+    # so dropping it would leave the operator no way to find the cause. Not
+    # the exception's own text, which raises on an answer that is a bare
+    # string.
+    if isinstance(answer, dict):
+        reason = answer.get("errmsg")
+        if isinstance(reason, str) and reason:
+            return reason
+    return str(answer)
 
 
 # Read-only, so nothing at run time can point the login, and with it the

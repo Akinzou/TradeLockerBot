@@ -101,6 +101,14 @@ handler re-raises the client's own exception object.
   `Result[None, BrokerFailure | Refusal]`. The legacy handler re-raises only
   a `BrokerFailure` and prints a refusal.
 
+  *Update:* step 6i
+  ([ADR 0021](0021-report-a-rejected-order-and-place-it-once.md)) returns
+  an order the broker answered without creating as `Err(OrderRejected)`,
+  not as a `BrokerFailure`. The use case reports it and prints `unlocked`
+  before returning it, since its handling ends normally. `execute` now
+  returns `Result[None, BrokerFailure | Refusal | OrderRejected]`. A broker
+  call that gets no answer is still a `BrokerFailure` and still raises.
+
 ## Alternatives considered
 
 - **A third-party Result library** (`returns`, `result`). Rejected: the layer

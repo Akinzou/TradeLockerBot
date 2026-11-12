@@ -10,11 +10,11 @@ import logging
 import pandas as pd
 import pytest
 from tradelocker import TLAPI
-from tradelocker.exceptions import TLAPIException
+from tradelocker.exceptions import TLAPIException, TLAPIOrderException
 
 from tests.characterization.fake_tradelocker import NO_BALANCE_FIELD, FakeTradeLocker
 from tradelocker_bot.adapters.tradelocker_broker import TradeLockerBroker
-from tradelocker_bot.application.ports import BrokerFailure
+from tradelocker_bot.application.ports import BrokerFailure, OrderRejected
 from tradelocker_bot.domain.result import Err, Ok
 from tradelocker_bot.domain.signal import Side
 
@@ -138,10 +138,44 @@ def test_market_order_uses_offset_protection_and_client_defaults():
     })]
 
 
-def test_market_order_returns_a_missing_id_unchanged():
+def test_a_market_order_answered_without_an_id_is_a_rejection_with_no_reason():
+    # The client returns None only when it created no order; its one such path,
+    # netting, is never enabled, but the port promises an id for every `Ok`.
     assert TradeLockerBroker(client(order_results=(None,))).place_market_order(
         GOLD, 0.1, Side.BUY, stop_loss=1000, take_profit=500
-    ) == Ok(None)
+    ) == Err(OrderRejected(None))
+
+
+def test_an_order_id_of_zero_is_an_order_id():
+    assert TradeLockerBroker(client(order_results=(0,))).place_market_order(
+        GOLD, 0.1, Side.BUY, stop_loss=1000, take_profit=500
+    ) == Ok(0)
+
+
+@pytest.mark.parametrize(
+    ("answer", "reason"),
+    [
+        ({"s": "error", "errmsg": "Not enough margin"}, "Not enough margin"),
+        ({"s": "error"}, "{'s': 'error'}"),
+        ({"s": "error", "errmsg": ""}, "{'s': 'error', 'errmsg': ''}"),
+        ({"s": "error", "errmsg": None}, "{'s': 'error', 'errmsg': None}"),
+        ({"s": "error", "d": {"code": "MIN_LOT"}}, "{'s': 'error', 'd': {'code': 'MIN_LOT'}}"),
+        ({"s": "error", "errmsg": ["Not enough margin"]}, "{'s': 'error', 'errmsg': ['Not enough margin']}"),
+        # The client's own `str()` of the exception raises a TypeError on this one.
+        ("errmsg", "errmsg"),
+        (["errmsg"], "['errmsg']"),
+    ],
+)
+def test_an_order_the_broker_rejects_is_a_rejection_with_its_reason_or_whole_answer(answer, reason):
+    # The client raises TLAPIOrderException when the broker answered without
+    # an order id. Without a usable `errmsg`, the whole answer is the reason:
+    # the traceback this replaces showed it, and nothing else logs it.
+    rejection = TLAPIOrderException({"qty": "0.1"}, answer)
+    broker = TradeLockerBroker(client(failures={("create_order", 1): rejection}))
+
+    assert broker.place_market_order(GOLD, 0.1, Side.BUY, stop_loss=1000, take_profit=500) == Err(
+        OrderRejected(reason)
+    )
 
 
 CALLS = {

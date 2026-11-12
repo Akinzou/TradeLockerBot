@@ -2,7 +2,7 @@
 before it, which operator lines were written, that the critical section is
 released, and that the very exception the client raised leaves the handler.
 
-The raising-path table already pins a rejected order; the balance read, the
+The raising-path table pins the exact type for the order request; the balance read, the
 instrument lookup, the position list, the close request and the recount had no
 other pin. Identity rather than type is asserted, because a restructure that catches
 the client's exception and raises a new one of the same type would pass a type
@@ -28,12 +28,12 @@ from tests.characterization.harness import (
     broker,
     console_lines,
     handle,
+    order_rejection,
     payload,
 )
 
 LOCKED = [LOCK_ACQUIRED, "Normal: Locked"]
 CLOSING = "Closing: XAUUSD"
-RETRY = "Buy order was not successful, trying again..."
 TWO_ROWS = {"open_positions": [XAUUSD_ID, XAUUSD_ID]}
 ONE_ROW = {"open_positions": [XAUUSD_ID]}
 
@@ -56,8 +56,12 @@ ONE_ROW = {"open_positions": [XAUUSD_ID]}
          [BALANCE, LOOKUP, POSITIONS, CLOSE, POSITIONS], [*LOCKED, CLOSING, LOCK_RELEASED]),
         ("order", ("create_order", 1), {}, payload(),
          [BALANCE, LOOKUP, POSITIONS, ORDER], [*LOCKED, LOCK_RELEASED]),
-        ("order placed again", ("create_order", 2), {"order_results": (None,)}, payload(),
-         [BALANCE, LOOKUP, POSITIONS, ORDER, ORDER], [*LOCKED, RETRY, LOCK_RELEASED]),
+        # The count after a rejected order (ADR 0021): the line says it got no
+        # answer, then the failure raises like any other.
+        ("recount after a rejected order", ("get_all_positions", 2), {"order_results": (order_rejection(),)},
+         payload(), [BALANCE, LOOKUP, POSITIONS, ORDER, POSITIONS],
+         [*LOCKED, "Order rejected: the broker refused to buy XAUUSD ('Not enough margin'); "
+          "the position count got no answer, check XAUUSD in TradeLocker", LOCK_RELEASED]),
         ("lookup on close", ("get_all_instruments", 1), {}, payload(action="close"),
          [LOOKUP], [LOCK_ACQUIRED, LOCK_RELEASED]),
         ("position list on close", ("get_all_positions", 1), {}, payload(action="close"),

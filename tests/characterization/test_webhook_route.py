@@ -25,6 +25,7 @@ from tests.characterization.harness import (
     XAUUSD_ID,
     broker,
     console_lines,
+    order_rejection,
     payload,
     serve,
 )
@@ -206,6 +207,26 @@ def test_a_broker_failure_ends_the_handler_thread_with_the_clients_exception(mon
     # The thread that made the broker calls, not some other background thread.
     assert set(client.callers) == {thread}
     assert thread is not threading.current_thread()
+
+
+def test_a_rejected_order_ends_the_handler_thread_without_an_exception(monkeypatch, capsys):
+    # The traceback the rejection left before step 6i is now one operator line
+    # (ADR 0021).
+    fake = broker(open_positions=[XAUUSD_ID], order_results=(order_rejection(),))
+    raised = []
+    monkeypatch.setattr(threading, "excepthook", lambda hook: raised.append(hook.exc_value))
+    app = serve(monkeypatch, fake)
+
+    response, threads = post(app, "/strategy", SIGNAL)
+    finish(threads)
+
+    assert response.status_code == 200
+    assert raised == []
+    assert fake.calls == [BALANCE, LOOKUP, POSITIONS, CLOSE, POSITIONS, ORDER, POSITIONS]
+    assert console_lines(capsys)[-2:] == [
+        "Order rejected: the broker refused to buy XAUUSD ('Not enough margin'); no XAUUSD position is open",
+        "Normal: Unlocked",
+    ]
 
 
 def test_a_close_signal_is_handled_through_the_route(monkeypatch):

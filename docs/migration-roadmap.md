@@ -35,7 +35,8 @@ migration pull request.
 | 6f | Write each request's access line without the request line, keeping the client and the status, so the log never holds the webhook path ([ADR 0016](adr/0016-hide-the-request-line-in-the-access-log.md)). New pin against a real uvicorn server: a hit, a query string, a near miss, a `GET` and a `500` each leave one line with the exact status, and no output names the path | behaviour | done |
 | 6g | Start the image with no shell and no arguments, and read the settings from the environment; the password only from there, `--password` refused without its value ([ADR 0018](adr/0018-read-the-settings-from-the-environment.md)). Pins replaced: the startup pins set the image's variables, the usage line drops `--password`; new pins on verbatim credentials, the option winning over its variable, a missing or empty password, and the image's `CMD` | behaviour | done |
 | 6h | Refuse a `url` with `?`, `#` or `%` at startup, with exit status `2` and a message that leaves the value out, so an accepted `url` is reached as typed ([ADR 0020](adr/0020-refuse-query-fragment-and-escape-characters-in-the-webhook-path.md)). New pins: each character stops the bot before any output, the login and the server; the slash, brace and new checks run in that order | behaviour | done |
-| 6  | Remaining behaviour changes, one pull request and one ADR each: the three defects below, then a password file in place of the `password` variable ([ADR 0018](adr/0018-read-the-settings-from-the-environment.md)) | behaviour | next |
+| 6i | Report an order the broker rejects in one operator line instead of a traceback, and place the order once rather than again until an id comes back ([ADR 0021](adr/0021-report-a-rejected-order-and-place-it-once.md)). Flipped pins: the rejected order after the close raises nothing; new pins for the line, the thread and the adapter's mapping; an order request that gets no answer still raises | behaviour | done |
+| 6  | Remaining behaviour changes, one pull request and one ADR each: the two defects below, then a password file in place of the `password` variable ([ADR 0018](adr/0018-read-the-settings-from-the-environment.md)) | behaviour | next |
 
 ```mermaid
 flowchart LR
@@ -56,12 +57,13 @@ flowchart LR
     S6e --> S6f[6f access log]
     S6f --> S6g[6g settings from the environment]
     S6g --> S6h["6h no ?, # or %"]
-    S6h --> S6[6 remaining defects]
+    S6h --> S6i[6i rejected order]
+    S6i --> S6[6 remaining defects]
     S2af --> S2g[2g base image digest]
     S2af --> S2h[2h patched client pins]
     classDef done fill:#d4edda,stroke:#28a745,color:#155724
     classDef next fill:#fff3cd,stroke:#d39e00,color:#856404
-    class S1,S1abc,S2,S2af,S2g,S2h,S4,S4b,S3,S3b,S5a,S5,S6a,S6b,S6c,S6d,S6e,S6f,S6g,S6h done
+    class S1,S1abc,S2,S2af,S2g,S2h,S4,S4b,S3,S3b,S5a,S5,S6a,S6b,S6c,S6d,S6e,S6f,S6g,S6h,S6i done
     class S6 next
 ```
 
@@ -93,12 +95,22 @@ Fixed in behaviour steps, never during restructuring.
 
 | Defect                                                                                                                                                              | Pinned by                                                                   |
 |---------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------|
-| A rejected order raises inside the background handler *after* the existing position was closed, leaving the account flat; the `while not order_id` retry loop never runs because the client raises rather than returning an empty id | `test_broker_rejection_propagates_after_existing_position_was_closed`, `test_raising_path_call_sequence` |
 | Closing polls in a tight loop with no delay or limit, re-sending a close request on every poll until the broker fills it, while holding the global lock | `test_close_request_is_resent_on_every_poll_until_the_broker_fills_it` |
 | The webhook returns 200 before the signal is handled; a rejected or refused signal or a broker failure is reported only in the bot's log, and the caller never learns | `test_the_answer_is_200_with_a_null_body_before_the_signal_is_handled`, `test_a_broker_failure_ends_the_handler_thread_with_the_clients_exception`, `test_rejected_signals.py` |
 
 ## Fixed defects
 
+- **A rejected order ended the handler thread with a traceback** (step
+  6i). The close had already run, and no line said what the account
+  held. The bot now counts the positions again and logs one red line, such
+  as
+  `Order rejected: the broker refused to buy XAUUSD ('Not enough margin'); no XAUUSD position is open`,
+  then `Normal: Unlocked`, and the thread ends normally. The order is
+  placed once: an answer
+  without an id was ordered again with no pause or end. An order request
+  that gets no answer still raises, since the order may exist. Images
+  built before step 6i still raise on a rejection
+  ([ADR 0021](adr/0021-report-a-rejected-order-and-place-it-once.md)).
 - **A `url` with `?`, `#` or `%` was reached only percent-encoded** (step
   6h). A sender reads them as the query, the fragment and an escape, and
   uvicorn decodes the path before it is matched, so every alert sent to

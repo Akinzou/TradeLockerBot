@@ -98,6 +98,12 @@ ordering, with nothing between the two lookups that could change the answer.
    that rejection is the "rejected order leaves the account flat" defect,
    which step 6 fixes.
 
+   *Update:* step 6i
+   ([ADR 0021](0021-report-a-rejected-order-and-place-it-once.md)) reports
+   that rejection in one line, with what the broker lists afterwards,
+   instead of a traceback. The account is still left without a position:
+   the close comes first.
+
 6. **One instrument lookup.** The id found by the check is used to close and
    to order. Keeping the legacy second lookup would have made three calls
    where one answers the question. The roadmap had listed this for step 6;

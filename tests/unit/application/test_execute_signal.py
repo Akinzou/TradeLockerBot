@@ -6,7 +6,7 @@ from collections import Counter
 import pytest
 
 from tradelocker_bot.application.execute_signal import ExecuteSignal
-from tradelocker_bot.application.ports import BrokerFailure
+from tradelocker_bot.application.ports import BrokerFailure, OrderRejected
 from tradelocker_bot.application.refusal import NoBalance, UnknownSymbol
 from tradelocker_bot.domain.lot_sizing import LotSizing, UnusableQuantity
 from tradelocker_bot.domain.result import Err, Ok
@@ -16,7 +16,8 @@ XAUUSD = 101
 
 
 class FakeBroker:
-    """Answers with ``Ok``; ``failures`` maps ``(journal entry, nth call)``,
+    """Answers with ``Ok``, or with ``Err`` for an ``OrderRejected`` among
+    ``order_results``; ``failures`` maps ``(journal entry, nth call)``,
     counted from 1, to an exception whose ``BrokerFailure`` that call returns
     instead. Like ``FakeTradeLocker``, it refuses a key it would never reach."""
 
@@ -35,7 +36,9 @@ class FakeBroker:
         self._journal.append(entry)
         self._counts[entry[0]] += 1
         failure = self._failures.get((entry[0], self._counts[entry[0]]))
-        return Err(BrokerFailure(failure)) if failure is not None else Ok(value)
+        if failure is not None:
+            return Err(BrokerFailure(failure))
+        return Err(value) if isinstance(value, OrderRejected) else Ok(value)
 
     def account_balance(self):
         return self._answer(("balance",), self._balance)
@@ -64,11 +67,11 @@ class FakeConsole:
     def closing(self, symbol):
         self._journal.append(("closing", symbol))
 
-    def order_retry(self, side):
-        self._journal.append(("retry", side))
-
     def order_placed(self, order_id):
         self._journal.append(("placed", order_id))
+
+    def order_rejected(self, symbol, side, reason, open_positions):
+        self._journal.append(("rejected", symbol, side, reason, open_positions))
 
     def unlocked(self):
         self._journal.append(("unlocked",))
@@ -124,15 +127,16 @@ def test_quantity_is_sized_from_the_balance():
     assert run(signal(), balance=1234.0)[4] == ("place", XAUUSD, 0.12, Side.BUY, 1000, 500)
 
 
-def test_the_signal_side_is_ordered_and_named_in_the_retry_line():
-    journal = run(signal(side=Side.SELL), order_results=(None, 0, 9001))
+def test_the_signal_side_is_ordered():
+    journal = run(signal(side=Side.SELL))
 
-    assert journal[4:] == [
-        ("place", XAUUSD, 0.1, Side.SELL, 1000, 500), ("retry", Side.SELL),
-        ("place", XAUUSD, 0.1, Side.SELL, 1000, 500), ("retry", Side.SELL),
-        ("place", XAUUSD, 0.1, Side.SELL, 1000, 500), ("placed", 9001),
-        ("unlocked",),
-    ]
+    assert journal[4:] == [("place", XAUUSD, 0.1, Side.SELL, 1000, 500), ("placed", 9001), ("unlocked",)]
+
+
+def test_an_order_id_of_zero_is_a_placed_order():
+    # Legacy took a falsy id for a failed order and placed it again; the port
+    # returns an id only for an order the broker created.
+    assert run(signal(), order_results=(0,))[4:] == [PLACE, ("placed", 0), ("unlocked",)]
 
 
 @pytest.mark.parametrize(
@@ -165,8 +169,6 @@ CLOSE = [("request_close", XAUUSD), ("closing", "XAUUSD")]
          [*START, NO_ROWS, *CLOSE, ("request_close", XAUUSD)]),
         ("recount", ("position_count", 2), signal(), (1, 0), (9001,), [*START, NO_ROWS, *CLOSE, NO_ROWS]),
         ("order", ("place", 1), signal(), (0,), (9001,), [*START, NO_ROWS, PLACE]),
-        ("order placed again", ("place", 2), signal(), (0,), (None, 9001),
-         [*START, NO_ROWS, PLACE, ("retry", Side.BUY), PLACE]),
         ("lookup on close", ("instrument_id", 1), CLOSE_SIGNAL, (0,), (9001,), [LOOKUP]),
         ("position count on close", ("position_count", 1), CLOSE_SIGNAL, (0,), (9001,),
          [LOOKUP, ("locked",), NO_ROWS]),
@@ -188,3 +190,41 @@ def test_a_broker_failure_is_returned_at_once_without_unlocked(
     assert result == Err(BrokerFailure(cause)), scenario
     assert result.error.cause is cause, scenario
     assert journal == expected, scenario
+
+
+@pytest.mark.parametrize(
+    ("scenario", "rows", "closed", "left_open"),
+    [
+        ("nothing to close", (0, 0), [], 0),
+        ("after the close", (1, 0, 0), [*CLOSE, NO_ROWS], 0),
+        # A resent order that filled before the rejection, or one opened by
+        # hand: the line must not say the account is flat.
+        ("a position appeared meanwhile", (0, 1), [], 1),
+    ],
+)
+def test_a_rejected_order_is_placed_once_and_reported_with_a_fresh_count(scenario, rows, closed, left_open):
+    # Placed once: the broker answered no, so the same order again would get
+    # the same answer, and a loop until it does not would hold the lock.
+    rejection = OrderRejected("Not enough margin")
+
+    result, journal = execute(signal(), rows=rows, order_results=(rejection, 9001))
+
+    assert result == Err(rejection), scenario
+    assert journal == [
+        *START, NO_ROWS, *closed, PLACE,
+        NO_ROWS, ("rejected", "XAUUSD", Side.BUY, "Not enough margin", left_open), ("unlocked",),
+    ], scenario
+
+
+def test_a_rejection_whose_recount_fails_is_reported_and_returns_the_failure():
+    # The line still says what was refused, and that the state is unknown;
+    # the failed count then raises like any call that got no answer.
+    cause = RuntimeError("positions unavailable")
+    journal = []
+    broker = FakeBroker(journal, rows=(0, 0), order_results=(OrderRejected(None),),
+                        failures={("position_count", 2): cause})
+
+    result = ExecuteSignal(broker, FakeConsole(journal)).execute(signal())
+
+    assert result == Err(BrokerFailure(cause))
+    assert journal == [*START, NO_ROWS, PLACE, NO_ROWS, ("rejected", "XAUUSD", Side.BUY, None, None)]

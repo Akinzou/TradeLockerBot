@@ -19,6 +19,18 @@ class BrokerFailure:
     cause: Exception
 
 
+@dataclass(frozen=True)
+class OrderRejected:
+    """The broker answered an order without creating it (ADR 0021).
+
+    Not a ``BrokerFailure``: the broker did answer, so nothing is retried or
+    re-raised. ``reason`` is the broker's own text, or ``None`` when it gave
+    none.
+    """
+
+    reason: str | None
+
+
 class Broker(Protocol):
     def account_balance(self) -> Result[float | None, BrokerFailure]:
         """The account's projected balance as the broker reports it, or
@@ -48,8 +60,9 @@ class Broker(Protocol):
 
     def place_market_order(
         self, instrument_id: int, quantity: float, side: Side, stop_loss: int, take_profit: int
-    ) -> Result[int | None, BrokerFailure]:
-        """Order id, or ``Ok(None)`` when the broker answered without one."""
+    ) -> Result[int, BrokerFailure | OrderRejected]:
+        """The id of the order the broker created, or ``Err(OrderRejected)``
+        when it answered without creating one (ADR 0021)."""
 
 
 class OperatorConsole(Protocol):
@@ -59,11 +72,12 @@ class OperatorConsole(Protocol):
     def closing(self, symbol: str) -> None:
         ...
 
-    def order_retry(self, side: Side) -> None:
-        ...
-
     def order_placed(self, order_id: int) -> None:
         ...
+
+    def order_rejected(self, symbol: str, side: Side, reason: str | None, open_positions: int | None) -> None:
+        """The broker's rejection and the positions it lists on the symbol
+        afterwards; ``None`` when that count got no answer (ADR 0021)."""
 
     def unlocked(self) -> None:
         ...

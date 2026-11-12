@@ -9,12 +9,14 @@ new subclass of the client's exception.
 
 Input errors no longer raise: step 3 refuses them before any broker call, and
 step 3b refuses a missing balance, an unknown symbol and an unusable quantity
-before any close request (``test_rejected_signals``). What still raises is a
-broker failure; reporting it instead is roadmap step 6.
+before any close request (``test_rejected_signals``), and step 6i reports an
+order the broker rejects (ADR 0021). What still raises is a broker call that
+got no answer, an order request among them, since then nobody knows whether
+the order was placed.
 """
 
 import pytest
-from tradelocker.exceptions import TLAPIOrderException
+from tradelocker.exceptions import TLAPIException
 
 from tests.characterization.harness import (
     BALANCE,
@@ -25,20 +27,21 @@ from tests.characterization.harness import (
     XAUUSD_ID,
     broker,
     handle,
-    order_rejection,
     payload,
 )
+
+NO_ANSWER = {("create_order", 1): TLAPIException("Request failed: read timed out")}
 
 
 @pytest.mark.parametrize(
     ("scenario", "fake_args", "lines", "error", "expected"),
     [
-        ("broker rejects the order", {"order_results": (order_rejection(),)},
-         payload(), TLAPIOrderException,
+        ("order request gets no answer", {"failures": NO_ANSWER},
+         payload(), TLAPIException,
          [BALANCE, LOOKUP, POSITIONS, ORDER]),
-        ("broker rejects the order after the position was closed",
-         {"open_positions": [XAUUSD_ID], "order_results": (order_rejection(),)},
-         payload(), TLAPIOrderException,
+        ("order request gets no answer after the position was closed",
+         {"open_positions": [XAUUSD_ID], "failures": NO_ANSWER},
+         payload(), TLAPIException,
          [BALANCE, LOOKUP, POSITIONS, CLOSE, POSITIONS, ORDER]),
     ],
 )
