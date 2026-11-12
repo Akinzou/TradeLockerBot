@@ -107,7 +107,7 @@ def test_with_the_settings_the_account_line_is_sent_once_logged_in(monkeypatch, 
     assert telegram.urls == [f"https://api.telegram.org/bot{TOKEN}/sendMessage"]
     assert _notifiers() == before + 1
     out, err = capsys.readouterr()
-    assert "Telegram: on; the account line and every red line also go to the chat" in out
+    assert "Telegram: on; the account line, every red line and each Closed after line also go to the chat" in out
     assert TOKEN not in out + err
 
 

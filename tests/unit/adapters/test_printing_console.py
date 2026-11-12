@@ -170,3 +170,22 @@ def test_the_lines_of_a_signal_that_went_as_expected_are_not_handed_on(call):
     call(PrintingConsole(notified.append))
 
     assert notified == []
+
+
+@pytest.mark.parametrize(
+    ("seconds", "text"),
+    [
+        (138.5, "Closed after 138 seconds: the broker lists no open XAUUSD position"),
+        (3600.0, "Closed after 3600 seconds: the broker lists no open XAUUSD position"),
+    ],
+)
+def test_a_close_that_ends_after_the_warning_prints_green_and_is_handed_on(capsys, seconds, text):
+    # Handed on though nothing is left to do: the chat that was told later
+    # signals wait has to learn that the wait is over. Green, since it asks
+    # nothing of the operator.
+    notified = []
+
+    PrintingConsole(notified.append).closed("XAUUSD", seconds)
+
+    assert notified == [text]
+    assert capsys.readouterr().out == f"{GREEN}{text}\n{RESET}\n"

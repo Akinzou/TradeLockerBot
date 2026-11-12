@@ -87,6 +87,18 @@ class PrintingConsole:
         self._alert(f"Still closing: {listed} {int(seconds)} seconds after the first close request; "
                     f"later signals wait until {closes}, check {them} in TradeLocker")
 
+    def closed(self, symbol: str, seconds: float) -> None:
+        """The end of a close that logged ``still_closing`` (ADR 0022).
+
+        Handed on like a red line, though it asks nothing of the operator:
+        the chat that was told later signals wait has to learn that the wait
+        is over. Green for that reason, and no word on what comes next, since
+        an open signal's order still follows and has lines of its own.
+        """
+        text = f"Closed after {int(seconds)} seconds: the broker lists no open {symbol} position"
+        ascii_alerts.print_green(text)
+        self._notify(text)
+
     def unlocked(self) -> None:
         print("Normal: Unlocked")
 

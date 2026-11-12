@@ -110,9 +110,16 @@ class ExecuteSignal:
             # fills before that answer: the common case orders with no pause
             # of the bot's own.
             rows = self._broker.open_position_count(instrument_id)
-            if isinstance(rows, Err) or not rows.value:
-                return rows if isinstance(rows, Err) else Ok(None)
+            if isinstance(rows, Err):
+                return rows
             now = self._clock.now()
+            if not rows.value:
+                # Only after the warning: the operator who read that later
+                # signals wait learns here that they no longer do, and a
+                # line for every close would bury it.
+                if warned:
+                    self._console.closed(symbol, now - first_request)
+                return Ok(None)
             # Once: a line every minute of a weekend would bury the rest.
             if not warned and now - first_request >= STILL_CLOSING_AFTER_SECONDS:
                 self._console.still_closing(symbol, rows.value, now - first_request)

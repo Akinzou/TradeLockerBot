@@ -22,6 +22,13 @@ def print_red(text):
     print(f"{RED}{text}\n{RESET}")
 
 
+def print_green(text):
+    """One green line, its reset inside the same print, as ``print_red``.
+    ``order_placed`` keeps the legacy two prints, which its tests pin; a new
+    line has no such bytes to keep."""
+    print(f"{GREEN}{text}\n{RESET}")
+
+
 ascii_art_url = """
                                   _
  ___  __ ___   _____   _   _ _ __| |

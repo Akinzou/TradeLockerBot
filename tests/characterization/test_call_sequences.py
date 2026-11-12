@@ -124,6 +124,7 @@ PLACED = "Order placed successfully, order ID: 9001"
 FLAT = "no XAUUSD position is open"
 STILL_OPEN = ("Still closing: the broker lists 1 open XAUUSD position 60 seconds after the first close request; "
               "later signals wait until it closes, check it in TradeLocker")
+CLOSED = "Closed after 70 seconds: the broker lists no open XAUUSD position"
 REJECTED = f"Order rejected: the broker refused to buy XAUUSD ('Not enough margin'); {FLAT}"
 
 
@@ -142,11 +143,16 @@ REJECTED = f"Order rejected: the broker refused to buy XAUUSD ('Not enough margi
          payload(action="close"), None,
          [*LOCKED, CLOSING, CLOSING, CLOSING, *UNLOCKED]),
         # One line a minute after the first request, then none however long
-        # the close takes (ADR 0022).
+        # the close takes, until one that it ended (ADR 0022).
         ("still open a minute after the first request",
          {"open_positions": [XAUUSD_ID], "close_requests_to_fill": 8},
          payload(action="close"), None,
-         [*LOCKED, *[CLOSING] * 6, STILL_OPEN, CLOSING, CLOSING, *UNLOCKED]),
+         [*LOCKED, *[CLOSING] * 6, STILL_OPEN, CLOSING, CLOSING, CLOSED, *UNLOCKED]),
+        # The order comes after the line, still inside the lock.
+        ("open waits a minute for the close",
+         {"open_positions": [XAUUSD_ID], "close_requests_to_fill": 8},
+         payload(), None,
+         [*LOCKED, *[CLOSING] * 6, STILL_OPEN, CLOSING, CLOSING, CLOSED, PLACED, *UNLOCKED]),
         # One line in place of the traceback, inside Locked and Unlocked, since
         # the handling ends there (ADR 0021).
         ("broker rejects the order after the close",

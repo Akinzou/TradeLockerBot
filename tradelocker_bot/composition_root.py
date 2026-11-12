@@ -226,7 +226,7 @@ def log_in_and_serve(args, clock, notify: Callable[[str], None]) -> None:
 
     print(ascii_alerts.GREEN + ascii_alerts.ascii_art_hello + ascii_alerts.RESET)
     if args.telegram is not None:
-        print("Telegram: on; the account line and every red line also go to the chat")
+        print("Telegram: on; the account line, every red line and each Closed after line also go to the chat")
 
     # Converted before the login's `try`: a selector that is not a number is a
     # bad setting, not a failed login.

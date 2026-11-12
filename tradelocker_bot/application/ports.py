@@ -95,5 +95,9 @@ class OperatorConsole(Protocol):
         """The positions still open ``seconds`` after the first close request
         (ADR 0022)."""
 
+    def closed(self, symbol: str, seconds: float) -> None:
+        """The broker lists no position ``seconds`` after the first close
+        request, in a close that logged ``still_closing`` (ADR 0022)."""
+
     def unlocked(self) -> None:
         ...
