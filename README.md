@@ -418,6 +418,13 @@ alerts.
   ([ADR 0024](docs/adr/0024-read-the-password-from-a-file.md)). The bot
   keeps the password in memory while it runs. Run the bot on a host only
   you control.
+- **Treat the container's log as a secret.** The `tradelocker` client
+  writes its login request, password included, to the log on every start,
+  so `docker logs` shows the password to anyone who can read it, whether
+  it came from `password` or `password_file`. This is a
+  [known defect](docs/migration-roadmap.md#known-defects), to be fixed
+  next. Until then, do not paste the log anywhere without removing the
+  login request, and change the password if a log has left the host.
 
 ## Troubleshooting
 

@@ -71,7 +71,8 @@ flowchart LR
 
 Each arrow points from a step to one that builds on it. Green is done.
 
-No step is planned after 6l. These wait on the owner's decision:
+The next step fixes the known defect below: the client's log. These wait
+on the owner's decision:
 
 - a channel outside the log, such as an issue or a chat message, for
   `Signal rejected:`, `Order rejected:` and `Still closing:`
@@ -108,7 +109,14 @@ These stay unchanged until an ADR changes them:
 
 Fixed in behaviour steps, never during restructuring.
 
-None open.
+- **The client writes the password to the container's log** (found in
+  step 6l). The `tradelocker` client logs at `debug` by default, and the
+  bot does not set a level. At that level it writes each request in full,
+  so the login request's JSON, the password included, is in `docker logs`
+  after every start, whichever source the password came from
+  ([ADR 0024](adr/0024-read-the-password-from-a-file.md)). Other requests
+  may carry tokens the same way; not yet checked. Until it is fixed, treat
+  the container's log as a secret.
 
 ## Kept by decision
 

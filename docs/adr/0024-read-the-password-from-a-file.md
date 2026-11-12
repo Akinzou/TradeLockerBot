@@ -167,6 +167,13 @@ flowchart TD
 
 ## What this does not cover
 
+- **The client writes the password to the log.** Found in this step's CI
+  run: the `tradelocker` client (0.56.2) logs at `debug` unless told
+  otherwise, and writes each request it sends in full, the login's
+  `{'email': ..., 'password': ..., 'server': ...}` included, to the
+  container's output. So `docker logs` holds the password after every
+  start, whichever source it came from. Not fixed here: it is a defect of
+  its own, listed in the roadmap, with its own step and ADR.
 - **The password in memory.** The client keeps it for the life of the
   process, so a memory dump of the bot still holds it.
 - **A changed password needs a restart.** The file is read once, and the
