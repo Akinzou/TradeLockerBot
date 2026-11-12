@@ -5,6 +5,7 @@ The use case returns every outcome as a value; this is where each one is
 turned into what the webhook thread does today: one operator line for a
 rejection or a refusal, the client's own exception for a broker failure, and
 nothing more for an order the broker rejected, which the use case reports.
+A broker failure also gets a red line before it is raised (ADR 0027).
 """
 
 from contextlib import AbstractContextManager
@@ -45,6 +46,10 @@ class SignalHandler:
                     # lock: the webhook thread fails with the same type,
                     # message and attributes as before the Result (ADR 0006).
                     # Kept raising: no answer may still mean a placed order.
+                    # Named first in a red line, which also reaches Telegram:
+                    # the traceback alone says nothing to the operator's phone
+                    # (ADR 0027).
+                    self._console.broker_failed(signal.value.symbol, result.error.cause)
                     raise result.error.cause
                 if isinstance(result.error, OrderRejected):
                     # Not raised: the broker answered, the use case reported it

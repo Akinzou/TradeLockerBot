@@ -1,35 +1,20 @@
+from collections.abc import Callable
+
 from tradelocker_bot.adapters import ascii_alerts
+from tradelocker_bot.adapters.shown import SHOWN_REASON_CHARACTERS, shown
 from tradelocker_bot.application.refusal import NoBalance, Refusal, UnknownSymbol
 from tradelocker_bot.domain.lot_sizing import UnusableQuantity
 from tradelocker_bot.domain.signal import InvalidSignal, Side
-
-# Enough to recognise a mistyped field; a longer value is cut, so a hostile
-# payload cannot flood the log with one line.
-SHOWN_CHARACTERS = 40
-
-
-# A broker's reason is a sentence rather than a field, so it is cut later;
-# still cut, since the text is the broker's, not the bot's.
-SHOWN_REASON_CHARACTERS = 160
-
-
-def _shown(value: str, limit: int = SHOWN_CHARACTERS) -> str:
-    # repr, not the raw text: the value comes from the webhook or the broker,
-    # and its control characters (ESC, CR) could otherwise colour or forge
-    # operator lines.
-    if len(value) <= limit:
-        return repr(value)
-    return f"{value[:limit]!r}... ({len(value)} characters)"
 
 
 def _why(reason: InvalidSignal | Refusal) -> str:
     # One shape for every reason, "<what> is <found>, expected <what fits>",
     # so the operator reads a payload error and a broker-side refusal alike.
     if isinstance(reason, InvalidSignal):
-        found = "missing" if reason.value is None else _shown(reason.value)
+        found = "missing" if reason.value is None else shown(reason.value)
         return f"line {reason.line} ({reason.field}) is {found}, expected {reason.expected}"
     if isinstance(reason, UnknownSymbol):
-        return f"line 1 (symbol) is {_shown(reason.symbol)}, expected an instrument the broker lists"
+        return f"line 1 (symbol) is {shown(reason.symbol)}, expected an instrument the broker lists"
     if isinstance(reason, UnusableQuantity) and not reason.balance_is_usable:
         # Pointing at line 3 here would send the operator to fix an alert
         # that is fine.
@@ -65,7 +50,23 @@ class PrintingConsole:
     Kept as ``print`` with the legacy colours and reset lines rather than a
     logger, because the operator reads this output and a logger would change
     its format; that is a behaviour step, not this move.
+
+    Each red line, one the operator has to act on, is also handed to
+    ``notify`` as its text without colours (ADR 0027). Here rather than in a
+    second console wrapped around this one: the red lines are written here,
+    and a wrapper would have to forward every other line and build these
+    again, so one wording could drift from the other.
     """
+
+    def __init__(self, notify: Callable[[str], None]):
+        self._notify = notify
+
+    def _alert(self, text: str) -> None:
+        # One print with the reset inside, rather than a reset line after:
+        # another thread's line can print in between, and it must not
+        # inherit the red.
+        print(f"{ascii_alerts.RED}{text}\n{ascii_alerts.RESET}")
+        self._notify(text)
 
     def locked(self) -> None:
         print("Normal: Locked")
@@ -86,10 +87,8 @@ class PrintingConsole:
         """
         listed, them = _listed(symbol, open_positions)
         closes = "it closes" if open_positions == 1 else "they close"
-        # One print with the reset inside, as for a rejected order: another
-        # thread's rejection can print in between.
-        print(f"{ascii_alerts.RED}Still closing: {listed} {int(seconds)} seconds after the first close request; "
-              f"later signals wait until {closes}, check {them} in TradeLocker\n{ascii_alerts.RESET}")
+        self._alert(f"Still closing: {listed} {int(seconds)} seconds after the first close request; "
+                    f"later signals wait until {closes}, check {them} in TradeLocker")
 
     def unlocked(self) -> None:
         print("Normal: Unlocked")
@@ -102,10 +101,7 @@ class PrintingConsole:
         refusal rather than printing it, so the inbound side decides how to
         report it; today one console line, later the webhook response too.
         """
-        # One print with the reset inside, unlike the lines above: a payload
-        # rejection is written outside the lock, so a thread printing in
-        # between must not inherit the colour.
-        print(f"{ascii_alerts.RED}Signal rejected: {_why(reason)}\n{ascii_alerts.RESET}")
+        self._alert(f"Signal rejected: {_why(reason)}")
 
     def order_rejected(self, symbol: str, side: Side, reason: str | None, open_positions: int | None) -> None:
         """An order the broker answered without creating, and what the broker
@@ -115,9 +111,19 @@ class PrintingConsole:
         ends with the account's state, from a count made after the rejection,
         because the operator reads it to decide whether to act.
         """
-        why = "no reason given" if reason is None else _shown(reason, SHOWN_REASON_CHARACTERS)
-        # One print with the reset inside, rather than a reset line after: a
-        # payload rejection from another thread can print in between, and it
-        # must not inherit the red.
-        print(f"{ascii_alerts.RED}Order rejected: the broker refused to {side.value} {symbol} ({why}); "
-              f"{_left_open(symbol, open_positions)}\n{ascii_alerts.RESET}")
+        why = "no reason given" if reason is None else shown(reason, SHOWN_REASON_CHARACTERS)
+        self._alert(f"Order rejected: the broker refused to {side.value} {symbol} ({why}); "
+                    f"{_left_open(symbol, open_positions)}")
+
+    def broker_failed(self, symbol: str, cause: Exception) -> None:
+        """A broker call for the signal on ``symbol`` that got no answer,
+        which stopped the signal there (ADR 0027).
+
+        Not part of the ``OperatorConsole`` port, like ``rejected``: the use
+        case returns the failure, and the inbound side raises it. The
+        exception's type alone, not its text: the client's can hold a token
+        or the server's whole answer (ADR 0025), and this line also leaves
+        the host. The traceback after it still has the text, in the log.
+        """
+        self._alert(f"Broker failed: a call for {symbol} got no answer ({type(cause).__name__}); "
+                    f"the signal stopped there, check {symbol} in TradeLocker")
