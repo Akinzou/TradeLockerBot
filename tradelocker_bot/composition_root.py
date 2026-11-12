@@ -159,6 +159,12 @@ def build_signal_handler(client, lock, clock) -> SignalHandler:
 
 
 def main():
+    # Line by line, as on a terminal, whatever runs the bot: without one Python
+    # holds stdout until 8 KB pile up, so a trade's lines waited for the next
+    # alert's request (ADR 0026). Here rather than PYTHONUNBUFFERED in the
+    # image, which a run outside the image would not have, and rather than a
+    # flush per print, which the next new line could leave out.
+    sys.stdout.reconfigure(line_buffering=True)
     args = parse_args()
 
     if args.url == "generate":
@@ -171,9 +177,7 @@ def main():
     client = log_in(args.env, args.username, args.password, args.server, int(args.acc_num), int(args.acc_id))
     # The client names the account it chose only at debug, which also logs the
     # password (ADR 0025); the operator still needs to see which account trades.
-    # Flushed, because without a terminal stdout waits for uvicorn's first
-    # request line, and the first alert may trade before the line shows.
-    print(f"Logged in: acc_id {client.account_id}, acc_num {client.acc_num}", flush=True)
+    print(f"Logged in: acc_id {client.account_id}, acc_num {client.acc_num}")
 
     # One lock for the whole process: every request's signal runs inside it,
     # so two alerts never interleave between closing and ordering.
