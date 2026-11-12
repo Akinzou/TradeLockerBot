@@ -24,14 +24,15 @@ from tradelocker_bot.application.execute_signal import ExecuteSignal
 
 def webhook_url(value):
     """The ``--url`` value: ``generate`` or a path that starts with ``/`` and
-    has no ``{`` or ``}``.
+    has no ``{``, ``}``, ``?``, ``#`` or ``%``.
 
     A route without the leading slash matches no request, so the bot would
     look up while every alert got a 404 (ADR 0014). A route with ``{name}`` is
-    a pattern that also matches paths the operator never set (ADR 0015). Either
-    way the bot stops, like any invalid argument, before the banners and the
-    login. The message leaves the value out: it is the operator's secret path,
-    or close to it.
+    a pattern that also matches paths the operator never set (ADR 0015). A
+    sender reads ``?``, ``#`` and ``%`` as URL syntax, so a route with one is
+    reached only percent-encoded (ADR 0020). In each case the bot stops, like
+    any invalid argument, before the banners and the login. The message leaves
+    the value out: it is the operator's secret path, or close to it.
     """
     # ArgumentTypeError rather than ValueError: for a ValueError argparse
     # prints the rejected value, and stderr goes to the container's log.
@@ -42,6 +43,11 @@ def webhook_url(value):
     # with a wider syntax turn a path that passed this check into a pattern.
     if "{" in value or "}" in value:
         raise argparse.ArgumentTypeError("must not contain { or }")
+    # Every `%`, not only one before two hex digits: `%zz` reaches the route
+    # today, but a rule that needs the decoding rules to apply would be one an
+    # operator cannot check by eye (ADR 0020).
+    if any(character in value for character in "?#%"):
+        raise argparse.ArgumentTypeError("must not contain ?, # or %")
     return value
 
 
