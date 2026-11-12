@@ -1,0 +1,21 @@
+# The base image is pinned by digest (ADR 0019), so its security fixes no
+# longer arrive with a rebuild. Dependabot reads the tag next to the digest
+# and proposes the tag's new digest as a pull request, which CI checks like
+# any other change.
+#
+# Docker only. The Python packages are locked with hashes by uv (ADR 0007),
+# which Dependabot does not regenerate; the actions are pinned to commits and
+# moved by hand.
+version: 2
+updates:
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    ignore:
+      # A new Python minor needs a lock compiled for it, which Dependabot
+      # cannot do: only the tag's own new digest is proposed.
+      - dependency-name: "python"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"

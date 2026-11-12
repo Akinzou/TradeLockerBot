@@ -69,7 +69,9 @@ minutes later.
   platform. *Update:* since step 2h it holds only the dev tools; the README
   installs `requirements.txt` and the overrides next to it. Its versions can differ from the lock, which CI covers.
 - The base image `python:3.11-slim` is still a moving tag. Pinning it by
-  digest is a separate step.
+  digest is a separate step. *Update:* step 2g pinned it, and Dependabot
+  proposes the tag's new digest
+  ([ADR 0019](0019-pin-the-base-image-by-digest.md)).
 
 ## Alternatives considered
 

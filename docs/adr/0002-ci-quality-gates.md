@@ -27,7 +27,11 @@ fails when the dev tools moved a locked package, and `docker-build` fails
 when the image's packages differ from the lock. Since
 [ADR 0017](0017-override-the-clients-vulnerable-pins.md), `tests` and
 `docker-build` also fail when the installed lock does not hold what its
-packages need, or an override is not honoured or no longer needed.
+packages need, or an override is not honoured or no longer needed. Since
+[ADR 0019](0019-pin-the-base-image-by-digest.md), `tests` fails when a
+`FROM` lacks a digest or its tag disagrees with the lock's Python, and
+`docker-build` fails when the image runs another Python; it only warns
+when the base image's tag has moved past the pin.
 
 Semgrep `WARNING` and `INFO` findings never fail the build. They are written
 to the job summary, and each pull request description records the decision
@@ -40,6 +44,9 @@ environment silently downgrades or upgrades the bot's runtime libraries.
 The publish workflow (`docker-image.yml`) now runs only for successful CI runs
 on `master` that were triggered by a push or started manually
 (`workflow_dispatch`, used to rebuild the image when `master` has not changed).
+*Update:* since [ADR 0019](0019-pin-the-base-image-by-digest.md) such a
+rebuild gives the same image, so it serves to retry a failed publish; a
+base-image fix arrives as a digest bump instead.
 It checks out the exact commit that CI validated (`workflow_run.head_sha`).
 
 Workflows are scanned too (`p/github-actions`), because they hold the
@@ -62,6 +69,9 @@ A code-file size budget (300 lines for `.py`, `.sh` and `.ps1`) is enforced by
   gone. The base image tag `python:3.11-slim` still moves until it is pinned
   by digest (roadmap step 2g). Fixing the inputs addresses the cause;
   promoting the CI image would only hide the drift until the next rebuild.
+  *Update:* step 2g pinned it
+  ([ADR 0019](0019-pin-the-base-image-by-digest.md)), so both builds now
+  start from the same base.
 - Semgrep's version is pinned, but its rule packs come live from the Semgrep
   registry. A newly published `ERROR` rule can turn `master` red, and block
   publishing, with no code change. We accept this: a new blocking finding is

@@ -121,6 +121,32 @@ jobs:
           docker run --rm --entrypoint python "$base" -m pip freeze --all > base.txt
           docker run --rm --entrypoint python tradelocker_bot:ci -m pip freeze --all > installed.txt
           python3 -m tests.dependency_lock --freeze installed.txt --base base.txt --exact
+      # The tests check the base image's tag against the lock, but Docker reads
+      # only the digest (ADR 0019): check the interpreter the image runs.
+      - name: Check the image runs the Python the lock was compiled for
+        run: |
+          want="$(sed -n 's/.*--python-version \([0-9.]*\).*/\1/p' requirements-lock.txt)"
+          have="$(docker run --rm --entrypoint python tradelocker_bot:ci -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
+          echo "lock: $want, image: $have"
+          test -n "$want"
+          test "$have" = "$want"
+      # A base-image fix now arrives only as a digest bump (ADR 0019).
+      # Dependabot proposes one; this warns on every run once the tag has
+      # moved past the pin, in case it does not. A warning, not a failure:
+      # the tag moves without any commit here, and would block every pull
+      # request until the bump is merged.
+      - name: Warn when the base image's tag has moved past the pin
+        run: |
+          base="$(sed -n 's/^FROM \([^ ]*\).*/\1/p' Dockerfile)"
+          tag="${base%@*}"
+          pinned="${base#*@}"
+          if ! current="$(docker buildx imagetools inspect "$tag" --format '{{.Manifest.Digest}}')"; then
+            echo "::warning file=Dockerfile::Could not read the current digest of $tag"
+          elif [ "$current" != "$pinned" ]; then
+            echo "::warning file=Dockerfile::$tag is now $current; the image is pinned to $pinned. Bump the digest (ADR 0019)."
+          else
+            echo "$tag is still $pinned"
+          fi
 
   # Single required status check for master. Aggregating here means branch
   # protection does not need editing every time a job is added or renamed.

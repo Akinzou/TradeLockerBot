@@ -1,4 +1,11 @@
-FROM python:3.11-slim
+# By digest, not by tag alone: the tag moves, so a rebuild of the same commit
+# could change the interpreter and the system libraries unreviewed, and the
+# image CI tested would not be the one published (ADR 0019). The digest is
+# the multi-platform index's, so each platform still gets its own image. The
+# tag stays for Dependabot, which proposes the tag's new digest as a pull
+# request; Docker itself reads only the digest. 3.11 is the Python the lock
+# was compiled for.
+FROM python:3.11-slim@sha256:07d4824036af339fa1b6ef769cc99d9c10a141769538b52b3b597c84f7a7b535
 
 WORKDIR /app
 
