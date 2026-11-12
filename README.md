@@ -16,6 +16,9 @@
 > on a **demo** account first. The software is provided "as is", without any
 > warranty; you use it at your own risk.
 
+**Documentation:** <https://akinzou.github.io/TradeLockerBot/>, with search,
+the architecture, the migration roadmap and every decision record.
+
 ## Table of contents
 
 - [How it works](#how-it-works)
