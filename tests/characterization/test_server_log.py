@@ -90,7 +90,7 @@ def send(port, method, path, body):
 @pytest.mark.parametrize("use_colors", [False, True], ids=["plain", "coloured"])
 def test_each_request_logs_its_client_and_status_but_never_the_path(monkeypatch, capsys, uvicorn_loggers, use_colors):
     startup = Startup(monkeypatch, broker())
-    startup.run(*DEMO, "--url", SECRET)
+    startup.run({**DEMO, "url": SECRET})
     [served] = startup.served
     capsys.readouterr()
 

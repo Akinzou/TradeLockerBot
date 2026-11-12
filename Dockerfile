@@ -15,8 +15,9 @@ RUN pip install --no-cache-dir --require-hashes --only-binary :all: --no-deps -r
 
 COPY . /app
 
-ENV url=/strategy
-ENV acc_num=0
-ENV acc_id=0
-
-CMD ["sh", "-c", "python main_without_ssl.py --username $username --password $password --server $server --env $env --url $url --acc_num $acc_num --acc_id $acc_id"]
+# No shell and no arguments: the bot reads its settings from the container's
+# environment (ADR 0018). The shell split, expanded and globbed the password,
+# and the arguments put the credentials and the webhook path in the host's
+# process list, which every user of the host can read. The optional settings'
+# defaults live in the bot alone, so the image sets no variable.
+CMD ["python", "main_without_ssl.py"]

@@ -107,6 +107,10 @@ docker run -d -t --name prod --restart unless-stopped -p 443:443 \
   ghcr.io/akinzou/tradelocker_bot:latest
 ```
 
+To keep the password out of your shell's history, put the variables in a
+file only you can read, one `name=value` per line, and pass
+`--env-file that_file` instead of the `-e` lines.
+
 Follow its output with `docker logs -f prod`. The container keeps running
 after you log out and comes back after a reboot, with the same webhook path.
 
@@ -117,7 +121,7 @@ All settings are passed as environment variables (`-e name=value`).
 | Variable   | Required | Default     | Description                                                                                         |
 |------------|----------|-------------|-----------------------------------------------------------------------------------------------------|
 | `username` | yes      |             | TradeLocker username or email.                                                                      |
-| `password` | yes      |             | TradeLocker password. Must not contain spaces or shell characters such as `*`, `?`, `$` or `;` (see below). |
+| `password` | yes      |             | TradeLocker password. Read only from this variable, never from the command line; any character is allowed. |
 | `server`   | yes      |             | TradeLocker server name.                                                                            |
 | `env`      | yes      |             | `demo` or `live`.                                                                                   |
 | `url`      | no       | `/strategy` | Webhook path. Use a long secret path (see [Quick start](#quick-start)). It must start with `/` and must not contain `{` or `}`: otherwise the bot refuses to start, with `argument --url: must start with / or be generate` ([ADR 0014](docs/adr/0014-require-a-leading-slash.md)) or `argument --url: must not contain { or }` ([ADR 0015](docs/adr/0015-refuse-braces-in-the-webhook-path.md)). Images built before ADR 0015 read `{name}` as a pattern that also handles signals posted to other paths, so keep braces out of `url` there too. `generate` prints a new random path on every start, made the same way as in Quick start. |
@@ -127,11 +131,20 @@ All settings are passed as environment variables (`-e name=value`).
 The bot listens on port `443` inside the container. To expose it on another
 host port, change the left side of `-p`, for example `-p 8080:443`.
 
-The image passes the credentials to the bot through an unquoted shell command,
-so a password with spaces or shell characters is split or expanded and the
-login fails. Until this is fixed (see the
-[migration roadmap](docs/migration-roadmap.md#known-defects)),
-use a password without them.
+The image starts the bot without a shell, so every value reaches it exactly
+as set ([ADR 0018](docs/adr/0018-read-the-settings-from-the-environment.md)):
+spaces and shell characters are fine, and nothing is trimmed, so a trailing
+space in `env` stops the bot. A missing or empty `password` stops it with
+`the password environment variable is not set or is empty`. Images built
+before that change pass the values through an unquoted shell, which splits
+or expands a value with spaces, `*`, `?` or `[`; on those, use a password
+without them.
+
+When you run the bot outside the image, every setting except the password
+can also be given as an option of the same name, such as `--url /path`.
+The option replaces the variable, and `--acc_num` or `--acc_id` replaces
+both. On Windows, give `--username`: variable names ignore case there, so
+`USERNAME`, your Windows login, would be read as `username`.
 
 ## Connecting TradingView
 
@@ -309,11 +322,15 @@ alerts.
   network path can read the webhook path and send forged signals. Put the bot
   behind a reverse proxy such as Nginx or Caddy that terminates TLS. The bot's
   own connection to TradeLocker already uses HTTPS.
-- **Protect the host.** The password is passed to the process as a
-  command-line argument, so other users on the same machine can see it in the
-  process list. Run the bot on a host only you control. Moving credentials out
-  of the command line is tracked in the
-  [migration roadmap](docs/migration-roadmap.md).
+- **Protect the host.** The bot reads its settings from its environment,
+  so its command line, which every user of the host can read in the
+  process list, holds neither the password nor the webhook path
+  ([ADR 0018](docs/adr/0018-read-the-settings-from-the-environment.md)).
+  Images built before that change show both there. The environment is
+  still visible to anyone who can run `docker inspect`, and a `docker run`
+  typed with `-e password=...` stays in your shell's history, so prefer
+  `--env-file` (see [Quick start](#quick-start)). Run the bot on a host
+  only you control.
 
 ## Troubleshooting
 
@@ -324,10 +341,12 @@ alerts.
 | `Signal rejected: line 3 (lot) gives 0.0 ...` | The balance is too small for this lot. Raise the lot or lower the balance step on line 3. |
 | `Signal rejected: the account balance is ...` | The broker reported no balance, a balance that is not a number, or one that is not above zero. Check the account in TradeLocker, then send the alert again. |
 | Position closed but no new one opened       | The broker rejected the order; the log shows its error. |
-| Bot does not start, login fails             | Wrong credentials or `env`, or a password with spaces or shell characters (see [Configuration](#configuration)). |
+| Bot does not start, login fails             | Wrong credentials or `env`. On images built before [ADR 0018](docs/adr/0018-read-the-settings-from-the-environment.md), also a password with spaces or shell characters (see [Configuration](#configuration)). |
+| Container keeps restarting, `docker logs` shows `the password environment variable is not set or is empty` | Set `password` with `-e` or in the `--env-file`. The bot does not read `--password`. |
+| `docker logs` shows `the following arguments are required: --server` or `argument --server: must not be empty` | The messages name the option the image fills from the variable of the same name. Set `server` (or the variable named) to a non-empty value. |
 | `Method Not Allowed` in the browser         | Expected; see [Verifying the setup](#verifying-the-setup).                                     |
 | Every alert gets `404 Not Found`            | Each one leaves a `<request line hidden>` line in the log with the status `404 Not Found`. The alert's URL does not match the `url` setting exactly (case included). A trailing `/` counts: `/strategy/` is not `/strategy`. On images built before [ADR 0014](docs/adr/0014-require-a-leading-slash.md), also check that `url` starts with `/`. |
-| Container keeps restarting, `docker logs` shows `argument --url: must start with / or be generate` | `url` is neither `generate` nor a path that starts with `/`. Add the leading `/`. An empty `url` shows `argument --url: expected one argument` instead. |
+| Container keeps restarting, `docker logs` shows `argument --url: must start with / or be generate` | `url` is neither `generate` nor a path that starts with `/`. Add the leading `/`. An empty `url` gets the same message; images built before [ADR 0018](docs/adr/0018-read-the-settings-from-the-environment.md) show `argument --url: expected one argument` instead. |
 | Container keeps restarting, `docker logs` shows `argument --url: must not contain { or }` | `url` has a `{` or `}`. Remove it, or make a new path with the command in [Quick start](#quick-start). |
 | Error about account number and ID at start  | Both `acc_id` and `acc_num` are set; keep only one.                                            |
 
@@ -362,7 +381,7 @@ both installs again, in this order.
   [migration roadmap](docs/migration-roadmap.md).
 - `main_without_ssl.py` keeps its name because the image runs it, but it only
   calls `main()` in `tradelocker_bot/composition_root.py`. That module reads
-  the arguments and wires the adapters to the use case
+  the settings and wires the adapters to the use case
   ([ADR 0010](docs/adr/0010-webhook-adapter-and-composition-root.md)).
   Everything else lives in the `tradelocker_bot` package:
 

@@ -143,8 +143,14 @@ def generated_webhook_path():
 LOGIN = "[login]"
 SERVE = "[serve]"
 
-# The required arguments, for the demo server; tests add the optional ones.
-DEMO = ("--username", "u", "--password", "p", "--server", "s", "--env", "demo")
+# The required settings, for the demo server, as the image's environment
+# variables; tests add the optional ones. Read-only, so no test can alter it
+# for the tests after it.
+DEMO = MappingProxyType({"username": "u", "password": "p", "server": "s", "env": "demo"})
+# The login the client receives for them.
+DEMO_LOGIN = MappingProxyType(
+    {"environment": "https://demo.tradelocker.com", "username": "u", "password": "p", "server": "s"}
+)
 
 
 class Startup:
@@ -177,7 +183,15 @@ class Startup:
         monkeypatch.setattr(tradelocker_broker, "TLAPI", tl_api)
         monkeypatch.setattr(composition_root.uvicorn, "run", run)
 
-    def run(self, *argv):
+    def run(self, environ, *argv):
+        """Start with exactly ``environ`` as the process environment and
+        ``argv`` after the script name, as the image does with no arguments.
+
+        The whole environment rather than a few names set or removed: on
+        Windows the names ignore case, so the machine's own ``USERNAME``
+        would otherwise reach the bot as ``username``.
+        """
+        self._monkeypatch.setattr(composition_root, "environ", dict(environ))
         self._monkeypatch.setattr(sys, "argv", ["main_without_ssl.py", *argv])
         # The container's entrypoint, so the thin script stays under test too.
         entrypoint.main()
@@ -188,8 +202,8 @@ class Startup:
         return served["app"]
 
 
-def serve(monkeypatch, client, *argv):
-    """Start the bot on the demo arguments plus ``argv`` and return its app."""
+def serve(monkeypatch, client, **environ):
+    """Start the bot on the demo settings plus ``environ`` and return its app."""
     startup = Startup(monkeypatch, client)
-    startup.run(*DEMO, *argv)
+    startup.run({**DEMO, **environ})
     return startup.app

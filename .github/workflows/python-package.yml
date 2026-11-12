@@ -82,6 +82,30 @@ jobs:
       # (argparse --help exits before any login) catches packaging gaps the tests cannot.
       - name: Smoke-run the entrypoint inside the image
         run: docker run --rm --entrypoint python tradelocker_bot:ci main_without_ssl.py --help
+      # The image's own start command, which no test runs (ADR 0018). Without
+      # a network, so nothing here can reach a broker. Without a password the
+      # bot must stop before any output, naming the variable it lacks.
+      - name: Start the image without a password
+        run: |
+          status=0
+          docker run --rm --network none -e username=u -e server=s -e env=demo \
+            tradelocker_bot:ci > out.txt 2> err.txt || status=$?
+          cat out.txt err.txt
+          test "$status" = 2
+          test ! -s out.txt
+          tail -n 1 err.txt | grep -q 'error: the password environment variable is not set or is empty$'
+      # A password the old shell form split and globbed must get past the
+      # settings: the greeting is printed, then the login fails for want of
+      # a network. The old image stopped at the settings with status 2.
+      - name: Start the image with a password that has spaces and shell characters
+        run: |
+          status=0
+          docker run --rm --network none -e username=u -e 'password=p a $HOME *' -e server=s -e env=demo \
+            tradelocker_bot:ci > out.txt 2> err.txt || status=$?
+          cat out.txt err.txt
+          test "$status" != 0
+          test "$status" != 2
+          grep -qF '|_   _| __ __ _' out.txt
       # The image installs with --no-deps (ADR 0017), so check there, with the
       # image's own interpreter reading the markers, that it holds what its
       # packages need. It uses the base image's own packaging, so nothing

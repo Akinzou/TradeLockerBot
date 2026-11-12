@@ -25,7 +25,7 @@ describes the code as it is on `master`.
 | Domain            | `tradelocker_bot.domain`           | standard library                                | Trading rules as plain values and functions, with no I/O       |
 | Application       | `tradelocker_bot.application`      | domain                                          | Use cases and the ports they need                              |
 | Adapters          | `tradelocker_bot.adapters`         | application, domain, third-party clients        | TradeLocker client and login, operator console, HTTP webhook, signal handler |
-| Composition root  | `tradelocker_bot.composition_root` | everything above                                | Start arguments, banners, wiring, the lock, the server start   |
+| Composition root  | `tradelocker_bot.composition_root` | everything above                                | Start settings, banners, wiring, the lock, the server start    |
 | Entrypoint        | `main_without_ssl.py`              | the composition root                            | The container's command; calls `main()` and nothing else       |
 
 Every arrow below is an import in the code. The entrypoint keeps its name
@@ -102,7 +102,7 @@ sequenceDiagram
     participant SL as server_log
     participant U as uvicorn
     EP->>CR: main()
-    CR->>CR: parse_args (exit 2 on a bad argument,<br/>a --url without a leading / or with a brace)
+    CR->>CR: parse_args: the environment, then the options<br/>(exit 2 on a bad, missing or empty setting,<br/>--password, a url without a leading / or with a brace)
     opt --url generate
         CR->>CR: print the URL banner and random_webhook_path()
     end
@@ -118,7 +118,7 @@ sequenceDiagram
     CR->>U: run(app, host="0.0.0.0", port, log_config)
 ```
 
-A bad argument stops at step 2, a bad account selector at step 5, and a
+A bad setting stops at step 2, a bad account selector at step 5, and a
 failed login at step 6. Each leaves every later step undone, so the server
 never starts on a half-built bot.
 
@@ -342,13 +342,22 @@ design.
 `tradelocker_bot/composition_root.py` is the only module that knows every
 layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
 
-- `main()` reads the arguments, prints the banners, logs in, builds the
+- `main()` reads the settings, prints the banners, logs in, builds the
   app and starts the server, in the order the [startup](#startup) diagram
   shows.
+- `parse_args` reads the settings from the environment variables the
+  image is started with. An option of the same name on the command line
+  replaces its variable. Each variable the command line does not replace
+  becomes `--name=value` ahead of it, so one parser checks both sources.
+  The password is read only from the environment, and `--password` is
+  refused without its value, because the host's process list shows every
+  command line. Unknown or shortened arguments are refused without being
+  printed
+  ([ADR 0018](adr/0018-read-the-settings-from-the-environment.md)).
 - It creates the one lock that every request shares.
-- `webhook_url` checks `--url` as the arguments are read: `generate` or a
+- `webhook_url` checks `url` as the settings are read: `generate` or a
   path that starts with `/` and has no `{` or `}`, so the route is one
-  path, not a pattern. Anything else exits with status `2`, like any bad argument,
+  path, not a pattern. Anything else exits with status `2`, like any bad setting,
   and the message leaves the value out
   ([ADR 0014](adr/0014-require-a-leading-slash.md),
   [ADR 0015](adr/0015-refuse-braces-in-the-webhook-path.md)).
@@ -378,3 +387,4 @@ layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
 | [0015](adr/0015-refuse-braces-in-the-webhook-path.md) | Refuse braces in the webhook path |
 | [0016](adr/0016-hide-the-request-line-in-the-access-log.md) | Hide the request line in the access log |
 | [0017](adr/0017-override-the-clients-vulnerable-pins.md) | Override the broker client's pins on vulnerable packages |
+| [0018](adr/0018-read-the-settings-from-the-environment.md) | Read the settings from the environment, not the command line |
