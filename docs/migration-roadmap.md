@@ -38,7 +38,7 @@ migration pull request.
 | 6i | Report an order the broker rejects in one operator line instead of a traceback, and place the order once rather than again until an id comes back ([ADR 0021](adr/0021-report-a-rejected-order-and-place-it-once.md)). Flipped pins: the rejected order after the close raises nothing; new pins for the line, the thread and the adapter's mapping; an order request that gets no answer still raises | behaviour | done |
 | 6j | Pace the close loop on a `Clock` port: count again at once after a request, then a second apart, ask again only every 10 seconds of the clock, and log one `Still closing:` line a minute after the first request; no upper limit ([ADR 0022](adr/0022-pace-the-close-loop-on-a-clock.md)). Flipped pins: a close requested again every 10 seconds, with each pause pinned among the broker calls; new pins for the line, the clock's seconds rather than polls, and a failure after a pause | behaviour | done |
 | 6k | Keep the webhook's immediate `200` and record what it means: receipt, not the outcome; TradingView cancels a request after 3 seconds and sends it again after a `5xx`, so an answer after handling would be cancelled and one by outcome sent again ([ADR 0023](adr/0023-the-webhook-answer-acknowledges-receipt.md)). No behaviour change; the known defect becomes a decision. New pin: a rejected payload, a refusal, a rejected order and a trade get the same `200` | decision | done |
-| 6  | Remaining behaviour change, one pull request and one ADR: a password file in place of the `password` variable ([ADR 0018](adr/0018-read-the-settings-from-the-environment.md)) | behaviour | next |
+| 6l | Read the password from the file `password_file` names, such as a Docker secret, so `docker inspect` shows only the path; beside the `password` variable rather than in its place, exactly one of the two set; one line, one trailing line ending dropped, nothing trimmed; a file that cannot be read, is empty, is longer than 1024 bytes, holds more than one line or a NUL, is not UTF-8 or starts with a byte order mark stops the bot without printing its content ([ADR 0024](adr/0024-read-the-password-from-a-file.md)). Pins flipped: the messages for a missing password and for `--password` name both ways; new pins for the file, both sources set and `--password_file` refused | behaviour | done |
 
 ```mermaid
 flowchart LR
@@ -62,17 +62,25 @@ flowchart LR
     S6h --> S6i[6i rejected order]
     S6i --> S6j[6j paced close loop]
     S6j --> S6k[6k answer means receipt]
-    S6k --> S6[6 password file]
+    S6k --> S6l[6l password file]
     S2af --> S2g[2g base image digest]
     S2af --> S2h[2h patched client pins]
     classDef done fill:#d4edda,stroke:#28a745,color:#155724
-    classDef next fill:#fff3cd,stroke:#d39e00,color:#856404
-    class S1,S1abc,S2,S2af,S2g,S2h,S4,S4b,S3,S3b,S5a,S5,S6a,S6b,S6c,S6d,S6e,S6f,S6g,S6h,S6i,S6j,S6k done
-    class S6 next
+    class S1,S1abc,S2,S2af,S2g,S2h,S4,S4b,S3,S3b,S5a,S5,S6a,S6b,S6c,S6d,S6e,S6f,S6g,S6h,S6i,S6j,S6k,S6l done
 ```
 
-Each arrow points from a step to one that builds on it. Green is done,
-yellow is next.
+Each arrow points from a step to one that builds on it. Green is done.
+
+The next step fixes the known defect below: the client's log. These wait
+on the owner's decision:
+
+- a channel outside the log, such as an issue or a chat message, for
+  `Signal rejected:`, `Order rejected:` and `Still closing:`
+  ([ADR 0023](adr/0023-the-webhook-answer-acknowledges-receipt.md));
+- answering `4xx` for a payload the bot rejects
+  ([ADR 0023](adr/0023-the-webhook-answer-acknowledges-receipt.md));
+- removing the `password` variable once deployments use `password_file`
+  ([ADR 0024](adr/0024-read-the-password-from-a-file.md)).
 
 Structure steps must keep `tests/characterization/` green with **unchanged
 assertions**. Only the seam may move, meaning the module the tests import
@@ -89,7 +97,7 @@ These stay unchanged until an ADR changes them:
 - Docker image name `ghcr.io/akinzou/tradelocker_bot:latest`, and
   `main_without_ssl.py` as the container command.
 - Container environment variables `username`, `password`, `server`, `env`,
-  `url`, `acc_num`, `acc_id`.
+  `url`, `acc_num`, `acc_id`, and since ADR 0024 `password_file`.
 - Default webhook path `/strategy`, `url=generate` for a random path, and port
   443 by default.
 - The webhook body: seven newline-separated lines (symbol, `buy`/`sell`,
@@ -101,7 +109,14 @@ These stay unchanged until an ADR changes them:
 
 Fixed in behaviour steps, never during restructuring.
 
-None open.
+- **The client writes the password to the container's log** (found in
+  step 6l). The `tradelocker` client logs at `debug` by default, and the
+  bot does not set a level. At that level it writes each request in full,
+  so the login request's JSON, the password included, is in `docker logs`
+  after every start, whichever source the password came from
+  ([ADR 0024](adr/0024-read-the-password-from-a-file.md)). Other requests
+  may carry tokens the same way; not yet checked. Until it is fixed, treat
+  the container's log as a secret.
 
 ## Kept by decision
 

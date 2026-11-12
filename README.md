@@ -109,22 +109,58 @@ Create a secret webhook path once and keep it, for example:
 python3 -c "import secrets; print('/' + secrets.token_urlsafe(24))"
 ```
 
+Put your TradeLocker password in a file only you can read, alone on one
+line. Use an editor rather than `echo`, which would leave the password in
+your shell's history:
+
+```sh
+touch ~/.tradelocker_password
+chmod 600 ~/.tradelocker_password
+nano ~/.tradelocker_password
+```
+
 Start the bot in the background (replace the placeholders, and choose `demo`
 or `live`):
 
 ```sh
 docker run -d -t --name prod --restart unless-stopped -p 443:443 \
+  --mount type=bind,source="$HOME/.tradelocker_password",target=/run/secrets/tradelocker_password,readonly \
+  -e password_file=/run/secrets/tradelocker_password \
   -e username='your_username' \
-  -e password='your_password' \
   -e server='your_server' \
   -e env=demo \
   -e url=/your_secret_path \
   ghcr.io/akinzou/tradelocker_bot:latest
 ```
 
-To keep the password out of your shell's history, put the variables in a
-file only you can read, one `name=value` per line, and pass
-`--env-file that_file` instead of the `-e` lines.
+The file is mounted read-only and read once at startup, so `docker inspect`
+shows only its path. `--mount` rather than `-v`: for a file that does not
+exist, `-v` creates a directory in its place, owned by root, and `--mount`
+stops with an error
+([ADR 0024](docs/adr/0024-read-the-password-from-a-file.md)). You can
+instead set `-e password='your_password'`, but not both.
+
+The webhook path is a secret too. To keep it out of your shell's history,
+put the variables in a file only you can read, one `name=value` per line,
+and pass `--env-file that_file` instead of the `-e` lines.
+
+With Docker Compose, declare the password file as a secret. Compose mounts
+it under `/run/secrets/`, with the secret's name:
+
+```yaml
+services:
+  bot:
+    image: ghcr.io/akinzou/tradelocker_bot:latest
+    restart: unless-stopped
+    ports: ["443:443"]
+    env_file: tradelocker.env  # username, server, env and url, one name=value per line
+    environment:
+      password_file: /run/secrets/tradelocker_password
+    secrets: [tradelocker_password]
+secrets:
+  tradelocker_password:
+    file: ./tradelocker_password  # beside this file, readable only by you
+```
 
 Follow its output with `docker logs -f prod`. The container keeps running
 after you log out and comes back after a reboot, with the same webhook path.
@@ -136,7 +172,8 @@ All settings are passed as environment variables (`-e name=value`).
 | Variable   | Required | Default     | Description                                                                                         |
 |------------|----------|-------------|-----------------------------------------------------------------------------------------------------|
 | `username` | yes      |             | TradeLocker username or email.                                                                      |
-| `password` | yes      |             | TradeLocker password. Read only from this variable, never from the command line; any character is allowed. |
+| `password_file` | one of the two |  | Path, inside the container, of a file that holds the TradeLocker password on one line, such as a mounted secret (see [Quick start](#quick-start)). One line ending at the end is dropped and nothing else; spaces count. The bot refuses to start if the file cannot be read, is empty, is longer than 1024 bytes, holds more than one line or a NUL character, is not UTF-8 or starts with a byte order mark, and never prints its content ([ADR 0024](docs/adr/0024-read-the-password-from-a-file.md)). Read once at startup: after changing the password, restart the bot. |
+| `password` | one of the two |       | TradeLocker password, if you do not use `password_file`. Read only from the environment, never from the command line; any character is allowed. `docker inspect` shows it. |
 | `server`   | yes      |             | TradeLocker server name.                                                                            |
 | `env`      | yes      |             | `demo` or `live`.                                                                                   |
 | `url`      | no       | `/strategy` | Webhook path. Use a long secret path (see [Quick start](#quick-start)). It must start with `/` and must not contain `{`, `}`, `?`, `#` or `%`: otherwise the bot refuses to start, with `argument --url: must start with / or be generate` ([ADR 0014](docs/adr/0014-require-a-leading-slash.md)), `argument --url: must not contain { or }` ([ADR 0015](docs/adr/0015-refuse-braces-in-the-webhook-path.md)) or `argument --url: must not contain ?, # or %` ([ADR 0020](docs/adr/0020-refuse-query-fragment-and-escape-characters-in-the-webhook-path.md)). A sender reads `?`, `#` and `%` as URL syntax, so a path with one may be reached only percent-encoded, and alerts sent to it as typed get `404`; images built before ADR 0020 start with it, so keep them out of `url` there. Images built before ADR 0015 read `{name}` as a pattern that also handles signals posted to other paths, so keep braces out of `url` there too. `generate` prints a new random path on every start, made the same way as in Quick start. |
@@ -149,14 +186,19 @@ host port, change the left side of `-p`, for example `-p 8080:443`.
 The image starts the bot without a shell, so every value reaches it exactly
 as set ([ADR 0018](docs/adr/0018-read-the-settings-from-the-environment.md)):
 spaces and shell characters are fine, and nothing is trimmed, so a trailing
-space in `env` stops the bot. A missing or empty `password` stops it with
-`the password environment variable is not set or is empty`. Images built
-before that change pass the values through an unquoted shell, which splits
+space in `env` stops the bot. Set exactly one of `password_file` and
+`password`; an empty one counts as not set. Without either, the bot stops
+with
+`no password: set password_file to a file that holds it, or the password environment variable`;
+with both, with
+`set either password_file or the password environment variable, not both`.
+Images built before ADR 0024 ignore `password_file`. Images built
+before ADR 0018 pass the values through an unquoted shell, which splits
 or expands a value with spaces, `*`, `?` or `[`; on those, use a password
 without them.
 
-When you run the bot outside the image, every setting except the password
-can also be given as an option of the same name, such as `--url /path`.
+When you run the bot outside the image, every setting except
+`password_file` and `password` can also be given as an option of the same name, such as `--url /path`.
 The option replaces the variable, and `--acc_num` or `--acc_id` replaces
 both. On Windows, give `--username`: variable names ignore case there, so
 `USERNAME`, your Windows login, would be read as `username`.
@@ -317,6 +359,12 @@ alerts.
 > seconds instead of every other second, so the log shows fewer
 > `Closing:` lines, and a close still open a minute after the first request
 > logs one red `Still closing:` line.
+>
+> Since [ADR 0024](docs/adr/0024-read-the-password-from-a-file.md), the
+> password can come from a file instead of the `password` variable. To
+> move to it, create the file as in [Quick start](#quick-start), add the
+> `--mount` and `password_file` lines and remove `-e password=...`: with
+> both set, the bot does not start.
 
 ## Security
 
@@ -363,9 +411,20 @@ alerts.
   ([ADR 0018](docs/adr/0018-read-the-settings-from-the-environment.md)).
   Images built before that change show both there. The environment is
   still visible to anyone who can run `docker inspect`, and a `docker run`
-  typed with `-e password=...` stays in your shell's history, so prefer
-  `--env-file` (see [Quick start](#quick-start)). Run the bot on a host
-  only you control.
+  typed with `-e password=...` stays in your shell's history, so set the
+  password with `password_file` and the rest with `--env-file` (see
+  [Quick start](#quick-start)). `docker inspect` then shows the file's
+  path, not the password
+  ([ADR 0024](docs/adr/0024-read-the-password-from-a-file.md)). The bot
+  keeps the password in memory while it runs. Run the bot on a host only
+  you control.
+- **Treat the container's log as a secret.** The `tradelocker` client
+  writes its login request, password included, to the log on every start,
+  so `docker logs` shows the password to anyone who can read it, whether
+  it came from `password` or `password_file`. This is a
+  [known defect](docs/migration-roadmap.md#known-defects), to be fixed
+  next. Until then, do not paste the log anywhere without removing the
+  login request, and change the password if a log has left the host.
 
 ## Troubleshooting
 
@@ -381,7 +440,10 @@ alerts.
 | One alert traded more than once | TradingView sends an alert again, up to three times, after a `5xx` other than `504`. The bot answers `5xx` only when it started nothing, but a reverse proxy in front of it can answer `502` or `503` after passing the alert on, for example when its connection to the bot drops. Check the proxy's error log and TradingView's alert log for those times ([ADR 0023](docs/adr/0023-the-webhook-answer-acknowledges-receipt.md)). |
 | Position closed but no new one opened, and no `Order rejected:` line | The order request got no answer, and the log shows the client's error. The order may still have been placed: check the account in TradeLocker. |
 | Bot does not start, login fails             | Wrong credentials or `env`. On images built before [ADR 0018](docs/adr/0018-read-the-settings-from-the-environment.md), also a password with spaces or shell characters (see [Configuration](#configuration)). |
-| Container keeps restarting, `docker logs` shows `the password environment variable is not set or is empty` | Set `password` with `-e` or in the `--env-file`. The bot does not read `--password`. |
+| Container keeps restarting, `docker logs` shows `no password: set password_file to a file that holds it, or the password environment variable` | Set `password_file` and mount the file (see [Quick start](#quick-start)), or set `password`. An empty value counts as not set. The bot does not read `--password` or `--password_file`. Images built before [ADR 0024](docs/adr/0024-read-the-password-from-a-file.md) show `the password environment variable is not set or is empty` and read only `password`. |
+| Container keeps restarting, `docker logs` shows `set either password_file or the password environment variable, not both` | Remove `password` from the `-e` lines or the env file, keeping the file. |
+| Container keeps restarting, `docker logs` shows `password_file: the file cannot be read (No such file or directory)` | The path in `password_file` names no file inside the container. Check the `--mount` option's `target`, or the secret's name in Compose, against `password_file`. With `(Permission denied)`, check the file on the host. With `(Is a directory)`, a `-v` mount of a file that did not exist made a directory in its place: remove it with `sudo rmdir`, create the file and mount it with `--mount`. |
+| `docker logs` shows `password_file: the file holds more than one line`, `is empty`, `is longer than 1024 bytes`, `holds a NUL character`, `is not UTF-8 text` or `starts with a byte order mark` | Put the password alone on the file's first line, and check that `password_file` names the password file, not the env file. Save the file as UTF-8 without a byte order mark; Windows PowerShell 5.1 writes `>` as UTF-16. The bot never prints the file's content. |
 | `docker logs` shows `the following arguments are required: --server` or `argument --server: must not be empty` | The messages name the option the image fills from the variable of the same name. Set `server` (or the variable named) to a non-empty value. |
 | `Method Not Allowed` in the browser         | Expected; see [Verifying the setup](#verifying-the-setup).                                     |
 | Every alert gets `404 Not Found`            | Each one leaves a `<request line hidden>` line in the log with the status `404 Not Found`. The alert's URL does not match the `url` setting exactly (case included). A trailing `/` counts: `/strategy/` is not `/strategy`. On images built before [ADR 0014](docs/adr/0014-require-a-leading-slash.md), also check that `url` starts with `/`. |

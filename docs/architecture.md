@@ -24,7 +24,7 @@ describes the code as it is on `master`.
 |-------------------|------------------------------------|-------------------------------------------------|----------------------------------------------------------------|
 | Domain            | `tradelocker_bot.domain`           | standard library                                | Trading rules as plain values and functions, with no I/O       |
 | Application       | `tradelocker_bot.application`      | domain                                          | Use cases and the ports they need                              |
-| Adapters          | `tradelocker_bot.adapters`         | application, domain, third-party clients        | TradeLocker client and login, operator console, system clock, HTTP webhook, signal handler |
+| Adapters          | `tradelocker_bot.adapters`         | application, domain, third-party clients        | TradeLocker client and login, operator console, system clock, HTTP webhook, signal handler, password file |
 | Composition root  | `tradelocker_bot.composition_root` | everything above                                | Start settings, banners, wiring, the lock, the server start    |
 | Entrypoint        | `main_without_ssl.py`              | the composition root                            | The container's command; calls `main()` and nothing else       |
 
@@ -45,6 +45,7 @@ flowchart TB
         SC[system_clock<br/>SystemClock]
         AA[ascii_alerts<br/>colours, banners]
         WP[webhook_path<br/>random_webhook_path]
+        PF[password_file<br/>read_password_file]
     end
     subgraph application [tradelocker_bot.application]
         ES[ExecuteSignal]
@@ -57,7 +58,8 @@ flowchart TB
         RES[result: Ok, Err]
     end
     EP --> CR
-    CR --> WH & SL & SH & TLB & PC & SC & AA & WP & ES
+    CR --> WH & SL & SH & TLB & PC & SC & AA & WP & PF & ES
+    PF --> RES
     SH --> PC & ES & PORTS & RES & SIG
     TLB --> PORTS & RES & SIG
     PC --> AA & REF & LS & SIG
@@ -71,6 +73,7 @@ flowchart TB
     SL --> UVICORN
     TLB --> CLIENT[(tradelocker client)]
     SC --> TIME[(time: monotonic, sleep)]
+    PF --> FILE[(the password file)]
 ```
 
 Dependencies point inwards only. `tests/test_layer_dependencies.py` enforces
@@ -104,7 +107,7 @@ sequenceDiagram
     participant SL as server_log
     participant U as uvicorn
     EP->>CR: main()
-    CR->>CR: parse_args: the environment, then the options<br/>(exit 2 on a bad, missing or empty setting,<br/>--password, a url without a leading / or with a brace, ?, # or %)
+    CR->>CR: parse_args: the environment, then the options,<br/>then the password from password_file or password<br/>(exit 2 on a bad, missing or empty setting, --password,<br/>both password sources, a password file that is not one line,<br/>a url without a leading / or with a brace, ?, # or %)
     opt --url generate
         CR->>CR: print the URL banner and random_webhook_path()
     end
@@ -415,6 +418,10 @@ design.
 - `ascii_alerts` holds the console's colours and the startup banners, and
   `webhook_path` makes the random path for `--url generate`, from
   `secrets` ([ADR 0012](adr/0012-generate-the-webhook-path-with-secrets.md)).
+- `password_file` reads the file `password_file` names, at most 1025
+  bytes, and checks the bytes in a function with no I/O. An adapter module
+  rather than a port: only the composition root asks for the password
+  ([ADR 0024](adr/0024-read-the-password-from-a-file.md)).
 
 ## Composition root
 
@@ -433,6 +440,14 @@ layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
   command line. Unknown or shortened arguments are refused without being
   printed
   ([ADR 0018](adr/0018-read-the-settings-from-the-environment.md)).
+- `password_from` takes the password from exactly one of two sources: the
+  file `password_file` names, such as a Docker secret, which keeps it out
+  of `docker inspect`, or the `password` variable. Both set stops the bot,
+  as does a file that is not one line of UTF-8 text of at most 1024
+  bytes; one trailing line ending is dropped and nothing else. The
+  adapter `password_file` reads the file and checks its bytes. No message
+  prints the content
+  ([ADR 0024](adr/0024-read-the-password-from-a-file.md)).
 - It creates the one lock that every request shares.
 - `webhook_url` checks `url` as the settings are read: `generate` or a
   path that starts with `/` and has no `{` or `}`, so the route is one
@@ -476,3 +491,4 @@ layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
 | [0021](adr/0021-report-a-rejected-order-and-place-it-once.md) | Report a rejected order in one line and place it once |
 | [0022](adr/0022-pace-the-close-loop-on-a-clock.md) | Pace the close loop on a clock and say when a close takes a minute |
 | [0023](adr/0023-the-webhook-answer-acknowledges-receipt.md) | The webhook's answer acknowledges receipt, not the outcome |
+| [0024](adr/0024-read-the-password-from-a-file.md) | Read the password from a file |

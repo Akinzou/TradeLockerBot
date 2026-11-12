@@ -14,6 +14,7 @@ import uvicorn
 
 from tradelocker_bot.adapters import ascii_alerts
 from tradelocker_bot.adapters.console import PrintingConsole
+from tradelocker_bot.adapters.password_file import read_password_file
 from tradelocker_bot.adapters.signal_handler import SignalHandler
 from tradelocker_bot.adapters.system_clock import SystemClock
 from tradelocker_bot.adapters.tradelocker_broker import TradeLockerBroker, log_in
@@ -21,6 +22,7 @@ from tradelocker_bot.adapters.server_log import server_log_config
 from tradelocker_bot.adapters.webhook import create_app
 from tradelocker_bot.adapters.webhook_path import random_webhook_path
 from tradelocker_bot.application.execute_signal import ExecuteSignal
+from tradelocker_bot.domain.result import Err, Ok, Result
 
 
 def webhook_url(value):
@@ -64,11 +66,26 @@ def refuse_password(_value):
     """``--password``, refused without its value: the host's process list
     shows the command line to every user (ADR 0018). Registered rather than
     left unknown, because argparse prints an unknown argument in full."""
-    raise argparse.ArgumentTypeError("set the password environment variable instead")
+    raise argparse.ArgumentTypeError("set password_file or the password environment variable instead")
+
+
+def password_from(env) -> Result[str, str]:
+    """The password from exactly one of ``password_file`` and ``password``,
+    an empty one counting as not set (ADR 0024)."""
+    path, variable = env.get("password_file", ""), env.get("password", "")
+    # Neither wins: a password variable left in an env file would otherwise
+    # decide, unseen, which password logs in.
+    if path and variable:
+        return Err("set either password_file or the password environment variable, not both")
+    if path:
+        return read_password_file(path)
+    if variable:
+        return Ok(variable)
+    return Err("no password: set password_file to a file that holds it, or the password environment variable")
 
 
 # The options the image sets through its environment variables, under the
-# same names: the frozen contract's variables, less the password.
+# same names: the frozen contract's variables, less the password and its file.
 FROM_ENVIRONMENT = ("username", "server", "env", "url", "acc_num", "acc_id")
 
 # They exclude each other, so one given on the command line stands for both.
@@ -96,7 +113,8 @@ def environment_args(env, argv):
 
 def parse_args(argv=None, env=None):
     """The start settings: the options in ``argv``, those not given there
-    from ``env``, and the password only from ``env``."""
+    from ``env``, and the password only from ``env``, from its variable or
+    the file ``password_file`` names."""
     argv = list(sys.argv[1:] if argv is None else argv)
     env = environ if env is None else env
     # No abbreviations, and no unknown argument printed: argparse would print
@@ -106,7 +124,8 @@ def parse_args(argv=None, env=None):
         allow_abbrev=False,
         description="Each option but --port can instead be set in the environment variable of the same name; "
         "an option given here replaces its variable, and --acc_num or --acc_id here replaces both. "
-        "The password is read only from the password environment variable.",
+        "The password is read only from the environment: from the file password_file names, "
+        "or from the password variable.",
     )
     parser.add_argument('--username', type=not_empty, required=True, help='username/email')
     parser.add_argument('--password', type=refuse_password, help=argparse.SUPPRESS)
@@ -119,9 +138,10 @@ def parse_args(argv=None, env=None):
     args, unknown = parser.parse_known_args(environment_args(env, argv) + argv)
     if unknown:
         parser.error("unrecognized arguments, not shown: one may be the password")
-    args.password = env.get("password", "")
-    if not args.password:
-        parser.error("the password environment variable is not set or is empty")
+    password = password_from(env)
+    if isinstance(password, Err):
+        parser.error(password.error)
+    args.password = password.value
     return args
 
 
