@@ -217,8 +217,11 @@ def main():
     if args.telegram is not None:
         print("Telegram: on; the account line and every red line also go to the chat")
 
+    # Converted before the login's `try`: a selector that is not a number is a
+    # bad setting, not a failed login.
+    acc_num, acc_id = int(args.acc_num), int(args.acc_id)
     try:
-        client = log_in(args.env, args.username, args.password, args.server, int(args.acc_num), int(args.acc_id))
+        client = log_in(args.env, args.username, args.password, args.server, acc_num, acc_id)
     except Exception as failure:
         # Sent, and given a few seconds to go, before the bot stops: an
         # operator who reads the phone would otherwise only miss the
@@ -239,6 +242,11 @@ def main():
     # so two alerts never interleave between closing and ordering.
     app = create_app(args.url, build_signal_handler(client, threading.Lock(), clock, notify).handle)
 
-    uvicorn.run(app, host="0.0.0.0", port=args.port, log_config=server_log_config())
-    # uvicorn returns once it has stopped, on `docker stop` for one.
-    stop_notifier(notifier)
+    # The queue gets its few seconds however the server ends: uvicorn returns
+    # once it has stopped, or Ctrl+C leaves it as KeyboardInterrupt. After a
+    # SIGTERM uvicorn raises the signal again, which ends the process at once
+    # unless Python is PID 1, as in the image without --init (ADR 0027).
+    try:
+        uvicorn.run(app, host="0.0.0.0", port=args.port, log_config=server_log_config())
+    finally:
+        stop_notifier(notifier)

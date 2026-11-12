@@ -144,7 +144,8 @@ class BackgroundNotifier:
 
     def stop(self, seconds: float) -> None:
         """Waits up to ``seconds`` for the queue to empty, then reports the
-        messages still in it, which the stop loses."""
+        messages still in it, which the stop loses, and a count of dropped
+        messages the chat has not heard of yet."""
         done = threading.Event()
         # A marker put behind the messages: once the thread reaches it, every
         # message before it has been handled.
@@ -153,11 +154,15 @@ class BackgroundNotifier:
             marker = 1
         except queue.Full:
             marker = 0
-        if done.wait(seconds):
-            return
+        drained = done.wait(seconds)
         with self._state:
-            left = max(self._queue.qsize() - marker, 0) + self._sending
-        self._report(f"Telegram: the bot stopped with {left} of its messages not sent; the log has them")
+            left = 0 if drained else max(self._queue.qsize() - marker, 0) + self._sending
+            dropped, self._dropped = self._dropped, 0
+        if left:
+            self._report(f"Telegram: the bot stopped with {left} of its messages not sent; the log has them")
+        if dropped:
+            self._report(f"Telegram: the queue was full and dropped {dropped} of the bot's messages; "
+                         "the log has them")
 
     def _run(self) -> None:
         while True:

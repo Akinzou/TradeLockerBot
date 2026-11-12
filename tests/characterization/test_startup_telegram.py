@@ -163,3 +163,30 @@ def test_once_the_server_stops_the_messages_still_queued_are_reported(monkeypatc
 
     assert ("Telegram: the bot stopped with 1 of its messages not sent; the log has them"
             in console_lines(capsys))
+
+
+def test_the_queue_gets_its_seconds_when_the_server_ends_on_ctrl_c(monkeypatch, capsys, telegram, tmp_path):
+    telegram.gate.clear()
+    monkeypatch.setattr(composition_root, "STOP_SECONDS", 0.1)
+    startup = Startup(monkeypatch, broker())
+
+    def interrupted(app, **options):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(composition_root.uvicorn, "run", interrupted)
+
+    with pytest.raises(KeyboardInterrupt):
+        startup.run(_with_telegram(tmp_path))
+
+    assert ("Telegram: the bot stopped with 1 of its messages not sent; the log has them"
+            in console_lines(capsys))
+
+
+def test_a_selector_that_is_no_number_is_a_bad_setting_not_a_failed_login(monkeypatch, capsys, telegram, tmp_path):
+    startup = Startup(monkeypatch, broker())
+
+    with pytest.raises(ValueError):
+        startup.run(_with_telegram(tmp_path, acc_num="first"))
+
+    assert startup.logins == []
+    assert telegram.messages == []

@@ -123,7 +123,8 @@ class GatedDelivery:
     """Holds each message until the test opens the gate, so the test knows
     where the worker is."""
 
-    def __init__(self):
+    def __init__(self, last="last"):
+        self.last = last
         self.gate = threading.Event()
         self.entered = threading.Event()
         self.delivered = []
@@ -135,7 +136,7 @@ class GatedDelivery:
         if text == "raises":
             raise RuntimeError(f"a bug, with {text}")
         self.delivered.append((text, logged_at))
-        if text == "last":
+        if text.startswith(self.last):
             self.done.set()
 
 
@@ -165,7 +166,7 @@ def test_a_message_waits_for_the_chat_on_the_notifiers_thread_not_the_callers():
 
 
 def test_a_message_beyond_the_queue_is_dropped_and_the_chat_hears_how_many_once_there_is_room():
-    deliver = GatedDelivery()
+    deliver = GatedDelivery(last="Telegram: the queue was full")
     notifier, _, reports = _started(deliver, capacity=2)
     notifier.notify("first")
     assert deliver.entered.wait(WAIT_SECONDS)
@@ -179,7 +180,6 @@ def test_a_message_beyond_the_queue_is_dropped_and_the_chat_hears_how_many_once_
                        'Telegram: the "Broker failed" message was not sent: 2 messages were already waiting']
     deliver.gate.set()
     assert deliver.done.wait(WAIT_SECONDS)
-    notifier.stop(WAIT_SECONDS)
     assert [text for text, _ in deliver.delivered] == [
         "first", "second", "last", "Telegram: the queue was full and dropped 2 of the bot's messages; the log has them"]
 
@@ -221,4 +221,20 @@ def test_the_stop_reports_the_messages_it_loses_rather_than_waiting_for_them():
 
     # The one being sent and the two behind it.
     assert reports == ["Telegram: the bot stopped with 3 of its messages not sent; the log has them"]
+    deliver.gate.set()
+
+
+def test_the_stop_reports_a_dropped_count_the_chat_has_not_heard_of():
+    deliver = GatedDelivery()
+    notifier, _, reports = _started(deliver, capacity=1)
+    notifier.notify("first")
+    assert deliver.entered.wait(WAIT_SECONDS)
+    notifier.notify("second")
+    notifier.notify("Order rejected: the broker refused to buy XAUUSD")
+    reports.clear()
+
+    notifier.stop(0.1)
+
+    assert reports == ["Telegram: the bot stopped with 2 of its messages not sent; the log has them",
+                       "Telegram: the queue was full and dropped 1 of the bot's messages; the log has them"]
     deliver.gate.set()
