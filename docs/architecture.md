@@ -585,3 +585,4 @@ layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
 | [0028](adr/0028-say-when-a-slow-close-ended.md) | Say when a close that took a minute ended |
 | [0029](adr/0029-tighten-the-notifiers-stop-and-dropped-count.md) | Tighten the notifier's stop and its dropped count |
 | [0030](adr/0030-gate-the-test-coverage.md) | Gate the test coverage, and state the floor on the README |
+| [0031](adr/0031-publish-the-docs-on-github-pages.md) | Publish the documentation on GitHub Pages |

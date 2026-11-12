@@ -1,0 +1,8 @@
+# The documentation site's build tools (ADR 0031), apart from requirements-dev.txt:
+# their own packages, requests among them, would move locked ones in the tests job.
+# After a change here, regenerate requirements-docs.txt with the command in its header.
+mkdocs==1.6.1
+mkdocs-material==9.8.1
+mkdocs-include-markdown-plugin==7.3.1
+markdown-callouts==0.4.0
+mdx_truly_sane_lists==1.3

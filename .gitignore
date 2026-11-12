@@ -12,6 +12,8 @@ __pycache__/
 .pytest_cache/
 .coverage
 htmlcov/
+# The documentation site's build output (ADR 0031)
+site/
 
 # Credentials are passed at runtime; a local .env must never reach the public repo
 .env
