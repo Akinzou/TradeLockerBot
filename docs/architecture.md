@@ -133,7 +133,7 @@ sequenceDiagram
     SL-->>CR: uvicorn's log settings,<br/>access line without the request line
     CR->>U: run(app, host="0.0.0.0", port, log_config)
     U-->>CR: returns once the server stops
-    Note over EP,U: main's finally: end(5 s). Python waits for the webhook's threads,<br/>then runs the notifier's exit function, until those 5 s run out
+    Note over EP,U: main's finally: end(5 s). Python waits for the webhook's threads,<br/>then runs the notifier's exit function, until those 5 s run out,<br/>at least 2 s (ADR 0029), and nothing is sent after its report
 ```
 
 A bad setting stops at step 3, a bad account selector at step 7, and a
@@ -446,15 +446,18 @@ design.
   returns holds the token. `urlopen` is an argument with no default.
   It is the adapter of the `Chat` port, which `notifier` declares.
 - `BackgroundNotifier` (`notifier`) queues each message, with the time it
-  was logged, up to 100, for one daemon thread, and tells the chat how
-  many it dropped once the queue is empty. `Delivery` tries a message
-  three times, waiting 2 s and 10 s or Telegram's `retry_after` up to 10
-  minutes, marks a message a minute late or more, and reports one it
-  could not send in a red line that is never sent itself. `end(seconds)`
-  sets the stop's deadline; `stop()` waits for the queue until then and
-  reports the lines it loses, and a dropped count the chat has not heard
-  of. One condition guards the queue, the message being sent and the
-  counts.
+  was logged, up to 100 lines, for one daemon thread. A line that does not
+  fit is dropped, and one count waits in the queue in its place, growing
+  with each later drop and taking no line's slot (ADR 0029). `Delivery`
+  tries a message three times, waiting 2 s and 10 s or Telegram's
+  `retry_after` up to 10 minutes, marks a message a minute late or more,
+  and reports one it
+  could not send in a red line that is never sent itself. It begins no
+  try once the notifier has stopped. `end(seconds)` sets the stop's
+  deadline; `stop()` waits for the queue until then, and at least the
+  floor, then reports the lines it loses and a dropped count the chat has
+  not heard of, and ends the thread. One condition guards the queue, the
+  message being sent, the count and the stop.
 - `SystemClock` implements `Clock` over `time.monotonic` and `time.sleep`.
   The monotonic clock, because the wall clock can step after an NTP
   correction or a manual change (ADR 0022).
@@ -522,7 +525,9 @@ layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
   runs once the webhook's threads have ended. `main` hands the banners,
   the login and the server to `log_in_and_serve`, with the notifier's
   `notify` or `no_notification`, and in a `finally` gives the queue 5
-  seconds from that moment (`end`), however it ends. A failed login is
+  seconds from that moment (`end`), however it ends. The stop waits at
+  least `STOP_FLOOR_SECONDS`, 2, even when those ran out or `end` never
+  ran ([ADR 0029](adr/0029-tighten-the-notifiers-stop-and-dropped-count.md)). A failed login is
   sent as `Login failed:` before its exception leaves. Both
   Telegram settings come only from the environment
   ([ADR 0027](adr/0027-send-the-red-lines-to-telegram.md)).
@@ -575,3 +580,4 @@ layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
 | [0026](adr/0026-write-stdout-line-by-line.md) | Write the bot's output line by line, with or without a terminal |
 | [0027](adr/0027-send-the-red-lines-to-telegram.md) | Send the operator's red lines to Telegram, off the trading path |
 | [0028](adr/0028-say-when-a-slow-close-ended.md) | Say when a close that took a minute ended |
+| [0029](adr/0029-tighten-the-notifiers-stop-and-dropped-count.md) | Tighten the notifier's stop and its dropped count |
