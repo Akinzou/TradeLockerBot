@@ -1,9 +1,10 @@
 <div align="center" markdown="1">
 
-# TradeLockerBot [![Coverage: 99%](https://img.shields.io/badge/coverage-99%25-brightgreen?logo=pytest&logoColor=white)](#test-coverage) [![Docs](https://img.shields.io/badge/docs-GitHub_Pages-blue?logo=materialformkdocs&logoColor=white)](https://akinzou.github.io/TradeLockerBot/)
+# TradeLockerBot [![Code coverage: 99%](https://img.shields.io/badge/Code_Coverage-99%25-brightgreen?logo=pytest&logoColor=white)](#test-coverage)
 
 **Automated TradeLocker position management driven by TradingView webhook alerts.**
 
+[![Docs](https://img.shields.io/badge/docs-GitHub_Pages-blue?logo=materialformkdocs&logoColor=white)](https://akinzou.github.io/TradeLockerBot/)
 [![CI](https://github.com/Akinzou/TradeLockerBot/actions/workflows/python-package.yml/badge.svg)](https://github.com/Akinzou/TradeLockerBot/actions/workflows/python-package.yml)
 [![Docker image](https://github.com/Akinzou/TradeLockerBot/actions/workflows/docker-image.yml/badge.svg)](https://github.com/Akinzou/TradeLockerBot/actions/workflows/docker-image.yml)
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC_BY--NC--SA_4.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
