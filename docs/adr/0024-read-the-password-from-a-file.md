@@ -154,7 +154,13 @@ flowchart TD
   `password_file` that names no file, which must stop it with status `2`
   and `(No such file or directory)`. The step without a password checks
   the new message.
-- The README's Quick start mounts the password as a file, and the
+- The README's Quick start mounts the password as a file with
+  `--mount type=bind,...,readonly`, not `-v`: for a source that does not
+  exist, `-v` "automatically creates the directory on the host", while
+  `--mount` "produces an error"
+  ([Bind mounts](https://docs.docker.com/engine/storage/bind-mounts/)).
+  A directory in place of the file would stop the bot with
+  `(Is a directory)` and be in the operator's way. The
   Configuration table, Security section and Troubleshooting table cover
   `password_file`. ADR 0018, the roadmap's frozen contract and
   `docs/architecture.md` are updated.
@@ -200,7 +206,8 @@ flowchart TD
   the option would need a rule for when it meets the `password` variable.
   Not taken for now; running outside the image can set the variable.
 - **Refuse a file readable by others.** Not taken: the mode inside the
-  container is whatever the mount gives it, and a swarm secret is
-  mounted readable by all by default, so the check would refuse the
-  usual secret. It would also say nothing about who can read the host's
+  container is whatever the mount gives it, and a secret is mounted
+  "world-readable (mode `0444`)" by default
+  ([Compose file reference, secrets](https://docs.docker.com/reference/compose-file/services/#secrets)),
+  so the check would refuse the usual secret. It would also say nothing about who can read the host's
   copy.

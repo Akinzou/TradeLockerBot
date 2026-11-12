@@ -24,7 +24,7 @@ describes the code as it is on `master`.
 |-------------------|------------------------------------|-------------------------------------------------|----------------------------------------------------------------|
 | Domain            | `tradelocker_bot.domain`           | standard library                                | Trading rules as plain values and functions, with no I/O       |
 | Application       | `tradelocker_bot.application`      | domain                                          | Use cases and the ports they need                              |
-| Adapters          | `tradelocker_bot.adapters`         | application, domain, third-party clients        | TradeLocker client and login, operator console, system clock, HTTP webhook, signal handler |
+| Adapters          | `tradelocker_bot.adapters`         | application, domain, third-party clients        | TradeLocker client and login, operator console, system clock, HTTP webhook, signal handler, password file |
 | Composition root  | `tradelocker_bot.composition_root` | everything above                                | Start settings, banners, wiring, the lock, the server start    |
 | Entrypoint        | `main_without_ssl.py`              | the composition root                            | The container's command; calls `main()` and nothing else       |
 
@@ -45,6 +45,7 @@ flowchart TB
         SC[system_clock<br/>SystemClock]
         AA[ascii_alerts<br/>colours, banners]
         WP[webhook_path<br/>random_webhook_path]
+        PF[password_file<br/>read_password_file]
     end
     subgraph application [tradelocker_bot.application]
         ES[ExecuteSignal]
@@ -57,7 +58,8 @@ flowchart TB
         RES[result: Ok, Err]
     end
     EP --> CR
-    CR --> WH & SL & SH & TLB & PC & SC & AA & WP & ES
+    CR --> WH & SL & SH & TLB & PC & SC & AA & WP & PF & ES
+    PF --> RES
     SH --> PC & ES & PORTS & RES & SIG
     TLB --> PORTS & RES & SIG
     PC --> AA & REF & LS & SIG
@@ -71,6 +73,7 @@ flowchart TB
     SL --> UVICORN
     TLB --> CLIENT[(tradelocker client)]
     SC --> TIME[(time: monotonic, sleep)]
+    PF --> FILE[(the password file)]
 ```
 
 Dependencies point inwards only. `tests/test_layer_dependencies.py` enforces
@@ -415,6 +418,10 @@ design.
 - `ascii_alerts` holds the console's colours and the startup banners, and
   `webhook_path` makes the random path for `--url generate`, from
   `secrets` ([ADR 0012](adr/0012-generate-the-webhook-path-with-secrets.md)).
+- `password_file` reads the file `password_file` names, at most 1025
+  bytes, and checks the bytes in a function with no I/O. An adapter module
+  rather than a port: only the composition root asks for the password
+  ([ADR 0024](adr/0024-read-the-password-from-a-file.md)).
 
 ## Composition root
 
