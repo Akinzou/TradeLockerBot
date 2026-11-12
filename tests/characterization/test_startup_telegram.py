@@ -178,6 +178,7 @@ def test_a_failed_login_is_sent_before_the_bot_stops(monkeypatch, capsys, telegr
 def test_at_exit_the_queue_gets_its_seconds_and_what_is_left_is_reported(monkeypatch, capsys, telegram, tmp_path):
     telegram.gate.clear()
     monkeypatch.setattr(composition_root, "STOP_SECONDS", 0.1)
+    monkeypatch.setattr(composition_root, "STOP_FLOOR_SECONDS", 0.1)
     Startup(monkeypatch, broker()).run(_with_telegram(tmp_path))
     [(stop, ())] = telegram.exit.functions
 

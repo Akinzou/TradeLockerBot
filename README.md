@@ -343,8 +343,13 @@ Sending never delays a trade. If Telegram is slow or down, the bot trades
 on, tries each message three times, and logs one red line for each
 message it could not send. A message that arrives a minute or more after
 the bot logged it says how late it is. If more than 100 messages are
-waiting, the newest are dropped, and the chat later hears how many
-([ADR 0027](docs/adr/0027-send-the-red-lines-to-telegram.md)).
+waiting, the newest are dropped, and the chat hears how many in one
+message, in order, after the messages that were waiting
+([ADR 0027](docs/adr/0027-send-the-red-lines-to-telegram.md),
+[ADR 0029](docs/adr/0029-tighten-the-notifiers-stop-and-dropped-count.md)).
+When the bot stops, it gives the waiting messages up to 5 seconds, and at
+least 2, then logs how many it could not send and starts no new try. One
+that was being sent at that moment can still arrive.
 
 1. In Telegram, open a chat with **@BotFather**, send `/newbot` and
    follow its questions. It answers with the bot's token, such as
@@ -471,6 +476,12 @@ alerts.
 > `Closed: the broker lists no open XAUUSD position N seconds after the first close request`
 > line, also sent to Telegram. With Telegram on, the startup line reads
 > `Telegram: on; the account line, every red line and each Closed line also go to the chat`.
+>
+> Since [ADR 0029](docs/adr/0029-tighten-the-notifiers-stop-and-dropped-count.md),
+> the chat hears of dropped messages right after the ones that were
+> waiting, not once the queue is empty, and the bot starts no new try
+> after its `Telegram: the bot stopped with N of its messages not sent`
+> line.
 
 ## Security
 
@@ -574,7 +585,8 @@ alerts.
 | Error about account number and ID at start  | Both `acc_id` and `acc_num` are set; keep only one.                                            |
 | `Broker failed: a call for XAUUSD got no answer (...); the signal stopped there, check XAUUSD in TradeLocker` | A broker call failed, for the reason in the traceback below it. The signal stopped at that call, possibly after the positions were closed and before the order: check the instrument in TradeLocker. |
 | `Bot failed: an error in the bot (...) while handling XAUUSD; ...` | A fault in the bot itself ended the signal; the traceback below it shows where. Check the instrument in TradeLocker, and please report it with the traceback, without the secrets in it. |
-| `Telegram: the bot stopped with N of its messages not sent; the log has them` | The bot stopped while Telegram was slow or down. The messages are in the log above. |
+| `Telegram: the bot stopped with N of its messages not sent; the log has them` | The bot stopped while Telegram was slow or down. The messages are in the log above. One that was being sent at that moment can still arrive. |
+| `Telegram: the queue was full and dropped N of the bot's messages; the log has them` | More than 100 messages waited for Telegram, after a flood of alerts or while Telegram was slow. The dropped ones are in the log, each with its own `not sent: the queue of 100 was full` line. |
 | Container keeps restarting, `docker logs` shows `telegram_chat_id is set without telegram_token_file` or `telegram_token_file is set without telegram_chat_id` | Set both, or neither (see [Telegram notifications](#telegram-notifications)). An empty value counts as not set. |
 | `docker logs` shows `telegram_token_file: the file holds no bot token, ...` | The file does not hold a token in BotFather's form, digits, a colon and the rest, alone on one line. Copy it again from BotFather. The other `telegram_token_file:` messages mean what they mean for `password_file`. |
 | `docker logs` shows `telegram_chat_id: expected a chat's number, ...` | Use the number from `getUpdates`, with its `-` if it has one, or `@` and a public channel's name. |

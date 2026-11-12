@@ -46,7 +46,7 @@ What goes to the chat, as plain text with no colours:
 | `Broker failed: a call for XAUUSD got no answer (TLAPIException); the signal stopped there, check XAUUSD in TradeLocker` | A broker call got no answer. This line is new in the log too, printed before the traceback |
 | `Bot failed: an error in the bot (TypeError) while handling XAUUSD; ...` | Any other exception ended a valid signal, a bug for one. New in the log too, before the traceback |
 | `Login failed: ConnectionError; the bot stops, the log has the error` | The login failed. Sent only, given up to 5 s at exit |
-| `Telegram: the queue was full and dropped 3 of the bot's messages; the log has them` | Once the queue is empty again after a flood |
+| `Telegram: the queue was full and dropped 3 of the bot's messages; the log has them` | Once the queue is empty again after a flood. *Update:* now in order, behind the lines that filled the queue ([ADR 0029](0029-tighten-the-notifiers-stop-and-dropped-count.md)) |
 
 ```mermaid
 flowchart LR
@@ -114,11 +114,17 @@ flowchart LR
     held in memory. Once the queue is empty again, the chat gets one
     message with how many were dropped, since one of them may have been
     the one that needed action.
+    *Update:* the count now joins the queue at the first drop, behind the
+    lines that filled it, grows while it waits and takes no line's slot
+    ([ADR 0029](0029-tighten-the-notifiers-stop-and-dropped-count.md)).
   - When `main` ends, however it ends, it sets aside 5 seconds for the
     queue (`end`), within the 10 that `docker stop` waits after its
     SIGTERM. An exit function (`stop`) waits until those seconds run out
     for the queue to empty. It then logs how many of the bot's lines it
     could not send, and any dropped count the chat has not heard of.
+    *Update:* it waits at least 2 seconds, also without an `end`, and the
+    thread starts no try after its report
+    ([ADR 0029](0029-tighten-the-notifiers-stop-and-dropped-count.md)).
   - An exit function rather than code after `uvicorn.run`. Python runs
     exit functions only once every webhook thread has ended, so a signal
     still running at the stop gets its last red line queued first. Python
@@ -132,7 +138,9 @@ flowchart LR
     the counts. Each message carries how many dropped messages it reports,
     `0` for the bot's own lines. The stop therefore reports a dropped
     count that is still waiting as a count, not as a line that "the log
-    has".
+    has". *Update:* each queued message is now a line or a count, and the
+    stop tells them apart by kind
+    ([ADR 0029](0029-tighten-the-notifiers-stop-and-dropped-count.md)).
   - On a SIGTERM, uvicorn 0.54 restores the previous handler after its
     shutdown and raises the signal again. The default handler ends the
     process at once, before any exit function, unless Python is PID 1,
@@ -233,7 +241,8 @@ flowchart LR
     logged time;
   - a full queue reported;
   - the dropped count sent once the queue is empty, and not ahead of a
-    line that arrives meanwhile;
+    line that arrives meanwhile (*Update:* replaced by the count in
+    order, [ADR 0029](0029-tighten-the-notifiers-stop-and-dropped-count.md));
   - a delivery that raises does not end the thread;
   - the stop, which waits for the queue and reports nothing, or reports
     the lines it loses;
@@ -316,7 +325,8 @@ at least one test:
   - the thread ending on an exception;
   - drops not counted, or not reported;
   - no dropped count sent;
-  - the count taking freed slots.
+  - the count taking freed slots (*Update:* now the count taking a line's
+    slot, [ADR 0029](0029-tighten-the-notifiers-stop-and-dropped-count.md)).
 - **The stop:**
   - no exit function;
   - no `end` in `main`'s `finally`;
@@ -380,12 +390,17 @@ at least one test:
     that a line could need.
   - The stop's report can say a message was not sent while the thread
     still sends it during the rest of the shutdown.
+
+  *Update:* [ADR 0029](0029-tighten-the-notifiers-stop-and-dropped-count.md)
+  removes the first three. Of the fourth, what is left is a try already
+  under way when the stop reports, which can still deliver its message.
 - **A daemon thread that prints at exit.** If the notifier's thread is in
   the middle of a `print` while Python ends, Python can stop with "could
   not acquire lock for stdout". That happens only at shutdown, after the
   stop's report.
 - **When a long close ended.** A `Still closing:` message has no
-  follow-up yet; that is the next step.
+  follow-up yet; that is the next step. *Update:* it has one now, the
+  `Closed:` line ([ADR 0028](0028-say-when-a-slow-close-ended.md)).
 - **Images built before this change** ignore both settings and start
   without Telegram.
 
