@@ -39,6 +39,7 @@ migration pull request.
 | 6j | Pace the close loop on a `Clock` port: count again at once after a request, then a second apart, ask again only every 10 seconds of the clock, and log one `Still closing:` line a minute after the first request; no upper limit ([ADR 0022](adr/0022-pace-the-close-loop-on-a-clock.md)). Flipped pins: a close requested again every 10 seconds, with each pause pinned among the broker calls; new pins for the line, the clock's seconds rather than polls, and a failure after a pause | behaviour | done |
 | 6k | Keep the webhook's immediate `200` and record what it means: receipt, not the outcome; TradingView cancels a request after 3 seconds and sends it again after a `5xx`, so an answer after handling would be cancelled and one by outcome sent again ([ADR 0023](adr/0023-the-webhook-answer-acknowledges-receipt.md)). No behaviour change; the known defect becomes a decision. New pin: a rejected payload, a refusal, a rejected order and a trade get the same `200` | decision | done |
 | 6l | Read the password from the file `password_file` names, such as a Docker secret, so `docker inspect` shows only the path; beside the `password` variable rather than in its place, exactly one of the two set; one line, one trailing line ending dropped, nothing trimmed; a file that cannot be read, is empty, is longer than 1024 bytes, holds more than one line or a NUL, is not UTF-8 or starts with a byte order mark stops the bot without printing its content ([ADR 0024](adr/0024-read-the-password-from-a-file.md)). Pins flipped: the messages for a missing password and for `--password` name both ways; new pins for the file, both sources set and `--password_file` refused | behaviour | done |
+| 6m | Run the broker client at `info` rather than its default `debug`, which logged every request whole: the password, the refresh token and the bearer token; the bot prints `Logged in: acc_id ..., acc_num ...` itself, since the client names the account only at `debug` ([ADR 0025](adr/0025-run-the-broker-client-at-info.md)). Pins flipped: the login carries `log_level`, the greeting pins add the account line; new pins run the real client on a stubbed transport and find no secret in its log, and CI refuses the password in the image's output | behaviour | done |
 
 ```mermaid
 flowchart LR
@@ -63,16 +64,16 @@ flowchart LR
     S6i --> S6j[6j paced close loop]
     S6j --> S6k[6k answer means receipt]
     S6k --> S6l[6l password file]
+    S6l --> S6m[6m client log level]
     S2af --> S2g[2g base image digest]
     S2af --> S2h[2h patched client pins]
     classDef done fill:#d4edda,stroke:#28a745,color:#155724
-    class S1,S1abc,S2,S2af,S2g,S2h,S4,S4b,S3,S3b,S5a,S5,S6a,S6b,S6c,S6d,S6e,S6f,S6g,S6h,S6i,S6j,S6k,S6l done
+    class S1,S1abc,S2,S2af,S2g,S2h,S4,S4b,S3,S3b,S5a,S5,S6a,S6b,S6c,S6d,S6e,S6f,S6g,S6h,S6i,S6j,S6k,S6l,S6m done
 ```
 
 Each arrow points from a step to one that builds on it. Green is done.
 
-The next step fixes the known defect below: the client's log. These wait
-on the owner's decision:
+No step is planned. These wait on the owner's decision:
 
 - a channel outside the log, such as an issue or a chat message, for
   `Signal rejected:`, `Order rejected:` and `Still closing:`
@@ -109,14 +110,7 @@ These stay unchanged until an ADR changes them:
 
 Fixed in behaviour steps, never during restructuring.
 
-- **The client writes the password to the container's log** (found in
-  step 6l). The `tradelocker` client logs at `debug` by default, and the
-  bot does not set a level. At that level it writes each request in full,
-  so the login request's JSON, the password included, is in `docker logs`
-  after every start, whichever source the password came from
-  ([ADR 0024](adr/0024-read-the-password-from-a-file.md)). Other requests
-  may carry tokens the same way; not yet checked. Until it is fixed, treat
-  the container's log as a secret.
+None open.
 
 ## Kept by decision
 
@@ -137,6 +131,16 @@ that says why.
 
 ## Fixed defects
 
+- **The client wrote the password and its tokens to the container's log**
+  (found in step 6l, fixed in step 6m). The `tradelocker` client logs at
+  `debug` unless told otherwise, and at that level it writes each request
+  whole: the login's password, the refresh token, and the access token in
+  every request's `Authorization` header. Every start of every image put
+  the password in `docker logs`. The bot now runs the client at `info`,
+  and prints the account it trades on itself, since the client named it
+  only at `debug`. Logs written before the fix still hold the password
+  until the container is removed; images built before step 6m still log
+  it ([ADR 0025](adr/0025-run-the-broker-client-at-info.md)).
 - **A close that did not fill was requested again every other second,
   with no word in the log** (step 6j). The bot's loop had no pause; the
   client's own second before each request set its pace. With the market

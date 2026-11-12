@@ -174,6 +174,8 @@ flowchart TD
   container's output. So `docker logs` holds the password after every
   start, whichever source it came from. Not fixed here: it is a defect of
   its own, listed in the roadmap, with its own step and ADR.
+  *Update:* fixed in step 6m, which runs the client at `info`
+  ([ADR 0025](0025-run-the-broker-client-at-info.md)).
 - **The password in memory.** The client keeps it for the life of the
   process, so a memory dump of the bot still holds it.
 - **A changed password needs a restart.** The file is read once, and the

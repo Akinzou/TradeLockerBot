@@ -299,8 +299,14 @@ confirming the login:
 [INFO] tradelocker.tradelocker_api ... Successfully fetched authentication tokens
 ```
 
-It also prints the account number and ID it signed in to. Check that this is
-the account you intend to trade on.
+Then a line names the account it signed in to, by the same names as the
+`acc_id` and `acc_num` settings:
+
+```text
+Logged in: acc_id 123456, acc_num 1
+```
+
+Check that this is the account you intend to trade on.
 
 Opening the webhook URL in a browser should return:
 
@@ -365,6 +371,12 @@ alerts.
 > move to it, create the file as in [Quick start](#quick-start), add the
 > `--mount` and `password_file` lines and remove `-e password=...`: with
 > both set, the bot does not start.
+>
+> Since [ADR 0025](docs/adr/0025-run-the-broker-client-at-info.md), the
+> log no longer holds the client's request lines, `=> REST REQUEST: ...`,
+> which carried the password and the tokens. A `Logged in: acc_id ...,
+> acc_num ...` line names the account instead. Removing the old container
+> removes its log; see [Security](#security).
 
 ## Security
 
@@ -418,13 +430,15 @@ alerts.
   ([ADR 0024](docs/adr/0024-read-the-password-from-a-file.md)). The bot
   keeps the password in memory while it runs. Run the bot on a host only
   you control.
-- **Treat the container's log as a secret.** The `tradelocker` client
-  writes its login request, password included, to the log on every start,
-  so `docker logs` shows the password to anyone who can read it, whether
-  it came from `password` or `password_file`. This is a
-  [known defect](docs/migration-roadmap.md#known-defects), to be fixed
-  next. Until then, do not paste the log anywhere without removing the
-  login request, and change the password if a log has left the host.
+- **Remove logs written by older images.** Images built before
+  [ADR 0025](docs/adr/0025-run-the-broker-client-at-info.md) ran the
+  `tradelocker` client at `debug`, which writes every request to the log
+  whole: the password on every start, and the tokens that let anyone
+  trade on the account. The bot now runs the client at `info`, which
+  logs none of them. A container started from an older image keeps them
+  in its log until you remove it with `docker rm`, which the
+  [Updating](#updating) steps do. If such a log has left the host, in a
+  log collector or a pasted support request, change the password.
 
 ## Troubleshooting
 
