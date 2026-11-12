@@ -18,7 +18,8 @@ import uvicorn
 
 from tradelocker_bot.adapters import ascii_alerts
 from tradelocker_bot.adapters.console import PrintingConsole
-from tradelocker_bot.adapters.notifier import BackgroundNotifier, Delivery, print_report
+from tradelocker_bot.adapters.delivery import Delivery
+from tradelocker_bot.adapters.notifier import BackgroundNotifier, print_report
 from tradelocker_bot.adapters.secret_file import read_secret_file
 from tradelocker_bot.adapters.signal_handler import SignalHandler
 from tradelocker_bot.adapters.system_clock import SystemClock

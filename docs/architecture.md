@@ -47,7 +47,8 @@ flowchart TB
         WP[webhook_path<br/>random_webhook_path]
         PF[secret_file<br/>read_secret_file]
         TG[telegram<br/>telegram_from, TelegramChat]
-        NT[notifier<br/>BackgroundNotifier, Delivery,<br/>Chat port, SendFailure]
+        NT[notifier<br/>BackgroundNotifier,<br/>Chat port, SendFailure]
+        DLV[delivery<br/>Delivery]
         SHW[shown<br/>shown]
     end
     subgraph application [tradelocker_bot.application]
@@ -61,10 +62,11 @@ flowchart TB
         RES[result: Ok, Err]
     end
     EP --> CR
-    CR --> WH & SL & SH & TLB & PC & SC & AA & WP & PF & TG & NT & ES
+    CR --> WH & SL & SH & TLB & PC & SC & AA & WP & PF & TG & NT & DLV & ES
     PF --> RES
     TG --> PF & SHW & NT & RES
     NT --> AA & PORTS & RES
+    DLV --> NT & PORTS & RES
     SH --> PC & ES & PORTS & RES & SIG
     TLB --> PORTS & RES & SIG
     PC --> AA & SHW & REF & LS & SIG
@@ -449,11 +451,12 @@ design.
   was logged, up to 100 lines, for one daemon thread. A line that does not
   fit is dropped, and one count waits in the queue in its place, growing
   with each later drop and taking no line's slot (ADR 0029). `Delivery`
-  tries a message three times, waiting 2 s and 10 s or Telegram's
+  (`delivery`) tries a message three times, waiting 2 s and 10 s or Telegram's
   `retry_after` up to 10 minutes, marks a message a minute late or more,
   and returns the report of one it could not send. It begins no try once
   the notifier has stopped. The notifier prints that report, in a red line
-  that is never sent itself, unless the stop has counted the message. `end(seconds)` sets the stop's
+  that is never sent itself, unless the stop has counted the message; a
+  stop still waiting waits for that print. `end(seconds)` sets the stop's
   deadline; `stop()` waits for the queue until then, and at least the
   floor, then reports the lines it loses and a dropped count the chat has
   not heard of, and ends the thread. One condition guards the queue, the

@@ -80,6 +80,19 @@ functions.
     marks the message as handled, under the condition the stop counts
     under. A try under way at the stop that then fails, or raises, adds
     no second red line to the stop's.
+  - A stop still waiting also waits for that print. The thread prints
+    outside the condition, which `notify` takes on the trading path, so
+    it marks the report as being printed first. The stop waits for the
+    mark to clear, without counting the message, which is handled. A
+    failed login's `not sent` line therefore reaches the log before the
+    process ends. Only a stop whose time has run out can return while
+    such a line is still being printed.
+- **`Delivery` moves to a module of its own, `delivery`.** It decides how
+  often and how long to try one message; the notifier decides which
+  message goes and when the tries must stop. The notifier's file had
+  reached 300 lines, the limit for a code file. `SendFailure`, the `Chat`
+  port and `named`, the words a report names a message by, stay in
+  `notifier`.
   - The flag is a `threading.Event`, set while the condition is held.
     `Delivery` reads it before each try without taking the lock that
     `notify` takes on the trading path.
@@ -164,6 +177,7 @@ row's reason.
     second red line;
   - a delivery's report is printed when no stop counted the message;
   - an interrupt during the stop's wait cuts the wait, not the report;
+  - the stop waits for a delivery's report to be printed;
   - a line after the stop is reported;
   - a count being sent and one waiting are reported as one count, the
     line between them as a line.
@@ -199,6 +213,8 @@ Each of these mutations of the code fails at least one test:
 - a delivery's report printed after the stop counted its message;
 - a delivery's report never printed;
 - a third Ctrl+C skipping the report;
+- the stop not waiting for a report being printed;
+- a report printed with no mark for the stop to wait on;
 - a line after the stop queued for nobody;
 - the count taking a line's slot;
 - a new count for every drop;

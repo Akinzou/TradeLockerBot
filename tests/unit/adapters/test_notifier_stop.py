@@ -3,7 +3,9 @@ it loses, and sends nothing after that report (ADR 0027, ADR 0029)."""
 
 import threading
 
+from tests.fake_clock import FakeClock
 from tests.unit.adapters.notifier_doubles import WAIT_SECONDS, GatedDelivery, StepDelivery, started
+from tradelocker_bot.adapters.notifier import BackgroundNotifier
 
 NOT_SENT_1 = "Telegram: the bot stopped with 1 of its messages not sent; the log has them"
 
@@ -267,3 +269,29 @@ def test_an_interrupt_during_the_stop_s_wait_cuts_the_wait_not_the_report(monkey
     deliver.gate.set()
     thread.join(WAIT_SECONDS)
     assert not thread.is_alive()
+
+
+def test_the_stop_waits_for_a_delivery_s_report_to_be_printed():
+    # A failed login's message refused during the stop's wait: its red line
+    # is printed after the message is handled, and the process must not end
+    # before it is out (ADR 0029).
+    printed, release = [], threading.Event()
+
+    def report(text):
+        assert release.wait(WAIT_SECONDS)
+        printed.append(text)
+
+    notifier = BackgroundNotifier(lambda text, logged_at, stopped: 'Telegram: the "Login failed" message was not sent',
+                                  FakeClock(lambda sleep: None), report, floor=0.0)
+    notifier.start()
+    notifier.notify("Login failed: ConnectionError")
+    timer = threading.Timer(0.3, release.set)
+    timer.start()
+
+    notifier.end(WAIT_SECONDS)
+    notifier.stop()
+
+    # Read as the stop returns, before the timer is joined: by then the
+    # line has to be out.
+    assert printed == ['Telegram: the "Login failed" message was not sent']
+    timer.join()

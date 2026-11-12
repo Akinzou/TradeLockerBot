@@ -10,7 +10,6 @@ itself is already there, printed by the console.
 """
 
 import collections
-import math
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -18,23 +17,7 @@ from typing import Protocol
 
 from tradelocker_bot.adapters.ascii_alerts import print_red
 from tradelocker_bot.application.ports import Clock
-from tradelocker_bot.domain.result import Err, Result
-
-ATTEMPTS = 3
-
-# Between the tries, when the chat names no wait of its own: a dropped
-# connection is usually back within seconds, a restarting server within
-# tens of them.
-WAITS_SECONDS = (2.0, 10.0)
-
-# The chat's own wait is kept, since a try before it ends is refused too,
-# up to this: a longer one, or a value no server means, would hold every
-# later message for longer.
-MAX_WAIT_SECONDS = 600.0
-
-# A message sent this long after it was logged says so, so the operator
-# does not act on a state that may have changed since.
-LATE_SECONDS = 60.0
+from tradelocker_bot.domain.result import Result
 
 # Far above what a burst of alerts queues while the chat answers; a flood
 # beyond it is dropped and reported rather than held in memory.
@@ -49,7 +32,7 @@ NAMED_CHARACTERS = 40
 class SendFailure:
     """Why a message was not sent, and whether the same request may yet
     succeed: a refused one, for a wrong chat or a blocked bot, would not.
-    ``retry_after`` is the chat's own wait, as it gave it; the notifier
+    ``retry_after`` is the chat's own wait, as it gave it; ``Delivery``
     decides which waits it keeps."""
 
     reason: str
@@ -71,54 +54,9 @@ class Chat(Protocol):
 print_report = print_red
 
 
-def _name(text: str) -> str:
+def named(text: str) -> str:
+    """The words a report names a message by."""
     return text.partition(":")[0][:NAMED_CHARACTERS]
-
-
-def _wait(failure: SendFailure, attempt: int) -> float:
-    asked = failure.retry_after
-    # Only a wait a server can mean: math.isfinite also turns away the NaN
-    # and Infinity that JSON readers accept.
-    if asked is None or not math.isfinite(asked) or asked < 0:
-        return WAITS_SECONDS[attempt - 1]
-    return min(asked, MAX_WAIT_SECONDS)
-
-
-class Delivery:
-    """Sends one message, trying it again on a failure the chat may get
-    over, and returns the report of one it did not send.
-
-    Returned rather than printed: the notifier decides, in one step with
-    its stop, whether the stop has already counted the message, so each
-    message gets one red line, never two.
-    """
-
-    def __init__(self, chat: Chat, clock: Clock):
-        self._chat = chat
-        self._clock = clock
-
-    def __call__(self, text: str, logged_at: float, stopped: Callable[[], bool]) -> str | None:
-        for attempt in range(1, ATTEMPTS + 1):
-            # The notifier's stop has reported this message as not sent, so
-            # a try after it could only make that report wrong.
-            if stopped():
-                return None
-            sent = self._chat.send(self._dated(text, logged_at))
-            if not isinstance(sent, Err):
-                return None
-            failure = sent.error
-            if not failure.retry:
-                return f'Telegram: the "{_name(text)}" message was not sent: {failure.reason}'
-            if attempt < ATTEMPTS:
-                self._clock.sleep(_wait(failure, attempt))
-        return f'Telegram: the "{_name(text)}" message was not sent after {ATTEMPTS} tries: {failure.reason}'
-
-    def _dated(self, text: str, logged_at: float) -> str:
-        late = self._clock.now() - logged_at
-        if late < LATE_SECONDS:
-            return text
-        # First, so the cut to the chat's longest message never takes it.
-        return f"(sent {int(late)} seconds after the bot logged it)\n{text}"
 
 
 def _count_text(dropped: int) -> str:
@@ -173,6 +111,9 @@ class BackgroundNotifier:
         # told once: by the count in flight or by the new one.
         self._count: _Count | None = None
         self._sending: _Line | _Count | None = None
+        # A report the thread is printing for a message it has handled: the
+        # stop waits for it, and does not count the message again.
+        self._printing = False
         self._deadline: float | None = None
         # An event rather than a bool under the condition: `Delivery` reads
         # it before every try without taking the lock that `notify` takes on
@@ -187,7 +128,7 @@ class BackgroundNotifier:
         with self._state:
             refused = self._queue(text)
         if refused:
-            self._report(f'Telegram: the "{_name(text)}" message was not sent: {refused}')
+            self._report(f'Telegram: the "{named(text)}" message was not sent: {refused}')
 
     def end(self, seconds: float) -> None:
         """Sets aside ``seconds`` from now, the bot's end, for ``stop``: not
@@ -216,7 +157,8 @@ class BackgroundNotifier:
             # lost. The process is ending, so nothing else needs the
             # interrupt.
             try:
-                self._state.wait_for(lambda: not self._waiting and self._sending is None, left)
+                self._state.wait_for(
+                    lambda: not self._waiting and self._sending is None and not self._printing, left)
             except KeyboardInterrupt:
                 pass
             pending = [*self._waiting, *([self._sending] if self._sending else [])]
@@ -274,13 +216,23 @@ class BackgroundNotifier:
             try:
                 report = self._deliver(text, message.logged_at, self._stopped.is_set)
             except Exception as error:
-                report = (f'Telegram: the "{_name(text)}" message was not sent: '
+                report = (f'Telegram: the "{named(text)}" message was not sent: '
                           f"an error in the bot ({type(error).__name__})")
             with self._state:
                 self._sending = None
-                # Read in one step with the stop's count: a stop before this
-                # point counted the message, so its report is already out.
-                counted = self._stopped.is_set()
+                # Decided in one step with the stop's count: a stop before
+                # this point counted the message, so its report is already
+                # out. One after it waits for this print, rather than letting
+                # the process end before the line is written.
+                self._printing = bool(report) and not self._stopped.is_set()
+                printing = self._printing
                 self._state.notify_all()
-            if report and not counted:
-                self._report(report)
+            # Printed outside the condition, which `notify` takes on the
+            # trading path, so a slow stdout cannot hold a signal.
+            if printing:
+                try:
+                    self._report(report)
+                finally:
+                    with self._state:
+                        self._printing = False
+                        self._state.notify_all()

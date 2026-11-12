@@ -138,7 +138,9 @@ flowchart LR
     the counts. Each message carries how many dropped messages it reports,
     `0` for the bot's own lines. The stop therefore reports a dropped
     count that is still waiting as a count, not as a line that "the log
-    has".
+    has". *Update:* each queued message is now a line or a count, and the
+    stop tells them apart by kind
+    ([ADR 0029](0029-tighten-the-notifiers-stop-and-dropped-count.md)).
   - On a SIGTERM, uvicorn 0.54 restores the previous handler after its
     shutdown and raises the signal again. The default handler ends the
     process at once, before any exit function, unless Python is PID 1,
@@ -239,7 +241,8 @@ flowchart LR
     logged time;
   - a full queue reported;
   - the dropped count sent once the queue is empty, and not ahead of a
-    line that arrives meanwhile;
+    line that arrives meanwhile (*Update:* replaced by the count in
+    order, [ADR 0029](0029-tighten-the-notifiers-stop-and-dropped-count.md));
   - a delivery that raises does not end the thread;
   - the stop, which waits for the queue and reports nothing, or reports
     the lines it loses;
@@ -322,7 +325,8 @@ at least one test:
   - the thread ending on an exception;
   - drops not counted, or not reported;
   - no dropped count sent;
-  - the count taking freed slots.
+  - the count taking freed slots (*Update:* now the count taking a line's
+    slot, [ADR 0029](0029-tighten-the-notifiers-stop-and-dropped-count.md)).
 - **The stop:**
   - no exit function;
   - no `end` in `main`'s `finally`;

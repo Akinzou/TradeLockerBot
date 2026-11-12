@@ -8,7 +8,8 @@ import pytest
 
 from tests.fake_clock import FakeClock
 from tradelocker_bot.adapters.console import PrintingConsole
-from tradelocker_bot.adapters.notifier import ATTEMPTS, Delivery, SendFailure
+from tradelocker_bot.adapters.delivery import ATTEMPTS, Delivery
+from tradelocker_bot.adapters.notifier import SendFailure
 from tradelocker_bot.domain.result import Err, Ok
 
 TEXT = "Signal rejected: line 2 (direction) is 'long', expected buy or sell"
