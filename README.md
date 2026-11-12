@@ -385,8 +385,11 @@ waiting, the newest are dropped, and the chat later hears how many
 
    and the chat gets `Logged in: acc_id ..., acc_num ...`. If it does
    not, the log says why in a red line, such as
-   `Telegram: the "Logged in" message was not sent: HTTP 403, 'Forbidden: bot can't initiate conversation with a user'`;
-   see [Troubleshooting](#troubleshooting).
+   `Telegram: the "Logged in" message was not sent: HTTP 403, "Forbidden: bot can't initiate conversation with a user"`;
+   see [Troubleshooting](#troubleshooting). If the login fails, the chat
+   gets `Login failed: ...` instead, once per start: with
+   `--restart unless-stopped`, a wrong password sends one each time
+   Docker restarts the bot.
 
 The messages pass through Telegram's servers and are not end-to-end
 encrypted: they name the account's id and number, the symbols, sides and
@@ -565,8 +568,8 @@ alerts.
 | Container keeps restarting, `docker logs` shows `telegram_chat_id is set without telegram_token_file` or `telegram_token_file is set without telegram_chat_id` | Set both, or neither (see [Telegram notifications](#telegram-notifications)). An empty value counts as not set. |
 | `docker logs` shows `telegram_token_file: the file holds no bot token, ...` | The file does not hold a token in BotFather's form, digits, a colon and the rest, alone on one line. Copy it again from BotFather. The other `telegram_token_file:` messages mean what they mean for `password_file`. |
 | `docker logs` shows `telegram_chat_id: expected a chat's number, ...` | Use the number from `getUpdates`, with its `-` if it has one, or `@` and a public channel's name. |
-| `Telegram: the "..." message was not sent: HTTP 403, 'Forbidden: bot can't initiate conversation with a user'` or `... bot was blocked by the user` | Open the chat with your bot and send `/start`, or unblock it. For a channel, make the bot an administrator that can post. |
-| `Telegram: the "..." message was not sent: HTTP 400, 'Bad Request: chat not found'` | `telegram_chat_id` names a chat the bot is not in. Check the number, its `-`, and that the bot was added to the group or channel. |
+| `Telegram: the "..." message was not sent: HTTP 403, ...`, such as `"Forbidden: bot can't initiate conversation with a user"` or `'Forbidden: bot was blocked by the user'` | Open the chat with your bot and send `/start`, or unblock it. For a channel, make the bot an administrator that can post. |
+| `Telegram: the "..." message was not sent: HTTP 400, ...`, such as `'Bad Request: chat not found'` | `telegram_chat_id` names a chat the bot is not in. Check the number, its `-`, and that the bot was added to the group or channel. |
 | `Telegram: the "..." message was not sent: HTTP 401, 'Unauthorized'` or `HTTP 404, 'Not Found'` | The token is wrong or was revoked. Put the current one from BotFather in the file and restart. |
 | `Telegram: the "..." message was not sent after 3 tries: no answer (...)` | The host could not reach `api.telegram.org`. Check its network and firewall. Trading goes on; the line itself is in the log above. |
 

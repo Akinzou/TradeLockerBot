@@ -47,7 +47,7 @@ flowchart TB
         WP[webhook_path<br/>random_webhook_path]
         PF[secret_file<br/>read_secret_file]
         TG[telegram<br/>telegram_from, TelegramChat]
-        NT[notifier<br/>BackgroundNotifier, Delivery]
+        NT[notifier<br/>BackgroundNotifier, Delivery,<br/>Chat port, SendFailure]
         SHW[shown<br/>shown]
     end
     subgraph application [tradelocker_bot.application]
@@ -63,7 +63,7 @@ flowchart TB
     EP --> CR
     CR --> WH & SL & SH & TLB & PC & SC & AA & WP & PF & TG & NT & ES
     PF --> RES
-    TG --> PF & SHW & RES
+    TG --> PF & SHW & NT & RES
     NT --> AA & PORTS & RES
     SH --> PC & ES & PORTS & RES & SIG
     TLB --> PORTS & RES & SIG
@@ -436,7 +436,8 @@ design.
   three times, waiting 2 s and 10 s or Telegram's `retry_after` up to 10
   minutes, marks a message a minute late or more, and reports one it
   could not send in a red line that is never sent itself. `stop(seconds)`
-  waits for the queue and reports what it loses.
+  waits for the queue and reports what it loses, and a dropped count the
+  chat has not heard of.
 - `SystemClock` implements `Clock` over `time.monotonic` and `time.sleep`.
   The monotonic clock, because the wall clock can step after an NTP
   correction or a manual change (ADR 0022).
@@ -503,7 +504,7 @@ layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
   settings; `main` passes its `notify` on, or `no_notification`. A
   failed login is sent as `Login failed:`, and `stop_notifier` gives the
   queue 5 seconds before the login's exception leaves `main`, and again
-  once uvicorn returns. Both
+  however `uvicorn.run` ends, in a `finally`. Both
   Telegram settings come only from the environment
   ([ADR 0027](adr/0027-send-the-red-lines-to-telegram.md)).
 - It creates the one lock that every request shares.

@@ -110,9 +110,15 @@ flowchart LR
     held in memory. Once the queue is empty again, the chat gets one
     message with how many were dropped, since one of them may have been
     the one that needed action.
-  - When the server stops, on `docker stop` for one, the bot gives the
-    queue up to 5 seconds, within the 10 that `docker stop` waits, and
-    logs how many messages it could not send.
+  - When the server ends, the bot gives the queue up to 5 seconds,
+    within the 10 that `docker stop` waits, and logs how many messages it
+    could not send. That holds when uvicorn returns or Ctrl+C ends it.
+  - On a SIGTERM, uvicorn 0.54 restores the previous handler after its
+    shutdown and raises the signal again. Its default handler ends the
+    process at once, unless Python is PID 1, which ignores it: the image
+    starts Python as PID 1, so `docker stop` without `--init` gives the
+    queue its seconds. This is read from uvicorn's `capture_signals`, not
+    observed on Linux.
 - **Tried again when Telegram may get over it.**
   - Three tries in all, for a `429`, a `5xx`, an answer that is not
     Telegram's, and no answer at all.
@@ -146,7 +152,9 @@ flowchart LR
   adapters hand it text.
 - **`urllib` rather than `requests`.** It is in the standard library, so
   there is no new direct dependency. `requests`' connection errors also
-  name the URL, token included, in their text.
+  name the URL, token included, in their text: a `ConnectTimeout` to a
+  closed port read `Max retries exceeded with url: /bot<token>/...`,
+  tried with `requests` 2.34.2.
 - **In `PrintingConsole` rather than in a second console wrapped around
   it.** The red lines are built in `PrintingConsole`. A wrapper would
   have to forward every other line and build these again, and the
@@ -276,8 +284,18 @@ fails at least one test:
 - **Messages still queued 5 seconds into a stop are lost.** The thread is
   a daemon thread, so it does not hold the stop for minutes of tries. The
   log says how many, each of them is in the log, and the next start sends
-  `Logged in:`. A process that is killed, or that ends on an exception
-  other than the login's, reports nothing.
+  `Logged in:`. A process that is killed, that gets SIGTERM while not
+  PID 1 (under `docker run --init`, for one), or that ends on an
+  exception other than the login's, reports nothing.
+- **`Login failed:` comes once per start.** Under `--restart`, a wrong
+  password sends one message per attempt, as Docker's restarts slow down.
+  It also covers the client's refusal of both account selectors, which
+  happens inside the login; a selector that is not a number is a bad
+  setting and is not sent.
+- **Telegram's texts beyond the `401`.** Only `HTTP 401, 'Unauthorized'`
+  was seen from the real server, for a made-up token. The README's
+  `403` and `400` texts are Telegram's documented and commonly reported
+  ones, given as examples.
 - **A message can arrive twice.** When the answer to a sent message is
   lost, the next try sends it again.
 - **A message can wait.** Messages go one at a time, so each one waits
