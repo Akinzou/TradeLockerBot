@@ -61,7 +61,8 @@ rows have changed:
 
 *Update:* since step 6i
 ([ADR 0021](0021-report-a-rejected-order-and-place-it-once.md)), the order
-is placed once, so `order_retry` and its line are gone.
+is placed once, so `order_retry` and its line are gone, and
+`OperatorConsole` gains `order_rejected`.
 `place_market_order` returns an id only for an order the broker created,
 and `Err(OrderRejected)` when the broker answered without creating one.
 

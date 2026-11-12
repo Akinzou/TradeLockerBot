@@ -10,9 +10,11 @@ order. Since step 3b
 ([ADR 0009](0009-refuse-what-the-broker-rules-out-before-closing.md)),
 everything the bot can check before the close is checked there: a missing
 balance, a quantity that rounds to zero, an unknown symbol. The broker can
-still refuse the order itself, for example below its minimum lot, without
-enough margin, or with the market closed. By then the close has been carried
-out.
+still refuse the order itself. By then the close has been carried out.
+Below its minimum lot, without enough margin and with the market closed
+are the likely causes; which of them TradeLocker answers in the way the
+table below calls a rejection was not observed. The only observed fact is
+the client's code path.
 
 The `tradelocker` client (0.56.2, the version the bot pins) reports an order
 in four ways:
@@ -136,6 +138,8 @@ The tests changed with it:
 - **New pins.**
   - `test_a_rejected_order_ends_the_handler_thread_without_an_exception`, on
     the served app.
+  - A row in `test_broker_failures.py` for the recount failing: the line
+    says the count got no answer, then the client's exception is raised.
   - Adapter tests that map `TLAPIOrderException` and `None` to
     `OrderRejected`, take only a non-empty string `errmsg`, and keep an id
     of `0`.
@@ -173,6 +177,11 @@ The tests changed with it:
   resend can still place an order twice when an answer is lost.
 - **The count is of rows on the instrument.** It does not say which side
   they are or who opened them.
+- **An order that gets an id but opens no position** still prints
+  `Order placed successfully` and `Normal: Unlocked`. If the broker accepts
+  an order and cancels it afterwards, the account is left without a
+  position and no line says so. Whether TradeLocker does this for any cause
+  was not observed.
 - **The webhook still answers `200` before the signal is handled**, so the
   sender never learns of the rejection. That is the next decision on the
   roadmap.
