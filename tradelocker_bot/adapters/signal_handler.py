@@ -3,14 +3,15 @@
 
 The use case returns every outcome as a value; this is where each one is
 turned into what the webhook thread does today: one operator line for a
-rejection or a refusal, the client's own exception for a broker failure.
+rejection or a refusal, the client's own exception for a broker failure, and
+nothing more for an order the broker rejected, which the use case reports.
 """
 
 from contextlib import AbstractContextManager
 
 from tradelocker_bot.adapters.console import PrintingConsole
 from tradelocker_bot.application.execute_signal import ExecuteSignal
-from tradelocker_bot.application.ports import BrokerFailure
+from tradelocker_bot.application.ports import BrokerFailure, OrderRejected
 from tradelocker_bot.domain.result import Err
 from tradelocker_bot.domain.signal import parse_signal
 
@@ -43,9 +44,13 @@ class SignalHandler:
                     # The client's own exception object, raised inside the
                     # lock: the webhook thread fails with the same type,
                     # message and attributes as before the Result (ADR 0006).
-                    # Reporting broker failures instead is a behaviour change
-                    # of its own (roadmap step 6).
+                    # Kept raising: no answer may still mean a placed order.
                     raise result.error.cause
+                if isinstance(result.error, OrderRejected):
+                    # Already reported by the use case, between the Locked and
+                    # Unlocked lines, so the thread ends without a traceback
+                    # (ADR 0021).
+                    return
                 # The broker answered and ruled the signal out before any
                 # close request: reported like a payload rejection, without
                 # an exception (ADR 0009).

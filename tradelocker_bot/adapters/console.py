@@ -8,12 +8,18 @@ from tradelocker_bot.domain.signal import InvalidSignal, Side
 SHOWN_CHARACTERS = 40
 
 
-def _shown(value: str) -> str:
-    # repr, not the raw text: the value comes from the webhook, and its control
-    # characters (ESC, CR) could otherwise colour or forge operator lines.
-    if len(value) <= SHOWN_CHARACTERS:
+# A broker's reason is a sentence rather than a field, so it is cut later;
+# still cut, since the text is the broker's, not the bot's.
+SHOWN_REASON_CHARACTERS = 160
+
+
+def _shown(value: str, limit: int = SHOWN_CHARACTERS) -> str:
+    # repr, not the raw text: the value comes from the webhook or the broker,
+    # and its control characters (ESC, CR) could otherwise colour or forge
+    # operator lines.
+    if len(value) <= limit:
         return repr(value)
-    return f"{value[:SHOWN_CHARACTERS]!r}... ({len(value)} characters)"
+    return f"{value[:limit]!r}... ({len(value)} characters)"
 
 
 def _why(reason: InvalidSignal | Refusal) -> str:
@@ -36,6 +42,16 @@ def _why(reason: InvalidSignal | Refusal) -> str:
     raise TypeError(f"no operator line for {reason!r}")
 
 
+def _left_open(symbol: str, open_positions: int | None) -> str:
+    if open_positions is None:
+        return f"the position count got no answer, check {symbol} in TradeLocker"
+    if open_positions == 0:
+        return f"no {symbol} position is open"
+    if open_positions == 1:
+        return f"the broker lists 1 open {symbol} position, check it in TradeLocker"
+    return f"the broker lists {open_positions} open {symbol} positions, check them in TradeLocker"
+
+
 class PrintingConsole:
     """The ``OperatorConsole`` port as the legacy stdout lines (ADR 0005).
 
@@ -49,10 +65,6 @@ class PrintingConsole:
 
     def closing(self, symbol: str) -> None:
         print(f"Closing: {symbol}")
-
-    def order_retry(self, side: Side) -> None:
-        print(ascii_alerts.RED + f"{side.value.capitalize()} order was not successful, trying again...")
-        ascii_alerts.reset_style()
 
     def order_placed(self, order_id: int) -> None:
         print(ascii_alerts.GREEN + f"Order placed successfully, order ID: {order_id}")
@@ -73,3 +85,16 @@ class PrintingConsole:
         # rejection is written outside the lock, so a thread printing in
         # between must not inherit the colour.
         print(f"{ascii_alerts.RED}Signal rejected: {_why(reason)}\n{ascii_alerts.RESET}")
+
+    def order_rejected(self, symbol: str, side: Side, reason: str | None, open_positions: int | None) -> None:
+        """An order the broker answered without creating, and what the broker
+        lists on the symbol afterwards (ADR 0021).
+
+        Not "Signal rejected": the close before it was carried out. The line
+        ends with the account's state, from a count made after the rejection,
+        because the operator reads it to decide whether to act.
+        """
+        why = "no reason given" if reason is None else _shown(reason, SHOWN_REASON_CHARACTERS)
+        # One print with the reset inside, like `rejected`.
+        print(f"{ascii_alerts.RED}Order rejected: the broker refused to {side.value} {symbol} ({why}); "
+              f"{_left_open(symbol, open_positions)}\n{ascii_alerts.RESET}")

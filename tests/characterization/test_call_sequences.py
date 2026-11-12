@@ -7,7 +7,7 @@ line unnoticed.
 """
 
 import pytest
-from tradelocker.exceptions import TLAPIOrderException
+from tradelocker.exceptions import TLAPIException
 
 from tests.characterization.harness import (
     BALANCE,
@@ -54,20 +54,37 @@ def test_exact_broker_call_sequence(scenario, open_positions, close_requests_to_
     assert fake.calls == expected, scenario
 
 
-def test_order_without_an_id_is_placed_again():
-    # The client returns None only on its netting path, which the bot does not
-    # use, so this loop is unreachable in production. It is pinned so a
-    # restructuring cannot drop it silently; removing it is a declared change.
-    fake = broker(order_results=(None, 9001))
+@pytest.mark.parametrize(
+    ("scenario", "open_positions", "expected"),
+    [
+        ("nothing to close", [], [BALANCE, LOOKUP, POSITIONS, ORDER, POSITIONS]),
+        ("after the close", [XAUUSD_ID], [BALANCE, LOOKUP, POSITIONS, CLOSE, POSITIONS, ORDER, POSITIONS]),
+    ],
+)
+@pytest.mark.parametrize("answer", [order_rejection(), None], ids=["rejected", "no id"])
+def test_an_order_is_placed_once_even_when_the_broker_creates_none(scenario, open_positions, answer, expected):
+    # Before step 6i an answer without an id was ordered again, with no pause
+    # and no end; the client gives one only on its netting path, which the bot
+    # does not use. A rejection raised before. The positions are counted
+    # again for the operator line (ADR 0021).
+    fake = broker(open_positions=open_positions, order_results=(answer, 9001))
 
     handle(fake, payload())
 
-    assert fake.calls == [BALANCE, LOOKUP, POSITIONS, ORDER, ORDER]
+    assert fake.calls == expected, scenario
+    assert fake.open_positions == [], scenario
 
 
-@pytest.mark.parametrize("action", ["open", "close"])
-def test_whole_handling_is_one_critical_section(action):
-    fake = broker(open_positions=[XAUUSD_ID])
+@pytest.mark.parametrize(
+    ("action", "fake_args"),
+    [
+        ("open", {}),
+        ("close", {}),
+        ("open", {"order_results": (order_rejection(),)}),
+    ],
+)
+def test_whole_handling_is_one_critical_section(action, fake_args):
+    fake = broker(open_positions=[XAUUSD_ID], **fake_args)
     lock = RecordingLock(fake)
 
     handle(fake, payload(action=action), lock)
@@ -79,9 +96,9 @@ def test_whole_handling_is_one_critical_section(action):
 @pytest.mark.parametrize(
     ("scenario", "fake_args", "lines", "error"),
     [
-        ("broker rejects the order",
-         {"order_results": (order_rejection(),)},
-         payload(), TLAPIOrderException),
+        ("the order request gets no answer",
+         {"failures": {("create_order", 1): TLAPIException("Request failed: read timed out")}},
+         payload(), TLAPIException),
         ("broker fails the lookup", {"failures": {("get_all_instruments", 1): ValueError("bad body")}},
          payload(), ValueError),
     ],
@@ -101,6 +118,8 @@ LOCKED = [LOCK_ACQUIRED, "Normal: Locked"]
 UNLOCKED = ["Normal: Unlocked", LOCK_RELEASED]
 CLOSING = "Closing: XAUUSD"
 PLACED = "Order placed successfully, order ID: 9001"
+FLAT = "no XAUUSD position is open"
+REJECTED = f"Order rejected: the broker refused to buy XAUUSD ('Not enough margin'); {FLAT}"
 
 
 @pytest.mark.parametrize(
@@ -110,18 +129,24 @@ PLACED = "Order placed successfully, order ID: 9001"
          [*LOCKED, PLACED, *UNLOCKED]),
         ("open replaces two position rows", {"open_positions": [XAUUSD_ID, XAUUSD_ID]}, payload(), None,
          [*LOCKED, CLOSING, CLOSING, PLACED, *UNLOCKED]),
-        ("order placed again", {"order_results": (None, 9001)}, payload(), None,
-         [*LOCKED, "Buy order was not successful, trying again...", PLACED, *UNLOCKED]),
-        ("inverted order placed again", {"order_results": (None, 9001)}, payload(invert="Invert"), None,
-         [*LOCKED, "Sell order was not successful, trying again...", PLACED, *UNLOCKED]),
+        ("order answered without an id", {"order_results": (None, 9001)}, payload(), None,
+         [*LOCKED, f"Order rejected: the broker refused to buy XAUUSD (no reason given); {FLAT}", *UNLOCKED]),
+        ("inverted order answered without an id", {"order_results": (None, 9001)}, payload(invert="Invert"), None,
+         [*LOCKED, f"Order rejected: the broker refused to sell XAUUSD (no reason given); {FLAT}", *UNLOCKED]),
         ("close re-requested until filled", {"open_positions": [XAUUSD_ID], "close_requests_to_fill": 3},
          payload(action="close"), None,
          [*LOCKED, CLOSING, CLOSING, CLOSING, *UNLOCKED]),
-        ("broker rejects the order",
+        # One line in place of the traceback, inside Locked and Unlocked, since
+        # the handling ends there (ADR 0021).
+        ("broker rejects the order after the close",
          {"open_positions": [XAUUSD_ID],
           "order_results": (order_rejection(),)},
-         payload(), TLAPIOrderException,
-         [*LOCKED, CLOSING, LOCK_RELEASED]),
+         payload(), None,
+         [*LOCKED, CLOSING, REJECTED, *UNLOCKED]),
+        ("broker rejects the order, nothing to close",
+         {"order_results": (order_rejection(),)},
+         payload(), None,
+         [*LOCKED, REJECTED, *UNLOCKED]),
     ],
 )
 def test_operator_console_lines(capsys, scenario, fake_args, lines, error, expected):

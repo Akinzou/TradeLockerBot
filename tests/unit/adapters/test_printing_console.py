@@ -18,7 +18,6 @@ GREEN, RED, RESET = "\033[92m", "\033[91m", "\033[0m"
     [
         (lambda c: c.locked(), "Normal: Locked\n"),
         (lambda c: c.closing("XAUUSD"), "Closing: XAUUSD\n"),
-        (lambda c: c.order_retry(Side.SELL), f"{RED}Sell order was not successful, trying again...\n{RESET}\n"),
         (lambda c: c.order_placed(9001), f"{GREEN}Order placed successfully, order ID: 9001\n{RESET}\n"),
         (lambda c: c.unlocked(), "Normal: Unlocked\n"),
     ],
@@ -61,3 +60,39 @@ def test_a_rejected_signal_names_the_line_and_shows_its_value_escaped(capsys, re
     PrintingConsole().rejected(reason)
 
     assert capsys.readouterr().out == f"{RED}Signal rejected: {expected}\n{RESET}\n"
+
+
+NO_POSITION = "no XAUUSD position is open"
+
+
+@pytest.mark.parametrize(
+    ("side", "reason", "expected"),
+    [
+        (Side.BUY, "Not enough margin", f"the broker refused to buy XAUUSD ('Not enough margin'); {NO_POSITION}"),
+        (Side.SELL, None, f"the broker refused to sell XAUUSD (no reason given); {NO_POSITION}"),
+        # The broker's text, escaped like webhook text: it cannot forge a line.
+        (Side.BUY, "\x1b[92mfilled\r", r"the broker refused to buy XAUUSD ('\x1b[92mfilled\r'); " + NO_POSITION),
+        # Cut later than a payload value: a reason is a sentence.
+        (Side.BUY, "m" * 300, f"the broker refused to buy XAUUSD ('{'m' * 160}'... (300 characters)); {NO_POSITION}"),
+    ],
+)
+def test_a_rejected_order_names_the_side_the_symbol_and_the_brokers_reason(capsys, side, reason, expected):
+    PrintingConsole().order_rejected("XAUUSD", side, reason, 0)
+
+    assert capsys.readouterr().out == f"{RED}Order rejected: {expected}\n{RESET}\n"
+
+
+@pytest.mark.parametrize(
+    ("open_positions", "state"),
+    [
+        (0, NO_POSITION),
+        (1, "the broker lists 1 open XAUUSD position, check it in TradeLocker"),
+        (3, "the broker lists 3 open XAUUSD positions, check them in TradeLocker"),
+        (None, "the position count got no answer, check XAUUSD in TradeLocker"),
+    ],
+)
+def test_a_rejected_order_ends_with_what_the_broker_lists_afterwards(capsys, open_positions, state):
+    PrintingConsole().order_rejected("XAUUSD", Side.BUY, "Not enough margin", open_positions)
+
+    out = capsys.readouterr().out
+    assert out == f"{RED}Order rejected: the broker refused to buy XAUUSD ('Not enough margin'); {state}\n{RESET}\n"

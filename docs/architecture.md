@@ -47,7 +47,7 @@ flowchart TB
     end
     subgraph application [tradelocker_bot.application]
         ES[ExecuteSignal]
-        PORTS[ports: Broker, OperatorConsole, BrokerFailure]
+        PORTS[ports: Broker, OperatorConsole,<br/>BrokerFailure, OrderRejected]
         REF[refusal: NoBalance, UnknownSymbol]
     end
     subgraph domain [tradelocker_bot.domain]
@@ -153,6 +153,7 @@ flowchart LR
 | quantity (`float`)            | `LotSizing.quantity_for`   | `Broker.place_market_order`               |
 | instrument id (`int` or `None`) | `TradeLockerBroker`      | `ExecuteSignal`                           |
 | `Refusal`                     | `ExecuteSignal`, `LotSizing` | `PrintingConsole.rejected`              |
+| `OrderRejected`               | `TradeLockerBroker`        | `ExecuteSignal`, which reports it through `OperatorConsole.order_rejected` |
 | `BrokerFailure`               | `TradeLockerBroker`        | `SignalHandler`, which re-raises its cause |
 
 ## Handling one signal
@@ -183,21 +184,35 @@ sequenceDiagram
             UC->>C: closing("XAUUSD")
         end
     end
-    loop until the broker returns an order id
-        UC->>B: place_market_order(101, 0.1, side, sl, tp)
-        B-->>UC: Ok(order id or None)
+    UC->>B: place_market_order(101, 0.1, side, sl, tp), once
+    alt the broker created the order
+        B-->>UC: Ok(order id)
+        UC->>C: order_placed(id)
+        UC->>C: unlocked()
+        UC-->>H: Ok(None)
+    else the broker answered without one
+        B-->>UC: Err(OrderRejected(reason))
+        UC->>B: open_position_count(101), again
+        B-->>UC: Ok(n)
+        UC->>C: order_rejected("XAUUSD", side, reason, n)
+        UC->>C: unlocked()
+        UC-->>H: Err(OrderRejected(reason))
     end
-    UC->>C: order_placed(id)
-    UC->>C: unlocked()
-    UC-->>H: Ok(None)
     H->>H: release lock
 ```
 
 Steps 4 to 8 can end the signal early (ADR 0009). No balance, an unusable
 quantity or an unknown symbol is a `Refusal`. A call that fails is a
-`BrokerFailure`. Either way nothing has been closed yet. The close loop and
-the order retry still have no delay or limit; the roadmap lists both as
-defects for step 6.
+`BrokerFailure`. Either way nothing has been closed yet. The close loop
+still has no delay or limit; the roadmap lists it as a defect for step 6.
+
+The order is placed once. If the broker answers without creating it, the
+positions are already closed. The use case counts them again, since a
+resent order may have filled, and prints one red `Order rejected:` line
+with the broker's reason and what the broker lists now, then
+`Normal: Unlocked`; the thread ends normally. An order request that gets no
+answer is a `BrokerFailure` and still raises, since the order may exist
+([ADR 0021](adr/0021-report-a-rejected-order-and-place-it-once.md)).
 
 ### `close`
 
@@ -237,9 +252,11 @@ stateDiagram-v2
     Locked --> Failed: broker call failed before any close
     Locked --> Working: checks passed, Normal Locked line
     Working --> Failed: broker call failed while closing or ordering
+    Working --> OrderRejected: broker answered the order without creating it
     Working --> Handled: Normal Unlocked line
     Rejected --> [*]: one red line, no broker call, no lock
     Refused --> [*]: one red line, nothing closed
+    OrderRejected --> [*]: one red line with a fresh count, Normal Unlocked line
     Failed --> [*]: client exception re-raised in the thread
     Handled --> [*]
 ```
@@ -248,6 +265,7 @@ stateDiagram-v2
 |----------|-----------------------|--------------------|-------------------------------|----------------|
 | Rejected | none                  | no                 | `Signal rejected: line N ...` | ends normally  |
 | Refused  | balance and/or lookup | no                 | `Signal rejected: ...`        | ends normally  |
+| Order rejected | all, order once, a recount | closed, none opened | `Order rejected: ...`, `Unlocked` | ends normally |
 | Failed   | up to the failing one | possibly closed    | the client's traceback        | raises         |
 | Handled  | all                   | replaced or closed | `Normal: Locked` ... `Unlocked` | ends normally |
 
@@ -283,12 +301,17 @@ design.
     instrument. Only then does it close the instrument's positions and place
     a market order.
   - The instrument is looked up once.
-  - The legacy close loop and order retry are kept. The roadmap lists them
-    as defects.
-- `execute` returns `Ok(None)`, a `Refusal` or the first `BrokerFailure`.
+  - The legacy close loop is kept. The roadmap lists it as a defect.
+  - The order is placed once (ADR 0021).
+- `execute` returns `Ok(None)`, a `Refusal`, an `OrderRejected` or the
+  first `BrokerFailure`.
   - A `Refusal` (`NoBalance`, `UnknownSymbol`, `UnusableQuantity`) means the
     broker answered and ruled the signal out. It always comes before any
     close request (ADR 0009).
+  - An `OrderRejected` means the broker answered the order without creating
+    it. It comes after the close, and holds the broker's reason or `None`.
+    The use case reports it with a fresh position count before returning it
+    (ADR 0021).
   - A `BrokerFailure` means a broker call did not answer. It holds the
     client's own exception (ADR 0006).
 - `Broker` and `OperatorConsole` are its ports, one per process boundary.
@@ -296,6 +319,8 @@ design.
     number.
   - `Broker.instrument_id` returns `Ok(None)` for a name the broker does not
     list. Its `Err` means only that the broker did not answer.
+  - `Broker.place_market_order` returns an id only for an order the broker
+    created; otherwise `OrderRejected` or `BrokerFailure`.
 
 ## Adapters
 
@@ -306,6 +331,9 @@ design.
   - Only the client call runs inside the exception guard. A fault in the
     adapter's own handling of the answer raises, so it cannot pose as an
     outage.
+  - The client's `TLAPIOrderException`, and `None` for an order, become
+    `OrderRejected` with the broker's `errmsg` alone; every other client
+    exception stays a `BrokerFailure` (ADR 0021).
   - `log_in`, in the same module, logs in to the demo or live server, on the account that
     `--acc_num` or `--acc_id` names. It refuses both at once before sending
     any credentials.
@@ -315,6 +343,8 @@ design.
     `Refusal`, using the same "found, expected" shape for both.
   - Webhook text in that line is escaped with `repr` and cut after 40
     characters.
+  - Its `order_rejected` prints one red line for an `OrderRejected`, with
+    the broker's reason escaped the same way and cut after 160 characters.
 - `create_app` (`webhook`) is the inbound HTTP adapter. It serves the
   webhook path, splits the body into lines and starts one thread per
   request. It serves nothing else: no OpenAPI schema and no docs pages,
@@ -392,3 +422,4 @@ layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
 | [0018](adr/0018-read-the-settings-from-the-environment.md) | Read the settings from the environment, not the command line |
 | [0019](adr/0019-pin-the-base-image-by-digest.md) | Pin the base image by digest |
 | [0020](adr/0020-refuse-query-fragment-and-escape-characters-in-the-webhook-path.md) | Refuse `?`, `#` and `%` in the webhook path |
+| [0021](adr/0021-report-a-rejected-order-and-place-it-once.md) | Report a rejected order in one line and place it once |

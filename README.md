@@ -56,6 +56,9 @@ flowchart LR
    - If the balance is missing, the size comes out as zero, or the
      instrument is unknown, the signal is logged and ignored before anything
      is closed.
+   - If the broker rejects the order, it is not sent again. The positions
+     stay closed, and the log shows one `Order rejected:` line with the
+     broker's reason and what the broker lists on the instrument afterwards.
 
 ```mermaid
 flowchart TD
@@ -67,7 +70,8 @@ flowchart TD
     C -- close --> E
     D -- "no balance, or size 0" --> X
     E -- unknown instrument --> X
-    E -- "found, open" --> F["Close the instrument's positions"] --> G["Place a market order"]
+    E -- "found, open" --> F["Close the instrument's positions"] --> G["Place a market order, once"]
+    G -- "rejected by the broker" --> R["Count the positions again,<br/>log an Order rejected line"]
     E -- "found, close" --> H["Close the instrument's positions"]
 ```
 
@@ -284,6 +288,12 @@ alerts.
 > broker as a 0-lot order, and the instrument's positions stay open. An
 > unknown symbol or a missing balance is logged as one `Signal rejected:` line
 > instead of a traceback.
+>
+> Since [ADR 0021](docs/adr/0021-report-a-rejected-order-and-place-it-once.md),
+> an order the broker rejects is logged as one `Order rejected:` line instead
+> of a traceback, and is not sent again. The instrument's positions were
+> closed before the order; the line ends with what the broker lists
+> afterwards.
 
 ## Security
 
@@ -338,11 +348,13 @@ alerts.
 
 | Symptom                                     | Likely cause                                                                                   |
 |---------------------------------------------|------------------------------------------------------------------------------------------------|
-| No trade after an alert                     | The log shows `Signal rejected:` with the line to fix. Otherwise the broker refused a call, and the log shows its error. |
+| No trade after an alert                     | The log shows `Signal rejected:` with the line to fix, or `Order rejected:` with the broker's reason. Otherwise a broker call got no answer, and the log shows the client's error. |
 | `Signal rejected: line 1 (symbol) ...`      | The broker lists no instrument with that exact name. Copy it from TradeLocker, case included. If the name is right, restart the bot: it reads the instrument list once at startup, so an instrument added later stays unknown until a restart. |
 | `Signal rejected: line 3 (lot) gives 0.0 ...` | The balance is too small for this lot. Raise the lot or lower the balance step on line 3. |
 | `Signal rejected: the account balance is ...` | The broker reported no balance, a balance that is not a number, or one that is not above zero. Check the account in TradeLocker, then send the alert again. |
-| Position closed but no new one opened       | The broker rejected the order; the log shows its error. |
+| `Order rejected: the broker refused to buy XAUUSD (...); no XAUUSD position is open` | The broker answered the order without creating it, for the reason in brackets, such as margin, its minimum lot or a closed market. The positions on the instrument were closed first, and the broker lists none now. The bot does not send the order again; open the position by hand or wait for the next alert. |
+| `Order rejected: ...; the broker lists 1 open XAUUSD position, check it in TradeLocker` | The order was rejected, but a position is open on the instrument: an earlier attempt of the same order may have filled before the client resent it, or one was opened by hand. Check it in TradeLocker before you open another. With `the position count got no answer`, the bot could not count, and a traceback follows. |
+| Position closed but no new one opened, and no `Order rejected:` line | The order request got no answer, and the log shows the client's error. The order may still have been placed: check the account in TradeLocker. |
 | Bot does not start, login fails             | Wrong credentials or `env`. On images built before [ADR 0018](docs/adr/0018-read-the-settings-from-the-environment.md), also a password with spaces or shell characters (see [Configuration](#configuration)). |
 | Container keeps restarting, `docker logs` shows `the password environment variable is not set or is empty` | Set `password` with `-e` or in the `--env-file`. The bot does not read `--password`. |
 | `docker logs` shows `the following arguments are required: --server` or `argument --server: must not be empty` | The messages name the option the image fills from the variable of the same name. Set `server` (or the variable named) to a non-empty value. |
