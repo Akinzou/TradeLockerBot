@@ -13,7 +13,7 @@ import sys
 
 import pytest
 
-from tests.characterization.harness import DEMO, SERVE, Startup, broker, order_rejection, payload, serve
+from tests.characterization.harness import DEMO, SERVE, XAUUSD_ID, Startup, broker, order_rejection, payload, serve
 from tests.characterization.webhook_driver import finish, post
 
 
@@ -62,6 +62,8 @@ def test_the_startup_lines_are_written_out_before_the_server_starts(monkeypatch)
         pytest.param({}, payload(direction="long"), ["Signal rejected: line 2 (direction)"], id="payload rejected"),
         pytest.param({"order_results": (order_rejection(),)}, payload(),
                      ["Order rejected: the broker refused to buy XAUUSD", "Normal: Unlocked"], id="order rejected"),
+        pytest.param({"open_positions": [XAUUSD_ID]}, payload(action="close"),
+                     ["Normal: Locked", "Closing: XAUUSD", "Normal: Unlocked"], id="closed"),
     ],
 )
 def test_a_signals_lines_are_written_out_without_waiting_for_the_next_request(
@@ -75,3 +77,16 @@ def test_a_signals_lines_are_written_out_without_waiting_for_the_next_request(
 
     written = stdout.written()
     assert [line for line in expected if line not in written] == []
+
+
+@pytest.mark.parametrize("other", [None, io.StringIO()], ids=["no stdout", "a stream that writes at once"])
+def test_a_stdout_that_is_not_pythons_buffered_text_layer_is_left_as_it_is(monkeypatch, other):
+    # pythonw and some service hosts start Python with no stdout, where print
+    # writes nothing; an IDE's console is its own stream, written at once.
+    # Neither holds lines, and the bot started under both before.
+    monkeypatch.setattr(sys, "stdout", other)
+    startup = Startup(monkeypatch, broker())
+
+    startup.run(DEMO)
+
+    assert len(startup.served) == 1

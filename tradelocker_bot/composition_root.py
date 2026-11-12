@@ -6,6 +6,7 @@ it; ``main_without_ssl.py``, the container's command, only calls ``main``.
 """
 
 import argparse
+import io
 import sys
 import threading
 from os import environ
@@ -163,8 +164,12 @@ def main():
     # holds stdout until 8 KB pile up, so a trade's lines waited for the next
     # alert's request (ADR 0026). Here rather than PYTHONUNBUFFERED in the
     # image, which a run outside the image would not have, and rather than a
-    # flush per print, which the next new line could leave out.
-    sys.stdout.reconfigure(line_buffering=True)
+    # flush per print, which the next new line could leave out. Only Python's
+    # own text layer holds lines: with no stdout (pythonw) print writes
+    # nothing, and an IDE's console writes at once, so those are left alone
+    # rather than stopping a bot that ran under them before.
+    if isinstance(sys.stdout, io.TextIOWrapper):
+        sys.stdout.reconfigure(line_buffering=True)
     args = parse_args()
 
     if args.url == "generate":

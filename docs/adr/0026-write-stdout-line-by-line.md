@@ -36,7 +36,8 @@ terminal or not.
 `composition_root.main()` starts by setting stdout to line buffering:
 
 ```python
-sys.stdout.reconfigure(line_buffering=True)
+if isinstance(sys.stdout, io.TextIOWrapper):
+    sys.stdout.reconfigure(line_buffering=True)
 ```
 
 Each line is then written out when it is printed, as on a terminal. The
@@ -60,9 +61,15 @@ flowchart LR
   adapter prints seven kinds of line and the colour reset; a new line
   written without the flush would bring the defect back for that line
   alone, and no test of the existing lines would notice.
-- **Line buffering rather than none.** A line goes out in one write,
-  as on a terminal, rather than in pieces: `print` writes the text and its
-  line end separately.
+- **Line buffering rather than none.** `print` writes the text and its
+  line end separately; line buffering writes them out together, one write
+  per line rather than two. Neither keeps another thread's text out of the
+  middle of a line (below).
+- **Only Python's own text layer.** That is the stream that holds lines:
+  Python opens stdout so on a pipe, a file or a terminal. With no stdout,
+  as under `pythonw` or some service hosts, `print` writes nothing, and an
+  IDE's console is its own stream that writes at once. The bot started
+  under both before, so it leaves them as they are rather than stopping.
 - **First thing in `main()`,** before the arguments are read, so every
   line the bot prints, `--help` included, is covered, whatever branch the
   startup takes.
@@ -87,20 +94,27 @@ a terminal, so what reached the file is what the log would show.
   file when the server is started. The stdout records what had reached
   the file before each write, because in the tests the server start
   returns at once, where uvicorn would block.
-- **After the start.** For a trade, a rejected payload and a rejected
-  order, sent through the app the bot serves, the lines are in the file
-  once the handler thread ends, with no request after it.
+- **After the start.** For a trade, a close, a rejected payload and a
+  rejected order, sent through the app the bot serves, the lines are in
+  the file once the handler thread ends, with no request after it.
+  `Still closing:` is not among them: it needs a minute of the real
+  clock, and it is printed to the same stdout as the others.
+- **Other stdouts.** With no stdout, and with a stream that is not
+  Python's text layer, the bot still starts and serves.
 
 The pin of the account line's flush moved there from
 `test_startup_account.py`, whose stdout recorded flushes and had no
 `reconfigure`.
 
-Before the fix, the three post-start pins failed with nothing written
-out. Each of these mutations fails at least one test:
+Before the fix, the post-start pins failed with nothing written out.
+The pins for other stdouts, added after review, failed with an
+`AttributeError` from an unguarded call. Each of these mutations fails at
+least one test:
 
 - leaving out the call;
 - `line_buffering=False`;
-- moving the call after `uvicorn.run`.
+- moving the call after `uvicorn.run`;
+- leaving out the check for Python's text layer.
 
 Checked once by hand, not in the suite: the bot's `main()` in a child
 process, with the login and the server stubbed and the child kept alive,
@@ -112,9 +126,14 @@ not `Normal: Locked`; after it, both.
 - **Images built before this change.** Pull the new image.
 - **The CI runs of the image** cannot show this: the login fails there,
   and a process that exits writes out its buffer anyway.
-- **Lines printed at once from several threads** can still interleave at
-  line boundaries, as on a terminal. The red lines print their reset
-  inside the same call for that reason.
+- **Lines printed at once from several threads** can still mix, as on a
+  terminal and as before: `print` writes a line's text and its line end
+  separately, so another thread's text can fall between them. Buffering
+  never changed the order of the writes, only when they reach the log.
+- **The green `Order placed` line prints its colour reset in a second
+  `print`,** so a line written in between, another thread's or uvicorn's
+  access line on the same stdout, shows in green. That was so before;
+  the red lines print their reset inside the same call for this reason.
 - **uvicorn's and the client's lines** were never held: their log
   handlers flush each record.
 
