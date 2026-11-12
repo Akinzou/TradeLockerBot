@@ -45,7 +45,7 @@ What goes to the chat, as plain text with no colours:
 | `Still closing: ...`                          | As in the log                                         |
 | `Broker failed: a call for XAUUSD got no answer (TLAPIException); the signal stopped there, check XAUUSD in TradeLocker` | A broker call got no answer. This line is new in the log too, printed before the traceback |
 | `Bot failed: an error in the bot (TypeError) while handling XAUUSD; ...` | Any other exception ended a valid signal, a bug for one. New in the log too, before the traceback |
-| `Login failed: ConnectionError; the bot stops, the log has the error` | The login failed. Sent only, given up to 5 s, before the bot stops |
+| `Login failed: ConnectionError; the bot stops, the log has the error` | The login failed. Sent only, given up to 5 s at exit |
 | `Telegram: the queue was full and dropped 3 of the bot's messages; the log has them` | Once the queue is empty again after a flood |
 
 ```mermaid
@@ -59,7 +59,7 @@ flowchart LR
     TC -- "HTTPS POST sendMessage,<br/>plain text" --> TG[(api.telegram.org)]
     D -- "not sent: the message's first words<br/>and why, never sent itself" --> LOG
     N -- "queue full: dropped, reported,<br/>and counted for the chat" --> LOG
-    CR -- "after the server stops, or a failed login:<br/>stop(5 s), what is left reported" --> N
+    EXIT[atexit, once the webhook's<br/>threads have ended] -- "stop(5 s): what is left,<br/>and a dropped count, reported" --> N
 ```
 
 ### Why
@@ -96,9 +96,9 @@ flowchart LR
   leave the host. The traceback after them still has the text, in the
   log.
 - **A failed login is sent too, before the bot stops.** Otherwise the
-  phone would only miss a `Logged in:` message. The bot gives the message
-  up to 5 seconds before it raises the login's exception. Under
-  `--restart`, that is one message per attempt.
+  phone would only miss a `Logged in:` message. The exit function below
+  gives it up to 5 seconds. Under `--restart`, that is one message per
+  attempt.
 - **Off the trading path.**
   - The console runs inside the lock that every signal shares, so it
     only queues the text.
@@ -110,26 +110,38 @@ flowchart LR
     held in memory. Once the queue is empty again, the chat gets one
     message with how many were dropped, since one of them may have been
     the one that needed action.
-  - When the server ends, the bot gives the queue up to 5 seconds,
-    within the 10 that `docker stop` waits, and logs how many messages it
-    could not send. That holds when uvicorn returns or Ctrl+C ends it.
+  - When the bot ends, an exit function gives the queue up to 5 seconds,
+    within the 10 that `docker stop` waits. It then logs how many
+    messages it could not send, and a dropped count the chat has not
+    heard of yet.
+  - An exit function rather than code after `uvicorn.run`. Python runs
+    exit functions only once every webhook thread has ended, so a signal
+    still running at the stop gets its last red line queued first. Python
+    also runs them however `main` ends: a return, a failed login, or
+    Ctrl+C. This ordering was checked by running it.
+  - A message counts as pending from the moment it is queued until its
+    delivery ends, under one condition. No moment between the queue and
+    the send can drop it from the count. The dropped count is cleared only
+    once the message that carries it is queued.
   - On a SIGTERM, uvicorn 0.54 restores the previous handler after its
-    shutdown and raises the signal again. Its default handler ends the
-    process at once, unless Python is PID 1, which ignores it: the image
-    starts Python as PID 1, so `docker stop` without `--init` gives the
-    queue its seconds. This is read from uvicorn's `capture_signals`, not
-    observed on Linux.
+    shutdown and raises the signal again. The default handler ends the
+    process at once, before any exit function, unless Python is PID 1,
+    which ignores it. The image starts Python as PID 1, so a `docker stop`
+    without `--init` gives the queue its seconds. This was read from
+    uvicorn's `capture_signals`, not observed on Linux.
 - **Tried again when Telegram may get over it.**
   - Three tries in all, for a `429`, a `5xx`, an answer that is not
     Telegram's, and no answer at all.
   - The waits between them are 2 s and 10 s, or Telegram's own
     `retry_after` up to 10 minutes: a try before that wait ends is refused
-    too, so a shorter cap would spend the tries and lose the message. A
-    `retry_after` that is negative, not finite or not a number gets the
-    usual wait.
-  - A message sent a minute or more after the bot logged it ends with
+    too, so a shorter cap would spend the tries and lose the message.
+  - A `retry_after` that is negative, not finite or not a number gets
+    the usual wait. The notifier decides this in one place, for any
+    `Chat`; the Telegram adapter passes on whatever number it got.
+  - A message sent a minute or more after the bot logged it starts with
     `(sent N seconds after the bot logged it)`, so the operator does not
-    act on a state that may have changed since.
+    act on a state that may have changed since. The note comes first, so
+    the cut at Telegram's 4096 characters cannot take it.
   - Any other `4xx` is not tried again, because the same request would get
     the same answer.
   - A message that is still not sent is reported in one red log line,
@@ -276,6 +288,30 @@ fails at least one test:
 - the handler without `Bot failed:`;
 - that line showing the exception's text.
 
+A second review, of these fixes, found races in the stop:
+
+- A message just taken off the queue was in neither count.
+- The dropped count was cleared before its message was queued.
+- With a full queue, the stop waited the whole 5 seconds.
+- A webhook thread still running after the server returned could queue
+  a line after the stop.
+
+It also found that the lateness note could be cut off, that two places
+checked `retry_after`, and that one wording read "1 messages". The stop
+was redesigned, as above, rather than patched. A second Ctrl+C during the
+stop's wait still ends it unreported; that is the operator's own
+"stop now". Each of these mutations of the redesign fails at least one
+test:
+
+- no exit function;
+- the pending count dropped before the delivery;
+- a stop that does not wait, or forgets the dropped count;
+- no dropped count sent;
+- dropped messages not counted;
+- the lateness note at the end;
+- a failed login not sent;
+- the selectors converted inside the login's `try`.
+
 ## What this does not cover
 
 - **A real send to Telegram.** The tests use a server on this machine and
@@ -284,9 +320,12 @@ fails at least one test:
 - **Messages still queued 5 seconds into a stop are lost.** The thread is
   a daemon thread, so it does not hold the stop for minutes of tries. The
   log says how many, each of them is in the log, and the next start sends
-  `Logged in:`. A process that is killed, that gets SIGTERM while not
-  PID 1 (under `docker run --init`, for one), or that ends on an
-  exception other than the login's, reports nothing.
+  `Logged in:`. A process that is killed, or that gets SIGTERM while not
+  PID 1 (under `docker run --init`, for one), reports nothing.
+- **A signal that never ends holds the exit.** Python waits for every
+  webhook thread before it runs the exit functions, and a close that
+  never fills runs until Docker kills the process. That was so before
+  this change; the queue then gets no seconds.
 - **`Login failed:` comes once per start.** Under `--restart`, a wrong
   password sends one message per attempt, as Docker's restarts slow down.
   It also covers the client's refusal of both account selectors, which

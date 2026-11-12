@@ -124,7 +124,7 @@ sequenceDiagram
     CR->>CR: print the greeting, and Telegram: on when it is
     CR->>CR: int(acc_num), int(acc_id)
     CR->>TB: log_in(env, credentials, selectors)
-    TB-->>CR: TLAPI client at log level info<br/>(or the client's exception:<br/>Login failed: sent, stop_notifier, raised)
+    TB-->>CR: TLAPI client at log level info<br/>(or the client's exception:<br/>Login failed: queued, then raised)
     CR->>CR: print Logged in: acc_id, acc_num, and notify it
     CR->>CR: build_signal_handler(client, one Lock, SystemClock, notify)
     CR->>WH: create_app(url, handler.handle)
@@ -133,7 +133,7 @@ sequenceDiagram
     SL-->>CR: uvicorn's log settings,<br/>access line without the request line
     CR->>U: run(app, host="0.0.0.0", port, log_config)
     U-->>CR: returns once the server stops
-    CR->>CR: stop_notifier: up to 5 s for the queue
+    Note over EP,U: Python waits for the webhook's threads, then runs<br/>the notifier's exit function: up to 5 s for the queue
 ```
 
 A bad setting stops at step 3, a bad account selector at step 7, and a
@@ -501,10 +501,11 @@ layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
   prints the content
   ([ADR 0024](adr/0024-read-the-password-from-a-file.md)).
 - `start_notifier` starts Telegram's notifier when `telegram_from` gave
-  settings; `main` passes its `notify` on, or `no_notification`. A
-  failed login is sent as `Login failed:`, and `stop_notifier` gives the
-  queue 5 seconds before the login's exception leaves `main`, and again
-  however `uvicorn.run` ends, in a `finally`. Both
+  settings, and registers its `stop` as an exit function, which gives the
+  queue 5 seconds once `main` and the webhook's threads have ended,
+  however they end. `main` passes its `notify` on, or `no_notification`.
+  A failed login is sent as `Login failed:` before its exception leaves
+  `main`. Both
   Telegram settings come only from the environment
   ([ADR 0027](adr/0027-send-the-red-lines-to-telegram.md)).
 - It creates the one lock that every request shares.
