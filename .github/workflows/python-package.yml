@@ -111,7 +111,7 @@ jobs:
           test "$status" != 0
           test "$status" != 2
           grep -qF '|_   _| __ __ _' out.txt
-          grep -qF 'Failed to fetch authentication tokens' err.txt
+          grep -qE '^[[]CRITICAL .*Failed to fetch authentication tokens' err.txt
           if grep -qF 'p a $HOME *' out.txt err.txt; then echo 'the password is in the output'; exit 1; fi
           docker run --rm --network none -e username=u -e server=s -e env=demo \
             --mount "$mount" -e password_file=/run/secrets/password --entrypoint python tradelocker_bot:ci \
@@ -140,7 +140,7 @@ jobs:
           test "$status" != 0
           test "$status" != 2
           grep -qF '|_   _| __ __ _' out.txt
-          grep -qF 'Failed to fetch authentication tokens' err.txt
+          grep -qE '^[[]CRITICAL .*Failed to fetch authentication tokens' err.txt
           if grep -qF 'p a $HOME *' out.txt err.txt; then echo 'the password is in the output'; exit 1; fi
       # The image installs with --no-deps (ADR 0017), so check there, with the
       # image's own interpreter reading the markers, that it holds what its

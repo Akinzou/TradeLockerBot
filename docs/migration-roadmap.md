@@ -73,7 +73,8 @@ flowchart LR
 
 Each arrow points from a step to one that builds on it. Green is done.
 
-No step is planned. These wait on the owner's decision:
+The next step fixes the known defect below: the bot's output waits in a
+buffer without a terminal. These wait on the owner's decision:
 
 - a channel outside the log, such as an issue or a chat message, for
   `Signal rejected:`, `Order rejected:` and `Still closing:`
@@ -110,7 +111,16 @@ These stay unchanged until an ADR changes them:
 
 Fixed in behaviour steps, never during restructuring.
 
-None open.
+- **Without a terminal, the bot's lines wait in a buffer** (found in step
+  6m's review). Python buffers stdout when it is not a terminal, and the
+  image sets nothing to change that. The README's `docker run` has `-t`,
+  but its Compose example has no `tty: true`. There, the greeting,
+  `Signal rejected:`, `Order placed`, `Order rejected:` and
+  `Still closing:` lines reach `docker logs` only when uvicorn logs a
+  request, which flushes stdout, or the buffer fills. A trade's lines are
+  printed after its alert's own request line, so they wait for the next
+  alert. Only the account line is flushed
+  ([ADR 0025](adr/0025-run-the-broker-client-at-info.md)).
 
 ## Kept by decision
 

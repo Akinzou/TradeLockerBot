@@ -151,11 +151,9 @@ def log_in(environment: str, username: str, password: str, server: str, acc_num:
         raise ValueError("Invalid environment specified. Use 'demo' or 'live'.")
     if acc_num and acc_id:
         raise ValueError("Please provide only the account number or ID (starting from 1).")
-    url = ENVIRONMENTS[environment]
-    if acc_num:
-        return TLAPI(environment=url, username=username, password=password, server=server, acc_num=acc_num,
-                     log_level=CLIENT_LOG_LEVEL)
-    if acc_id:
-        return TLAPI(environment=url, username=username, password=password, server=server, account_id=acc_id,
-                     log_level=CLIENT_LOG_LEVEL)
-    return TLAPI(environment=url, username=username, password=password, server=server, log_level=CLIENT_LOG_LEVEL)
+    # One call for every selector rather than one per selector: a branch that
+    # left out the level would log the password on that branch alone.
+    # An unset selector is left out rather than passed as 0, as before.
+    selector = {"acc_num": acc_num} if acc_num else {"account_id": acc_id} if acc_id else {}
+    return TLAPI(environment=ENVIRONMENTS[environment], username=username, password=password, server=server,
+                 log_level=CLIENT_LOG_LEVEL, **selector)

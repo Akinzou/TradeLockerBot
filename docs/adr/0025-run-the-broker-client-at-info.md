@@ -39,9 +39,9 @@ only the exit status and the greeting.
 ## Decision
 
 `log_in` passes `log_level="info"` to the client (`CLIENT_LOG_LEVEL` in
-`tradelocker_broker`), whichever account selector it is given. After the
-login, the bot prints the account the client chose, from the client's
-`account_id` and `acc_num`:
+`tradelocker_broker`) in its one call, whichever account selector it is
+given. After the login, the bot prints the account the client chose, from
+the client's `account_id` and `acc_num`, and flushes stdout:
 
 ```text
 Logged in: acc_id 76, acc_num 1
@@ -66,6 +66,12 @@ flowchart LR
   prints the line itself, between the login and the server start, in the
   same plain form as its other startup output. The names `acc_id` and
   `acc_num` match the settings that select the account.
+- **The line is flushed.** Without a terminal, as in the README's Compose
+  example, Python buffers stdout until uvicorn logs the first request, so
+  the first alert could trade before the operator saw the account. The
+  client's line went to stderr, which Python writes out line by line.
+- **One client call for every selector.** The selector becomes the one
+  keyword it sets, so no branch can leave out the level.
 
 ## What changes
 
@@ -99,21 +105,29 @@ flowchart LR
   greeting pins add the account line, and
   `tests/characterization/test_startup_account.py` pins it for each
   selector with the fake client's `account_id` and `acc_num`, which carry
-  the real client's attribute names.
+  the real client's attribute names. With no selector the settings hold
+  `0`, so only the client's values can make that line. A second pin gives
+  the startup a stdout that writes out only when flushed, and finds the
+  line written out before the server starts.
 - **CI.** The two steps that start the real image with a password, from a
   file and from the variable, now also require the client's
-  `Failed to fetch authentication tokens` line in the output, which shows
-  the client ran and logged, and refuse the password anywhere in it.
+  `[CRITICAL ...] Failed to fetch authentication tokens` line, in the
+  client's own format, which the traceback alone does not print. That
+  shows the client ran and logged. They refuse the password anywhere in
+  the output.
 
 Before the fix, the four client-log tests failed with the password and two
-tokens in the log, and the five account-line pins failed with no line. Each
-of these mutations fails at least one test:
+tokens in the log, and the five account-line pins failed with no line. The
+flush pin, added after review, failed with nothing written out. Each of
+these mutations fails at least one test:
 
-- leaving out `log_level` in any one of the three client calls;
+- leaving out `log_level`;
+- passing an unset selector as `0` rather than leaving it out;
 - setting `debug`;
 - setting `warning`;
 - leaving out the account line;
-- swapping `acc_id` and `acc_num` in it.
+- swapping `acc_id` and `acc_num` in it;
+- leaving out the flush.
 
 ## What this does not cover
 
@@ -130,6 +144,12 @@ of these mutations fails at least one test:
   answer, the password would be there. That cannot be checked without the
   real server; the client's failed-login line in CI holds only the
   connection error.
+- **A token answer the client cannot read.** When the server's answer to
+  a login or a refresh lacks a token, the client raises a `KeyError` whose
+  message holds the whole answer, with the token it did send. A failed
+  login logs that message at `critical`; a failed refresh reaches uvicorn
+  through the broker call that needed the token, and uvicorn logs it with
+  the traceback. Only a malformed answer from the server does this.
 - **A later client version.** The lock pins 0.56.2
   ([ADR 0017](0017-override-the-clients-vulnerable-pins.md)). A version
   that logs a secret at `info` or above would fail
@@ -141,12 +161,17 @@ of these mutations fails at least one test:
   the client's handler and the root's, in two formats. Fewer lines are
   logged now, but the doubling stays; it holds nothing the first copy
   does not.
+- **The bot's other lines are not flushed.** Without a terminal, the
+  greeting and the lines about signals and orders still wait in stdout's
+  buffer; a known defect in the roadmap, for the next step.
 - **The order lines** hold each order's request: instrument, side,
   quantity and prices. That is trading data, not a credential.
 
 ## Consequences
 
-- No credential the bot sends reaches its log.
+- No request the client sends reaches the log, so neither does the
+  password or a token it carries. A token can still appear in a server
+  answer the client cannot read (above).
 - The log is shorter: no request dumps and no account tables.
 - An operator who read the `REST REQUEST` lines to debug the broker
   connection no longer has them. Running the client at `debug` again

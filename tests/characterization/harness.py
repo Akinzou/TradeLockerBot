@@ -166,13 +166,17 @@ DEMO_LOGIN = MappingProxyType({
 class Startup:
     """Runs the bot's startup with a recorded login and a recorded server start.
 
-    The login hands back ``client``, or raises it when it is an exception, and
-    the server start returns at once with the app it was given, so a test can
-    send requests to the very app the bot would serve. Each prints a marker
-    line, so pinned console output shows where the banners fall around them.
+    The login hands back ``client``, a ``broker()`` when none is given, or
+    raises it when it is an exception, and the server start returns at once
+    with the app it was given, so a test can send requests to the very app
+    the bot would serve. Each prints a marker line, so pinned console output
+    shows where the banners fall around them.
     """
 
     def __init__(self, monkeypatch, client=None):
+        # The startup reads the logged-in client's account, so a bare default
+        # would fail every run past the login.
+        client = broker() if client is None else client
         self.logins = []
         self.served = []
         self._monkeypatch = monkeypatch

@@ -435,7 +435,7 @@ alerts.
   `tradelocker` client at `debug`, which writes every request to the log
   whole: the password on every start, and the tokens that let anyone
   trade on the account. The bot now runs the client at `info`, which
-  logs none of them. A container started from an older image keeps them
+  logs no request. A container started from an older image keeps them
   in its log until you remove it with `docker rm`, which the
   [Updating](#updating) steps do. If such a log has left the host, in a
   log collector or a pasted support request, change the password.
