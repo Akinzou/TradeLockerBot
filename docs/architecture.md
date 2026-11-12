@@ -114,7 +114,8 @@ sequenceDiagram
     CR->>CR: print the greeting
     CR->>CR: int(acc_num), int(acc_id)
     CR->>TB: log_in(env, credentials, selectors)
-    TB-->>CR: TLAPI client (or the client's exception)
+    TB-->>CR: TLAPI client at log level info<br/>(or the client's exception)
+    CR->>CR: print Logged in: acc_id, acc_num
     CR->>CR: build_signal_handler(client, one Lock, SystemClock)
     CR->>WH: create_app(url, handler.handle)
     WH-->>CR: FastAPI app
@@ -378,7 +379,10 @@ design.
     exception stays a `BrokerFailure` (ADR 0021).
   - `log_in`, in the same module, logs in to the demo or live server, on the account that
     `--acc_num` or `--acc_id` names. It refuses both at once before sending
-    any credentials.
+    any credentials. It runs the client at `info` (`CLIENT_LOG_LEVEL`):
+    at its default, `debug`, the client logs each request whole, the
+    password and tokens included
+    ([ADR 0025](adr/0025-run-the-broker-client-at-info.md)).
 - `PrintingConsole` implements `OperatorConsole` as the legacy coloured
   stdout lines.
   - Its `rejected` prints one red line for an `InvalidSignal` or a
@@ -492,3 +496,4 @@ layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
 | [0022](adr/0022-pace-the-close-loop-on-a-clock.md) | Pace the close loop on a clock and say when a close takes a minute |
 | [0023](adr/0023-the-webhook-answer-acknowledges-receipt.md) | The webhook's answer acknowledges receipt, not the outcome |
 | [0024](adr/0024-read-the-password-from-a-file.md) | Read the password from a file |
+| [0025](adr/0025-run-the-broker-client-at-info.md) | Run the broker client at `info`, and name the account in the bot's own line |

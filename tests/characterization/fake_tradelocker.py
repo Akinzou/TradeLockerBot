@@ -63,6 +63,8 @@ class FakeTradeLocker:
         order_results=(9001,),
         close_requests_to_fill=1,
         failures=None,
+        account_id=76,
+        acc_num=1,
     ):
         """``order_results`` items are order ids to return or exceptions to raise.
 
@@ -75,6 +77,9 @@ class FakeTradeLocker:
         ``close_requests_to_fill``. A key the fake would never reach is
         refused, so a misspelt injection cannot pass as a tested failure.
         """
+        # The account the real client chose at login, under its attribute names.
+        self.account_id = account_id
+        self.acc_num = acc_num
         self._balance = balance
         self._instrument_ids = dict(instrument_ids)
         self._open_positions = list(open_positions)

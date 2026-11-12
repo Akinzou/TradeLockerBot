@@ -79,7 +79,8 @@ def order_rejection():
     return TLAPIOrderException({}, {"errmsg": "Not enough margin"})
 
 
-def broker(balance=1000.0, open_positions=(), order_results=(9001,), close_requests_to_fill=1, failures=None):
+def broker(balance=1000.0, open_positions=(), order_results=(9001,), close_requests_to_fill=1, failures=None,
+           **account):
     return FakeTradeLocker(
         balance=balance,
         instrument_ids={"XAUUSD": XAUUSD_ID, "EURUSD": EURUSD_ID},
@@ -87,6 +88,7 @@ def broker(balance=1000.0, open_positions=(), order_results=(9001,), close_reque
         order_results=order_results,
         close_requests_to_fill=close_requests_to_fill,
         failures=failures,
+        **account,
     )
 
 
@@ -153,22 +155,28 @@ SERVE = "[serve]"
 # variables; tests add the optional ones. Read-only, so no test can alter it
 # for the tests after it.
 DEMO = MappingProxyType({"username": "u", "password": "p", "server": "s", "env": "demo"})
-# The login the client receives for them.
-DEMO_LOGIN = MappingProxyType(
-    {"environment": "https://demo.tradelocker.com", "username": "u", "password": "p", "server": "s"}
-)
+# The login the client receives for them, at a level that keeps the requests
+# and the secrets in them out of the log (ADR 0025).
+DEMO_LOGIN = MappingProxyType({
+    "environment": "https://demo.tradelocker.com", "username": "u", "password": "p", "server": "s",
+    "log_level": "info",
+})
 
 
 class Startup:
     """Runs the bot's startup with a recorded login and a recorded server start.
 
-    The login hands back ``client``, or raises it when it is an exception, and
-    the server start returns at once with the app it was given, so a test can
-    send requests to the very app the bot would serve. Each prints a marker
-    line, so pinned console output shows where the banners fall around them.
+    The login hands back ``client``, a ``broker()`` when none is given, or
+    raises it when it is an exception, and the server start returns at once
+    with the app it was given, so a test can send requests to the very app
+    the bot would serve. Each prints a marker line, so pinned console output
+    shows where the banners fall around them.
     """
 
     def __init__(self, monkeypatch, client=None):
+        # The startup reads the logged-in client's account, so a bare default
+        # would fail every run past the login.
+        client = broker() if client is None else client
         self.logins = []
         self.served = []
         self._monkeypatch = monkeypatch
