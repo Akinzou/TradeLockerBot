@@ -7,7 +7,7 @@ separate, explicitly reviewed step (see docs/migration-roadmap.md).
 
 import pytest
 
-from tests.characterization.harness import DEFAULT_ORDER, EURUSD_ID, XAUUSD_ID
+from tests.characterization.harness import DEFAULT_ORDER, EURUSD_ID, PAUSE, XAUUSD_ID
 from tests.characterization.harness import broker as _broker
 from tests.characterization.harness import handle as _handle
 from tests.characterization.harness import order_rejection
@@ -108,13 +108,16 @@ def test_a_rejected_order_after_the_close_leaves_no_position_and_raises_nothing(
     assert len(broker.orders()) == 1
 
 
-def test_close_request_is_resent_on_every_poll_until_the_broker_fills_it():
+def test_a_close_is_requested_again_every_10_seconds_until_the_broker_fills_it():
+    # Before step 6j it was requested again on every poll, with no pause
+    # between polls (ADR 0022).
     broker = _broker(open_positions=[XAUUSD_ID], close_requests_to_fill=3)
 
     _handle(broker, _payload(action="close"))
 
     closes = [call for call in broker.calls if call[0] == "close_all_positions"]
     assert len(closes) == 3
+    assert broker.calls.count(PAUSE) == 20
     assert broker.open_positions == []
 
 

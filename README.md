@@ -56,6 +56,13 @@ flowchart LR
    - If the balance is missing, the size comes out as zero, or the
      instrument is unknown, the signal is logged and ignored before anything
      is closed.
+   - Closing waits until the broker lists no position on the instrument,
+     with no time limit. The bot checks about every two seconds and asks
+     the broker to close again every 10 seconds. If a position is still
+     open a minute after the first request, for example with the market
+     closed, the log shows one `Still closing:` line. Every later signal
+     waits until the close is done, then runs, in no set order. A check or
+     request that gets no answer ends the wait with the client's error.
    - If the broker answers the order without creating it, the bot does not
      send it again. The positions stay closed, and the log shows one
      `Order rejected:` line with the broker's reason and what the broker
@@ -75,6 +82,7 @@ flowchart TD
     E -- "found, open" --> F["Close the instrument's positions"] --> G["Place a market order, once"]
     G -- "rejected by the broker" --> R["Count the positions again,<br/>log an Order rejected line"]
     E -- "found, close" --> H["Close the instrument's positions"]
+    F & H -.- W["Until none is open: check about every 2 s,<br/>ask again every 10 s,<br/>a Still closing line after a minute"]
 ```
 
 For a component-level view, see [docs/architecture.md](docs/architecture.md).
@@ -299,6 +307,12 @@ alerts.
 > itself still resends a request whose connection failed, so an order can
 > fill before a resend is rejected; the line then reports the open
 > position.
+>
+> Since [ADR 0022](docs/adr/0022-pace-the-close-loop-on-a-clock.md), a
+> position that does not close at once is asked to close again every 10
+> seconds instead of every other second, so the log shows fewer
+> `Closing:` lines, and a close still open a minute after the first request
+> logs one red `Still closing:` line.
 
 ## Security
 
@@ -359,6 +373,7 @@ alerts.
 | `Signal rejected: the account balance is ...` | The broker reported no balance, a balance that is not a number, or one that is not above zero. Check the account in TradeLocker, then send the alert again. |
 | `Order rejected: the broker refused to buy XAUUSD (...); no XAUUSD position is open` | The broker answered the order without creating it, for the reason in brackets; margin, its minimum lot or a closed market are the likely causes. The positions on the instrument were closed first, and the broker lists none now. The bot does not send the order again; open the position by hand or wait for the next alert. |
 | `Order rejected: ...; the broker lists 1 open XAUUSD position, check it in TradeLocker` | The order was rejected, but a position is open on the instrument: an earlier attempt of the same order may have filled before the client resent it, or one was opened by hand. Check it in TradeLocker before you open another. With `the position count got no answer`, the bot could not count, and a traceback follows. |
+| `Still closing: the broker lists 1 open XAUUSD position 60 seconds after the first close request; ...` | The broker has not filled the close. A closed market, a weekend for example, is the likely cause. The bot keeps asking every 10 seconds, with no time limit, and every alert that arrives meanwhile waits. Once the position closes they all run, one at a time but in no set order, on alerts that may be old. If they should not, restart the container: that drops them, but the bot then stops asking, so an `open` that was closing never places its order. A plain stop waits for the close and needs Docker's timeout to kill the process. What the broker does with the close requests already sent was not observed: check the instrument in TradeLocker. If a check gets no answer, the wait ends with the client's error instead. |
 | Position closed but no new one opened, and no `Order rejected:` line | The order request got no answer, and the log shows the client's error. The order may still have been placed: check the account in TradeLocker. |
 | Bot does not start, login fails             | Wrong credentials or `env`. On images built before [ADR 0018](docs/adr/0018-read-the-settings-from-the-environment.md), also a password with spaces or shell characters (see [Configuration](#configuration)). |
 | Container keeps restarting, `docker logs` shows `the password environment variable is not set or is empty` | Set `password` with `-e` or in the `--env-file`. The bot does not read `--password`. |
@@ -409,7 +424,7 @@ both installs again, in this order.
   |---------------|---------------------------------------------------------------------|
   | `domain`      | trading rules                                                       |
   | `application` | the use case and its ports                                          |
-  | `adapters`    | the TradeLocker client and login, the webhook, the operator console |
+  | `adapters`    | the TradeLocker client and login, the webhook, the operator console, the system clock |
 - The image installs `requirements-lock.txt`: every runtime package at one
   version, verified by hash ([ADR 0007](docs/adr/0007-locked-runtime-dependencies.md)).
   After changing `requirements.txt`, or to take dependency updates,

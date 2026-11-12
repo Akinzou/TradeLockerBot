@@ -15,6 +15,7 @@ from tradelocker.exceptions import TLAPIOrderException
 
 import main_without_ssl as entrypoint
 from tests.characterization.fake_tradelocker import FakeTradeLocker
+from tests.fake_clock import FakeClock
 from tradelocker_bot import composition_root
 from tradelocker_bot.adapters import tradelocker_broker
 from tradelocker_bot.adapters.webhook_path import random_webhook_path
@@ -49,6 +50,10 @@ LOOKUP = ("get_all_instruments",)
 POSITIONS = ("get_all_positions",)
 CLOSE = ("close_all_positions", XAUUSD_ID)
 ORDER = ("create_order", XAUUSD_ID, DEFAULT_ORDER)
+
+# A pause the bot takes while a position is still open, recorded among the
+# broker calls so a pin shows where each one falls (ADR 0022).
+PAUSE = ("sleep", 1.0)
 
 LOCK_ACQUIRED = "[lock acquired]"
 LOCK_RELEASED = "[lock released]"
@@ -131,7 +136,8 @@ class RecordingLock:
 def handle(fake, lines, lock=None):
     # The wiring the bot serves, not one assembled here: built around the given
     # client and lock, so the lock tests see the production lock handling.
-    handler = composition_root.build_signal_handler(fake, lock if lock is not None else threading.Lock())
+    lock = lock if lock is not None else threading.Lock()
+    handler = composition_root.build_signal_handler(fake, lock, FakeClock(fake.calls.append))
     handler.handle(lines)
 
 

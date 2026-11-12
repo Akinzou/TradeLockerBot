@@ -51,8 +51,9 @@ class Broker(Protocol):
     def open_position_count(self, instrument_id: int) -> Result[int, BrokerFailure]:
         """How many position rows the broker lists for the instrument.
 
-        Provisional (ADR 0005): together with ``request_close`` it mirrors the
-        legacy one-request-per-row close loop, which roadmap step 6 replaces.
+        The use case still asks for one close per row, as legacy did, though
+        one request names the whole instrument: whether the broker closes
+        every row on one request is not known (ADR 0022).
         """
 
     def request_close(self, instrument_id: int) -> Result[None, BrokerFailure]:
@@ -63,6 +64,17 @@ class Broker(Protocol):
     ) -> Result[int, BrokerFailure | OrderRejected]:
         """The id of the order the broker created, or ``Err(OrderRejected)``
         when it answered without creating one (ADR 0021)."""
+
+
+class Clock(Protocol):
+    """The time the close loop paces itself by (ADR 0022)."""
+
+    def now(self) -> float:
+        """Seconds on a clock that never goes back; only a difference
+        between two readings means anything."""
+
+    def sleep(self, seconds: float) -> None:
+        ...
 
 
 class OperatorConsole(Protocol):
@@ -78,6 +90,10 @@ class OperatorConsole(Protocol):
     def order_rejected(self, symbol: str, side: Side, reason: str | None, open_positions: int | None) -> None:
         """The broker's rejection and the positions it lists on the symbol
         afterwards; ``None`` when that count got no answer (ADR 0021)."""
+
+    def still_closing(self, symbol: str, open_positions: int, seconds: float) -> None:
+        """The positions still open ``seconds`` after the first close request
+        (ADR 0022)."""
 
     def unlocked(self) -> None:
         ...

@@ -72,6 +72,14 @@ the broker reports none. A port shaped around the defect keeps this step
 behaviour-neutral; the fix (roadmap step 6) may replace the pair with a single
 close-and-confirm operation.
 
+*Update:* since step 6j
+([ADR 0022](0022-pace-the-close-loop-on-a-clock.md)), the loop pauses a
+second between counts, on a new `Clock` port, and asks again only every 10
+seconds. The pair stays: the use case paces the loop, so the broker port
+stays a plain request and a plain count. One request per row is kept,
+because whether the broker closes every row on one request was not
+observed.
+
 ### Ordering kept from the legacy handler
 
 1. The inbound side, still in `main_without_ssl.py`, reads the payload fields

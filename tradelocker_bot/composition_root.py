@@ -15,6 +15,7 @@ import uvicorn
 from tradelocker_bot.adapters import ascii_alerts
 from tradelocker_bot.adapters.console import PrintingConsole
 from tradelocker_bot.adapters.signal_handler import SignalHandler
+from tradelocker_bot.adapters.system_clock import SystemClock
 from tradelocker_bot.adapters.tradelocker_broker import TradeLockerBroker, log_in
 from tradelocker_bot.adapters.server_log import server_log_config
 from tradelocker_bot.adapters.webhook import create_app
@@ -124,15 +125,17 @@ def parse_args(argv=None, env=None):
     return args
 
 
-def build_signal_handler(client, lock) -> SignalHandler:
+def build_signal_handler(client, lock, clock) -> SignalHandler:
     """The handler for every webhook request, over one logged-in client.
 
     Built once rather than per request, as legacy did: the console, the
     broker adapter and the use case hold nothing but their collaborators, so
-    sharing them changes no call and no line.
+    sharing them changes no call and no line. The clock is an argument
+    without a default, so a test cannot get the real one, and its pauses, by
+    leaving it out.
     """
     console = PrintingConsole()
-    return SignalHandler(ExecuteSignal(TradeLockerBroker(client), console), console, lock)
+    return SignalHandler(ExecuteSignal(TradeLockerBroker(client), console, clock), console, lock)
 
 
 def main():
@@ -149,6 +152,6 @@ def main():
 
     # One lock for the whole process: every request's signal runs inside it,
     # so two alerts never interleave between closing and ordering.
-    app = create_app(args.url, build_signal_handler(client, threading.Lock()).handle)
+    app = create_app(args.url, build_signal_handler(client, threading.Lock(), SystemClock()).handle)
 
     uvicorn.run(app, host="0.0.0.0", port=args.port, log_config=server_log_config())

@@ -24,7 +24,7 @@ describes the code as it is on `master`.
 |-------------------|------------------------------------|-------------------------------------------------|----------------------------------------------------------------|
 | Domain            | `tradelocker_bot.domain`           | standard library                                | Trading rules as plain values and functions, with no I/O       |
 | Application       | `tradelocker_bot.application`      | domain                                          | Use cases and the ports they need                              |
-| Adapters          | `tradelocker_bot.adapters`         | application, domain, third-party clients        | TradeLocker client and login, operator console, HTTP webhook, signal handler |
+| Adapters          | `tradelocker_bot.adapters`         | application, domain, third-party clients        | TradeLocker client and login, operator console, system clock, HTTP webhook, signal handler |
 | Composition root  | `tradelocker_bot.composition_root` | everything above                                | Start settings, banners, wiring, the lock, the server start    |
 | Entrypoint        | `main_without_ssl.py`              | the composition root                            | The container's command; calls `main()` and nothing else       |
 
@@ -42,12 +42,13 @@ flowchart TB
         SH[signal_handler<br/>SignalHandler]
         TLB[tradelocker_broker<br/>TradeLockerBroker, log_in]
         PC[console<br/>PrintingConsole]
+        SC[system_clock<br/>SystemClock]
         AA[ascii_alerts<br/>colours, banners]
         WP[webhook_path<br/>random_webhook_path]
     end
     subgraph application [tradelocker_bot.application]
         ES[ExecuteSignal]
-        PORTS[ports: Broker, OperatorConsole,<br/>BrokerFailure, OrderRejected]
+        PORTS[ports: Broker, OperatorConsole, Clock,<br/>BrokerFailure, OrderRejected]
         REF[refusal: NoBalance, UnknownSymbol]
     end
     subgraph domain [tradelocker_bot.domain]
@@ -56,7 +57,7 @@ flowchart TB
         RES[result: Ok, Err]
     end
     EP --> CR
-    CR --> WH & SL & SH & TLB & PC & AA & WP & ES
+    CR --> WH & SL & SH & TLB & PC & SC & AA & WP & ES
     SH --> PC & ES & PORTS & RES & SIG
     TLB --> PORTS & RES & SIG
     PC --> AA & REF & LS & SIG
@@ -69,6 +70,7 @@ flowchart TB
     CR --> UVICORN[(uvicorn)]
     SL --> UVICORN
     TLB --> CLIENT[(tradelocker client)]
+    SC --> TIME[(time: monotonic, sleep)]
 ```
 
 Dependencies point inwards only. `tests/test_layer_dependencies.py` enforces
@@ -110,7 +112,7 @@ sequenceDiagram
     CR->>CR: int(acc_num), int(acc_id)
     CR->>TB: log_in(env, credentials, selectors)
     TB-->>CR: TLAPI client (or the client's exception)
-    CR->>CR: build_signal_handler(client, one Lock)
+    CR->>CR: build_signal_handler(client, one Lock, SystemClock)
     CR->>WH: create_app(url, handler.handle)
     WH-->>CR: FastAPI app
     CR->>SL: server_log_config()
@@ -140,6 +142,7 @@ flowchart LR
     UC -- "Broker port" --> TLB[TradeLockerBroker<br/>adapter]
     TLB -- "HTTPS" --> API[(TradeLocker API)]
     UC -- "OperatorConsole port" --> CON
+    UC -- "Clock port: now, sleep" --> CLK[SystemClock<br/>adapter]
     UC -- "Err(Refusal)" --> CON
     UC -- "Err(BrokerFailure)" --> RAISE[re-raised in the thread]
 ```
@@ -167,6 +170,7 @@ sequenceDiagram
     participant UC as ExecuteSignal
     participant B as Broker (TradeLockerBroker)
     participant C as OperatorConsole
+    participant K as Clock
     H->>H: parse_signal(lines) = OpenSignal
     H->>H: acquire lock
     H->>UC: execute(signal)
@@ -176,12 +180,26 @@ sequenceDiagram
     UC->>B: instrument_id("XAUUSD")
     B-->>UC: Ok(101)
     UC->>C: locked()
-    loop until the broker lists no position on 101
-        UC->>B: open_position_count(101)
-        B-->>UC: Ok(n)
+    UC->>B: open_position_count(101)
+    B-->>UC: Ok(n)
+    opt n > 0
         loop n times
             UC->>B: request_close(101)
             UC->>C: closing("XAUUSD")
+        end
+        UC->>K: now()
+        loop until the broker lists no position on 101
+            UC->>B: open_position_count(101), at once
+            B-->>UC: Ok(n)
+            opt a minute since the first requests, once
+                UC->>C: still_closing("XAUUSD", n, seconds)
+            end
+            alt 10 s on the clock since the last requests went out
+                UC->>B: request_close(101), n times, with closing("XAUUSD")
+                UC->>K: now()
+            else
+                UC->>K: sleep(1)
+            end
         end
     end
     UC->>B: place_market_order(101, 0.1, side, sl, tp), once
@@ -203,8 +221,16 @@ sequenceDiagram
 
 Steps 4 to 8 can end the signal early (ADR 0009). No balance, an unusable
 quantity or an unknown symbol is a `Refusal`. A call that fails is a
-`BrokerFailure`. Either way nothing has been closed yet. The close loop
-still has no delay or limit; the roadmap lists it as a defect for step 6.
+`BrokerFailure`. Either way nothing has been closed yet.
+
+The close has no time limit. After a request the positions are counted
+again at once, since a close usually fills by then. While one stays open,
+the use case pauses a second between counts, on top of the second the
+client waits before every request, and asks again only once 10 seconds
+have passed on the `Clock`. A minute after the first request it prints one
+red `Still closing:` line. A count or request that gets no answer still
+ends the loop as a `BrokerFailure`
+([ADR 0022](adr/0022-pace-the-close-loop-on-a-clock.md)).
 
 The order is placed once. If the broker answers without creating it, the
 positions are already closed. The use case counts them again, since a
@@ -223,6 +249,7 @@ sequenceDiagram
     participant UC as ExecuteSignal
     participant B as Broker
     participant C as OperatorConsole
+    participant K as Clock
     H->>H: parse_signal(lines) = CloseSignal
     H->>H: acquire lock
     H->>UC: execute(signal)
@@ -231,8 +258,9 @@ sequenceDiagram
     UC->>C: locked()
     loop until the broker lists no position on 101
         UC->>B: open_position_count(101)
-        UC->>B: request_close(101), once per row
-        UC->>C: closing("XAUUSD")
+        UC->>B: request_close(101), once per row, every 10 s
+        UC->>C: closing("XAUUSD"), once per request
+        UC->>K: sleep(1) before a count that follows no request
     end
     UC->>C: unlocked()
     UC-->>H: Ok(None)
@@ -251,6 +279,7 @@ stateDiagram-v2
     Locked --> Refused: no balance, unusable quantity, unknown symbol
     Locked --> Failed: broker call failed before any close
     Locked --> Working: checks passed, Normal Locked line
+    Working --> Working: position still open, Still closing line once after a minute
     Working --> Failed: broker call failed while closing or ordering
     Working --> OrderRejected: broker answered the order without creating it
     Working --> Handled: Normal Unlocked line
@@ -301,7 +330,10 @@ design.
     instrument. Only then does it close the instrument's positions and place
     a market order.
   - The instrument is looked up once.
-  - The legacy close loop is kept. The roadmap lists it as a defect.
+  - The close waits, with no time limit, until the broker lists no
+    position. It counts again at once after a request, then a second
+    apart, asks again every 10 seconds on the `Clock`, and reports a close
+    still open a minute after the first request once (ADR 0022).
   - The order is placed once (ADR 0021).
 - `execute` returns `Ok(None)`, a `Refusal`, an `OrderRejected` or the
   first `BrokerFailure`.
@@ -314,7 +346,9 @@ design.
     (ADR 0021).
   - A `BrokerFailure` means a broker call did not answer. It holds the
     client's own exception (ADR 0006).
-- `Broker` and `OperatorConsole` are its ports, one per process boundary.
+- `Broker`, `OperatorConsole` and `Clock` are its ports, one per process
+  boundary. `Clock` gives `now()`, seconds that never go back, and
+  `sleep(seconds)`.
   - `Broker.account_balance` returns `Ok(None)` when the answer holds no
     number.
   - `Broker.instrument_id` returns `Ok(None)` for a name the broker does not
@@ -345,6 +379,12 @@ design.
     characters.
   - Its `order_rejected` prints one red line for an `OrderRejected`, with
     the broker's reason escaped the same way and cut after 160 characters.
+  - Its `still_closing` prints one red line with the open positions, the
+    whole seconds since the first close request, and that later signals
+    wait.
+- `SystemClock` implements `Clock` over `time.monotonic` and `time.sleep`.
+  The monotonic clock, because the wall clock can step after an NTP
+  correction or a manual change (ADR 0022).
 - `create_app` (`webhook`) is the inbound HTTP adapter. It serves the
   webhook path, splits the body into lines and starts one thread per
   request. It serves nothing else: no OpenAPI schema and no docs pages,
@@ -393,9 +433,11 @@ layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
   ([ADR 0014](adr/0014-require-a-leading-slash.md),
   [ADR 0015](adr/0015-refuse-braces-in-the-webhook-path.md),
   [ADR 0020](adr/0020-refuse-query-fragment-and-escape-characters-in-the-webhook-path.md)).
-- `build_signal_handler(client, lock)` builds the console, the broker adapter, the
-  use case and the handler once, at startup. The characterization tests
-  build theirs through the same function.
+- `build_signal_handler(client, lock, clock)` builds the console, the
+  broker adapter, the use case and the handler once, at startup. The
+  characterization tests build theirs through the same function, with a
+  fake clock that records each pause; the clock has no default, so none
+  can get the real one by leaving it out.
 - `main_without_ssl.py` imports `main` and calls it, and does nothing else.
 
 ## Decisions
@@ -423,3 +465,4 @@ layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
 | [0019](adr/0019-pin-the-base-image-by-digest.md) | Pin the base image by digest |
 | [0020](adr/0020-refuse-query-fragment-and-escape-characters-in-the-webhook-path.md) | Refuse `?`, `#` and `%` in the webhook path |
 | [0021](adr/0021-report-a-rejected-order-and-place-it-once.md) | Report a rejected order in one line and place it once |
+| [0022](adr/0022-pace-the-close-loop-on-a-clock.md) | Pace the close loop on a clock and say when a close takes a minute |
