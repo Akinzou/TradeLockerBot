@@ -365,7 +365,7 @@ flowchart LR
     W --> TH["The notifier's own thread,<br/>one message at a time"]
     TH --> TRY{Sent?}
     TRY -- yes --> CHAT["Telegram chat<br/>(a minute or more late:<br/>says how late)"]
-    TRY -- "no, and it may pass" --> WAIT["Wait 2 s, then 10 s,<br/>or as long as Telegram asks"] --> TRY
+    TRY -- "no, and it may pass" --> WAIT["Wait 2 s, then 10 s,<br/>or as long as Telegram asks,<br/>up to 10 minutes"] --> TRY
     TRY -- "refused, or 3 tries failed" --> RED[A not sent line in the log]
     STOP[The bot stops] --> SW["The queue gets up to 5 s,<br/>at least 2"] --> SR["A line with how many<br/>were not sent; no new try"]
 ```
@@ -676,13 +676,13 @@ run on `master` publishes the image.
 
 ```mermaid
 flowchart LR
-    PR[Pull request,<br/>or push to master] --> T & S & D
+    PR["Pull request, push to master,<br/>or a manual run"] --> T & S & D
     T["tests, on 3.11 and 3.12<br/>lock checks, flake8,<br/>pytest, coverage of 99% or more"]
     S["semgrep<br/>ERROR findings block,<br/>the rest go to the summary"]
     D["docker-build<br/>build, start without a network,<br/>packages and Python against the lock"]
     T & S & D --> OK{ci-ok}
     OK -- "pull request, all green" --> M[Ready to merge]
-    OK -- "push to master, all green" --> P["Docker Image CI<br/>publishes the validated commit<br/>to ghcr.io"]
+    OK -- "on master, pushed or run by hand,<br/>all green" --> P["Docker Image CI<br/>publishes the validated commit<br/>to ghcr.io"]
 ```
 
 ### Code layout
@@ -709,6 +709,7 @@ flowchart TB
     EP[main_without_ssl.py] --> CR["composition_root<br/>reads the settings,<br/>wires everything"]
     CR --> AD["adapters<br/>TradeLocker, webhook, console,<br/>clock, Telegram"]
     CR --> APP
+    CR --> DOM
     AD --> APP["application<br/>ExecuteSignal and its ports"]
     AD --> DOM
     APP --> DOM["domain<br/>signal, lot sizing, Result"]

@@ -46,9 +46,9 @@ jobs:
         run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
       - name: Test
         run: python -m coverage run -m pytest
-      # Fails the leg below pyproject.toml's fail_under, the number the
-      # README's badge states (ADR 0030). The table goes to the run's summary,
-      # so a pull request shows which lines its tests left out.
+      # A step of the tests job, not a job of its own: ci-ok and the publish
+      # workflow name the jobs. The summary's report may fail without effect;
+      # the second report is the gate the README's badge relies on (ADR 0030).
       - name: Coverage
         run: |
           python -m coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY" || true

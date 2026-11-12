@@ -60,8 +60,14 @@ flowchart LR
 `tests/test_coverage_badge.py`, written before the change and failing on
 both tests:
 
-- the badge on the title line states `fail_under`;
-- the workflow runs `coverage run` and `coverage report`.
+- the badge on the title line states `fail_under`, whole or with
+  decimals;
+- the `tests` job runs `coverage run`, then `coverage report` on a line of
+  its own, and no step of it has `continue-on-error`.
+
+Mutations, each killed: a floor of 98, a badge of 100%, the enforcing
+report removed, `coverage run` replaced by plain pytest, and
+`continue-on-error` on the coverage step.
 
 ## What this does not cover
 
