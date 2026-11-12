@@ -38,9 +38,10 @@ def create_app(path: str, handle: Callable[[list[str]], None]) -> FastAPI:
         # A thread per request, started before the answer: the lock inside
         # `handle` queues signals, so the sender is never kept waiting on one,
         # and TradingView cancels a request not answered within 3 seconds.
-        # Started last, so nothing can fail the request once a signal is on
+        # Started last, so nothing here fails the request once a signal is on
         # its way: TradingView sends the alert again after a 5xx (504 aside),
-        # and a second send would run the signal twice (ADR 0023).
+        # and a second send would run the signal twice. A proxy in front can
+        # still answer 502 or 503 afterwards (ADR 0023).
         threading.Thread(target=handle, args=(lines,)).start()
 
     return app

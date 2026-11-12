@@ -398,8 +398,9 @@ design.
   one slash away answers `404`, because the redirect pointed senders at
   plain `http://` ([ADR 0013](adr/0013-no-trailing-slash-redirect.md)).
   It answers `200` once the thread has started, without waiting for it,
-  and starts the thread last, so no `5xx`, which TradingView would send
-  again, follows a signal on its way ([ADR 0023](adr/0023-the-webhook-answer-acknowledges-receipt.md)).
+  and starts the thread last, so the bot answers no `5xx`, which
+  TradingView would send again, once a signal is on its way
+  ([ADR 0023](adr/0023-the-webhook-answer-acknowledges-receipt.md)).
 - `server_log_config` (`server_log`) is uvicorn's default log settings with
   an access line that keeps the client and the status but not the request
   line, which holds the secret path. Only the documented `fmt` changes, so

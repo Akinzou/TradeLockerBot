@@ -378,6 +378,7 @@ alerts.
 | `Order rejected: the broker refused to buy XAUUSD (...); no XAUUSD position is open` | The broker answered the order without creating it, for the reason in brackets; margin, its minimum lot or a closed market are the likely causes. The positions on the instrument were closed first, and the broker lists none now. The bot does not send the order again; open the position by hand or wait for the next alert. |
 | `Order rejected: ...; the broker lists 1 open XAUUSD position, check it in TradeLocker` | The order was rejected, but a position is open on the instrument: an earlier attempt of the same order may have filled before the client resent it, or one was opened by hand. Check it in TradeLocker before you open another. With `the position count got no answer`, the bot could not count, and a traceback follows. |
 | `Still closing: the broker lists 1 open XAUUSD position 60 seconds after the first close request; ...` | The broker has not filled the close. A closed market, a weekend for example, is the likely cause. The bot keeps asking every 10 seconds, with no time limit, and every alert that arrives meanwhile waits. Once the position closes they all run, one at a time but in no set order, on alerts that may be old. If they should not, restart the container: that drops them, but the bot then stops asking, so an `open` that was closing never places its order. A plain stop waits for the close and needs Docker's timeout to kill the process. What the broker does with the close requests already sent was not observed: check the instrument in TradeLocker. If a check gets no answer, the wait ends with the client's error instead. |
+| One alert traded more than once | TradingView sends an alert again, up to three times, after a `5xx` other than `504`. The bot answers `5xx` only when it started nothing, but a reverse proxy in front of it can answer `502` or `503` after passing the alert on, for example when its connection to the bot drops. Check the proxy's error log and TradingView's alert log for those times ([ADR 0023](docs/adr/0023-the-webhook-answer-acknowledges-receipt.md)). |
 | Position closed but no new one opened, and no `Order rejected:` line | The order request got no answer, and the log shows the client's error. The order may still have been placed: check the account in TradeLocker. |
 | Bot does not start, login fails             | Wrong credentials or `env`. On images built before [ADR 0018](docs/adr/0018-read-the-settings-from-the-environment.md), also a password with spaces or shell characters (see [Configuration](#configuration)). |
 | Container keeps restarting, `docker logs` shows `the password environment variable is not set or is empty` | Set `password` with `-e` or in the `--env-file`. The bot does not read `--password`. |
@@ -389,8 +390,9 @@ alerts.
 | Container keeps restarting, `docker logs` shows `argument --url: must not contain ?, # or %` | `url` has a `?`, `#` or `%`. Remove it, or make a new path with the command in [Quick start](#quick-start). Alerts must then use the new path. |
 | Error about account number and ID at start  | Both `acc_id` and `acc_num` are set; keep only one.                                            |
 
-Known defects and their planned fixes, and those kept by decision, are
-listed in the [migration roadmap](docs/migration-roadmap.md#known-defects).
+Known defects and their planned fixes are listed in the
+[migration roadmap](docs/migration-roadmap.md#known-defects), and those kept
+by decision [after them](docs/migration-roadmap.md#kept-by-decision).
 
 ## Development
 

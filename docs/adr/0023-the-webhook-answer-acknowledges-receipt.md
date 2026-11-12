@@ -40,7 +40,8 @@ against this bot.
 
 **Handling.** The `tradelocker` client (0.56.2) waits one second before
 every request ([ADR 0022](0022-pace-the-close-loop-on-a-clock.md)), and
-keeps the instrument list for a day, so the lookup is usually free.
+keeps the instrument list in memory after the first lookup, so later
+lookups send nothing.
 
 - An `open` sends at least three requests: balance, count, order. It sends
   five when it replaces a position: balance, count, close, count, order.
@@ -106,8 +107,9 @@ Why this answer and not a later one:
   failure is sent again three times. A failure can come after the close or
   after an order that may exist, so each send would close and order again.
 - **The thread is started last.** Once a signal is on its way, nothing in
-  the route can fail the request, so a `5xx` is only ever an answer to a
-  request that started nothing. The `500` for a body that is not UTF-8 is
+  the route can fail the request, so a `5xx` from the bot is only ever an
+  answer to a request that started nothing. A proxy in front of the bot
+  is another matter; see below. The `500` for a body that is not UTF-8 is
   then harmless: each of the up to four sends gets `500` and runs nothing.
   The order is held by the decision comment in `create_app`. No test pins
   it, since a route that started the thread earlier and then failed would
@@ -123,12 +125,14 @@ rather than a fix, and these change with it:
 - A new pin, `test_the_answer_is_the_same_whatever_the_signal_comes_to`,
   posts four signals through the route: a rejected payload, an unknown
   symbol, a rejected order and a trade. Each gets the same `200` and
-  `null`, and the log ends with that signal's line. It passed when
+  `null`, and the log ends with that signal's lines: the rejection, the
+  refusal, `Order rejected:` then `Normal: Unlocked`, or
+  `Order placed successfully` then `Normal: Unlocked`. It passed when
   written, as a pin of unchanged behaviour should.
 - **Mutations.** Each fails at least one route test:
   - answering `422` for a payload the bot rejects;
   - joining the handler's thread before answering.
-- ADR 0008, 0010 and 0021, the roadmap, `docs/architecture.md` and the
+- ADR 0008, 0009, 0010 and 0021, the roadmap, `docs/architecture.md` and the
   README no longer call the answer a defect step 6 will change.
 
 ## What this does not cover
@@ -140,6 +144,12 @@ rather than a fix, and these change with it:
 - **A sender that sends one alert twice.** The bot has no way to tell, so
   it would run both. TradingView's help names resends only after a `5xx`,
   and the bot answers `5xx` only when it started nothing.
+- **A reverse proxy's own `5xx`.** The README advises a TLS proxy in front
+  of the bot. A proxy that loses the connection to the bot, or times out,
+  after the bot has started the thread can answer `502` or `503`, and
+  TradingView would then send the alert again: up to four runs of one
+  signal. A `504` is not sent again. Not observed; the README tells the
+  operator what to look for.
 - **Other senders.** The bot handles any `POST` to its path. Another
   sender may time out sooner or resend after other answers.
 - **What the "Webhook status" column shows** for a `200` or a `500`. Not

@@ -113,19 +113,20 @@ def test_an_empty_body_is_rejected_as_a_missing_symbol(monkeypatch, capsys):
 
 
 @pytest.mark.parametrize(
-    ("outcome", "broker_options", "lines", "last_line"),
+    ("broker_options", "lines", "last_lines"),
     [
-        ("payload rejected", {}, payload(direction="long"),
-         "Signal rejected: line 2 (direction) is 'long', expected buy or sell"),
-        ("refused once the broker answered", {}, payload(symbol="GBPUSD"),
-         "Signal rejected: line 1 (symbol) is 'GBPUSD', expected an instrument the broker lists"),
-        ("order rejected", {"order_results": (order_rejection(),)}, payload(), "Normal: Unlocked"),
-        ("handled", {}, payload(), "Normal: Unlocked"),
+        pytest.param({}, payload(direction="long"),
+                     ["Signal rejected: line 2 (direction) is 'long', expected buy or sell"], id="payload rejected"),
+        pytest.param({}, payload(symbol="GBPUSD"),
+                     ["Signal rejected: line 1 (symbol) is 'GBPUSD', expected an instrument the broker lists"],
+                     id="refused once the broker answered"),
+        pytest.param({"order_results": (order_rejection(),)}, payload(),
+                     ["Order rejected: the broker refused to buy XAUUSD ('Not enough margin'); "
+                      "no XAUUSD position is open", "Normal: Unlocked"], id="order rejected"),
+        pytest.param({}, payload(), ["Order placed successfully, order ID: 9001", "Normal: Unlocked"], id="handled"),
     ],
 )
-def test_the_answer_is_the_same_whatever_the_signal_comes_to(
-    monkeypatch, capsys, outcome, broker_options, lines, last_line
-):
+def test_the_answer_is_the_same_whatever_the_signal_comes_to(monkeypatch, capsys, broker_options, lines, last_lines):
     # The answer acknowledges receipt, not the outcome (ADR 0023): a payload
     # the bot rejects gets the same 200 as a trade, so the operator reads the
     # outcome in the log. A broker failure answers 200 as well, in
@@ -136,8 +137,8 @@ def test_the_answer_is_the_same_whatever_the_signal_comes_to(
     response, threads = post(app, "/strategy", "\n".join(lines).encode())
     finish(threads)
 
-    assert (response.status_code, response.content) == (200, b"null"), outcome
-    assert console_lines(capsys)[-1] == last_line, outcome
+    assert (response.status_code, response.content) == (200, b"null")
+    assert console_lines(capsys)[-len(last_lines):] == last_lines
 
 
 def test_a_body_that_is_not_utf8_fails_the_request_and_starts_no_thread(monkeypatch, capsys):

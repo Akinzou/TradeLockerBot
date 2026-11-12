@@ -78,6 +78,10 @@ Structure steps must keep `tests/characterization/` green with **unchanged
 assertions**. Only the seam may move, meaning the module the tests import
 or patch, and the pull request must call it out.
 
+Decision steps change no behaviour either: they keep every assertion, may
+add pins of what stays, and record in an ADR why a known defect is kept
+rather than fixed.
+
 ## Frozen contract
 
 These stay unchanged until an ADR changes them:
@@ -115,6 +119,7 @@ that says why.
   `test_the_answer_is_the_same_whatever_the_signal_comes_to` and
   `test_a_broker_failure_ends_the_handler_thread_with_the_clients_exception`
   ([ADR 0023](adr/0023-the-webhook-answer-acknowledges-receipt.md)).
+
 ## Fixed defects
 
 - **A close that did not fill was requested again every other second,
