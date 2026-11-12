@@ -33,6 +33,7 @@ migration pull request.
 | 6d | Refuse a `url` without a leading `/` at startup, with exit status `2` and a message that leaves the value out ([ADR 0014](adr/0014-require-a-leading-slash.md)). Pin replaced: such a value stops the bot before any output, the login and the server | behaviour | done |
 | 6e | Refuse a `url` with `{` or `}` at startup, with exit status `2` and a message that leaves the value out, so an accepted `url` is one path, not a pattern ([ADR 0015](adr/0015-refuse-braces-in-the-webhook-path.md)). Pins replaced: patterns, broken patterns and literal braces stop the bot before any output, the login and the server; a path set by hand handles no other path | behaviour | done |
 | 6f | Write each request's access line without the request line, keeping the client and the status, so the log never holds the webhook path ([ADR 0016](adr/0016-hide-the-request-line-in-the-access-log.md)). New pin against a real uvicorn server: a hit, a query string, a near miss, a `GET` and a `500` each leave one line with the exact status, and no output names the path | behaviour | done |
+| 6g | Start the image with no shell and no arguments, and read the settings from the environment; the password only from there, `--password` refused without its value ([ADR 0018](adr/0018-read-the-settings-from-the-environment.md)). Pins replaced: the startup pins set the image's variables, the usage line drops `--password`; new pins on verbatim credentials, the option winning over its variable, a missing or empty password, and the image's `CMD` | behaviour | done |
 | 6  | Remaining behaviour changes from the defect list below, one pull request and one ADR each                                                                   | behaviour | next                                 |
 
 ```mermaid
@@ -52,13 +53,14 @@ flowchart LR
     S6c --> S6d[6d leading slash]
     S6d --> S6e[6e no braces]
     S6e --> S6f[6f access log]
-    S6f --> S6[6 remaining defects]
+    S6f --> S6g[6g settings from the environment]
+    S6g --> S6[6 remaining defects]
     S2af -.-> S2g[2g base image digest]
     S2af --> S2h[2h patched client pins]
     classDef done fill:#d4edda,stroke:#28a745,color:#155724
     classDef next fill:#fff3cd,stroke:#d39e00,color:#856404
     classDef todo fill:#f8f9fa,stroke:#6c757d,color:#383d41
-    class S1,S1abc,S2,S2af,S2h,S4,S4b,S3,S3b,S5a,S5,S6a,S6b,S6c,S6d,S6e,S6f done
+    class S1,S1abc,S2,S2af,S2h,S4,S4b,S3,S3b,S5a,S5,S6a,S6b,S6c,S6d,S6e,S6f,S6g done
     class S6 next
     class S2g todo
 ```
@@ -94,11 +96,20 @@ Fixed in behaviour steps, never during restructuring.
 | A rejected order raises inside the background handler *after* the existing position was closed, leaving the account flat; the `while not order_id` retry loop never runs because the client raises rather than returning an empty id | `test_broker_rejection_propagates_after_existing_position_was_closed`, `test_raising_path_call_sequence` |
 | Closing polls in a tight loop with no delay or limit, re-sending a close request on every poll until the broker fills it, while holding the global lock | `test_close_request_is_resent_on_every_poll_until_the_broker_fills_it` |
 | The webhook returns 200 before the signal is handled; a rejected or refused signal or a broker failure is reported only in the bot's log, and the caller never learns | `test_the_answer_is_200_with_a_null_body_before_the_signal_is_handled`, `test_a_broker_failure_ends_the_handler_thread_with_the_clients_exception`, `test_rejected_signals.py` |
-| The account password is passed as a command-line argument, so it shows up in the process list                                                                      | `test_startup_greets_logs_in_and_serves_on_every_interface_at_port_443` (the argv the startup reads)                                                 |
-| The image's start command expands the credentials unquoted in `sh -c`, so a password with spaces or shell characters is split or glob-expanded and the login fails | not pinned (startup wiring) |
 
 ## Fixed defects
 
+- **The password and the webhook path were in the command line, through
+  an unquoted shell** (step 6g). The image ran `sh -c` over every setting,
+  so `ps` on the host showed the password, the username and the webhook
+  path. The shell also split and globbed each value, so a password with a
+  space, `*`, `?` or `[` stopped the bot or changed what the login was
+  sent. The image now runs `python main_without_ssl.py` with no shell and
+  no arguments, the bot reads its settings from the environment, and
+  `--password` is refused without its value. Images built before step 6g
+  still pass every setting through the shell; there, use a password
+  without those characters
+  ([ADR 0018](adr/0018-read-the-settings-from-the-environment.md)).
 - **The image shipped PyJWT, requests and python-dotenv at versions with
   published advisories** (step 2h). The `tradelocker` client pins
   `PyJWT==2.8.0`, `requests==2.32.2` and `python-dotenv==1.0.0`, which
@@ -176,7 +187,8 @@ Fixed in behaviour steps, never during restructuring.
   own uvicorn options on a real server, to pin what it writes per request.
 - The `if __name__ == "__main__"` guard in `main_without_ssl.py`. The tests
   call its `main`; CI's image smoke run (`main_without_ssl.py --help`) runs
-  the script itself.
+  the script itself, and two CI steps run the image's own start command
+  ([ADR 0018](adr/0018-read-the-settings-from-the-environment.md)).
 - A login against the real broker with the PyJWT and requests versions the
   lock overrides (step 2h). The client's PyJWT call was run on a hand-made
   token, and its requests call only against a closed port, so no answer

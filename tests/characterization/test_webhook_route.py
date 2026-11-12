@@ -165,7 +165,7 @@ def test_a_path_set_with_a_trailing_slash_is_served_only_with_it(monkeypatch):
     # The same redirect ran the other way: a request without the slash was
     # sent on to the path with it.
     fake = broker()
-    app = serve(monkeypatch, fake, "--url", "/hook/")
+    app = serve(monkeypatch, fake, url="/hook/")
 
     without, no_threads = post(app, "/hook", SIGNAL)
     exact, threads = post(app, "/hook/", SIGNAL)
@@ -181,7 +181,7 @@ def test_a_path_set_by_hand_handles_no_other_path(monkeypatch, other_path):
     # ADR 0015: with braces refused, the route is one path, not a pattern, so
     # a path under it, next to it or the default opens no trade.
     fake = broker()
-    app = serve(monkeypatch, fake, "--url", "/hook")
+    app = serve(monkeypatch, fake, url="/hook")
 
     response, threads = post(app, other_path, SIGNAL)
 
@@ -224,7 +224,7 @@ def test_no_api_docs_are_served_so_no_page_names_the_webhook_path(monkeypatch, p
     # protection. Each former docs address now answers exactly like an
     # address the app never had, so a scan cannot tell it was ever there.
     fake = broker()
-    app = serve(monkeypatch, fake, "--url", "/hook/secret")
+    app = serve(monkeypatch, fake, url="/hook/secret")
     client = TestClient(app, follow_redirects=False)
     unknown = client.get("/no-such-page")
 

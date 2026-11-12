@@ -118,6 +118,10 @@ string included.
 - **The password in the command line and the image's `sh -c`.** The start
   command passes the credentials and `url` as arguments, expanded unquoted,
   so they show in the process list. That is a known defect of its own.
+
+  *Update (step 6g, [ADR 0018](0018-read-the-settings-from-the-environment.md)):*
+  fixed. The image now starts the bot with no shell and no arguments, and
+  the bot reads its settings from the environment.
 - **A reverse proxy's own log.** Nginx, Caddy and the like log the request
   line by default. The README tells operators to put one in front of the
   bot, so it now also tells them to keep the path out of that log.

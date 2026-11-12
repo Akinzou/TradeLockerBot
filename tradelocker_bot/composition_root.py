@@ -1,4 +1,4 @@
-"""The composition root: reads the start arguments, logs in, wires the
+"""The composition root: reads the start settings, logs in, wires the
 adapters to the use case and serves the webhook (ADR 0010).
 
 The only module that knows every layer. Nothing inside the package imports
@@ -6,7 +6,9 @@ it; ``main_without_ssl.py``, the container's command, only calls ``main``.
 """
 
 import argparse
+import sys
 import threading
+from os import environ
 
 import uvicorn
 
@@ -43,17 +45,59 @@ def webhook_url(value):
     return value
 
 
-def parse_args():
-    parser = argparse.ArgumentParser(description="Add variables when starting")
-    parser.add_argument('--username', type=str, required=True, help='username/email')
-    parser.add_argument('--password', type=str, required=True, help='password')
-    parser.add_argument('--server', type=str, required=True, help='server')
+def not_empty(value):
+    """A username or server: an empty one cannot log in, so it stops the bot
+    like a missing one rather than reaching the login."""
+    if not value:
+        raise argparse.ArgumentTypeError("must not be empty")
+    return value
+
+
+def refuse_password(_value):
+    """``--password``, refused without its value: the host's process list
+    shows the command line to every user (ADR 0018). Registered rather than
+    left unknown, because argparse prints an unknown argument in full."""
+    raise argparse.ArgumentTypeError("set the password environment variable instead")
+
+
+# The options the image sets through its environment variables, under the
+# same names: the frozen contract's variables, less the password.
+FROM_ENVIRONMENT = ("username", "server", "env", "url", "acc_num", "acc_id")
+
+
+def environment_args(env):
+    """Each variable that is set as the option of the same name, put before
+    the command line so that an option given there wins.
+
+    One parser for both sources rather than a second set of checks: a value
+    from either gets the same validation and the same message. The ``=``
+    form keeps a value that starts with ``-`` from reading as an option.
+    """
+    return [f"--{name}={env[name]}" for name in FROM_ENVIRONMENT if name in env]
+
+
+def parse_args(argv=None, env=None):
+    """The start settings: the options in ``argv``, those not given there
+    from ``env``, and the password only from ``env``."""
+    argv = sys.argv[1:] if argv is None else argv
+    env = environ if env is None else env
+    parser = argparse.ArgumentParser(
+        description="Every option can instead be set in the environment variable of the same name, "
+        "and the option wins. The password is read only from the password environment variable.",
+    )
+    parser.add_argument('--username', type=not_empty, required=True, help='username/email')
+    parser.add_argument('--password', type=refuse_password, help=argparse.SUPPRESS)
+    parser.add_argument('--server', type=not_empty, required=True, help='server')
     parser.add_argument('--env', type=str, required=True, choices=['live', 'demo'], help='live/demo')
     parser.add_argument('--url', type=webhook_url, default='/strategy', help='Optional URL, default is /strategy')
     parser.add_argument('--acc_num', type=str, default='0', help='Optional account number')
     parser.add_argument('--acc_id', type=str, default='0', help='Optional account ID')
     parser.add_argument('--port', type=int, default=443, help='Port to run the application')
-    return parser.parse_args()
+    args = parser.parse_args(environment_args(env) + list(argv))
+    args.password = env.get("password", "")
+    if not args.password:
+        parser.error("the password environment variable is not set or is empty")
+    return args
 
 
 def build_signal_handler(client, lock) -> SignalHandler:
