@@ -10,3 +10,6 @@ packaging==26.3
 # Starlette's TestClient, for the webhook route pins. httpx2 rather than httpx:
 # Starlette 1.10 deprecates httpx for its test client.
 httpx2==2.16.0
+# coverage rather than pytest-cov: it has no dependencies, so it cannot move
+# a locked package, and CI needs no plugin to gate on it (ADR 0030).
+coverage==7.17.3

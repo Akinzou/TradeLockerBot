@@ -32,7 +32,10 @@ packages need, or an override is not honoured or no longer needed. Since
 `FROM` lacks a digest or its tag disagrees with the lock's Python, and
 `docker-build` fails when the image runs another Python. Whether the pin
 has fallen behind its tag is checked weekly outside CI, by a workflow that
-keeps an issue open, since the tag moves with no commit here.
+keeps an issue open, since the tag moves with no commit here. Since
+[ADR 0030](0030-gate-the-test-coverage.md), `tests` also fails when the
+suite's line and branch coverage of `tradelocker_bot` falls below the
+floor in `pyproject.toml`.
 
 Semgrep `WARNING` and `INFO` findings never fail the build. They are written
 to the job summary, and each pull request description records the decision

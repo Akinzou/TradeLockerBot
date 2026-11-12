@@ -10,6 +10,8 @@ __pycache__/
 *.py[cod]
 .venv*/
 .pytest_cache/
+.coverage
+htmlcov/
 
 # Credentials are passed at runtime; a local .env must never reach the public repo
 .env
