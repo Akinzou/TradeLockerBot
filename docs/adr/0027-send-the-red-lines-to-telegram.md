@@ -59,7 +59,8 @@ flowchart LR
     TC -- "HTTPS POST sendMessage,<br/>plain text" --> TG[(api.telegram.org)]
     D -- "not sent: the message's first words<br/>and why, never sent itself" --> LOG
     N -- "queue full: dropped, reported,<br/>and counted for the chat" --> LOG
-    EXIT[atexit, once the webhook's<br/>threads have ended] -- "stop(5 s): what is left,<br/>and a dropped count, reported" --> N
+    CR -- "main ends: end(5 s)" --> N
+    EXIT[atexit, once the webhook's<br/>threads have ended] -- "stop(): until those 5 s run out;<br/>what is left, and a dropped count, reported" --> N
 ```
 
 ### Why
@@ -110,19 +111,25 @@ flowchart LR
     held in memory. Once the queue is empty again, the chat gets one
     message with how many were dropped, since one of them may have been
     the one that needed action.
-  - When the bot ends, an exit function gives the queue up to 5 seconds,
-    within the 10 that `docker stop` waits. It then logs how many
-    messages it could not send, and a dropped count the chat has not
-    heard of yet.
+  - When `main` ends, however it ends, it sets aside 5 seconds for the
+    queue (`end`), within the 10 that `docker stop` waits after its
+    SIGTERM. An exit function (`stop`) waits until those seconds run out
+    for the queue to empty. It then logs how many of the bot's lines it
+    could not send, and any dropped count the chat has not heard of.
   - An exit function rather than code after `uvicorn.run`. Python runs
     exit functions only once every webhook thread has ended, so a signal
     still running at the stop gets its last red line queued first. Python
     also runs them however `main` ends: a return, a failed login, or
-    Ctrl+C. This ordering was checked by running it.
-  - A message counts as pending from the moment it is queued until its
-    delivery ends, under one condition. No moment between the queue and
-    the send can drop it from the count. The dropped count is cleared only
-    once the message that carries it is queued.
+    Ctrl+C. A test runs a separate interpreter to pin that order for each
+    of these endings.
+  - The seconds count from the end of `main`, not from the exit
+    function. A signal still running holds the exit function back, and
+    `docker stop`'s seconds run all the same.
+  - One condition guards the waiting messages, the one being sent and
+    the counts. Each message carries how many dropped messages it reports,
+    `0` for the bot's own lines. The stop therefore reports a dropped
+    count that is still waiting as a count, not as a line that "the log
+    has".
   - On a SIGTERM, uvicorn 0.54 restores the previous handler after its
     shutdown and raises the signal again. The default handler ends the
     process at once, before any exit function, unless Python is PID 1,
@@ -311,6 +318,49 @@ test:
 - the lateness note at the end;
 - a failed login not sent;
 - the selectors converted inside the login's `try`.
+
+A third review, of the redesign, found:
+
+- In a long flood, the dropped count took every slot that freed up,
+  ahead of the lines.
+- The stop's 5 seconds began only after the webhook's threads had
+  ended, so it could overrun `docker stop`'s 10.
+- A dropped count still waiting at the stop was reported as a line.
+- One assertion was too weak.
+- No test ran a real interpreter's exit.
+- A `retry_after` beyond a float's range raised `OverflowError`.
+- A `queue.Queue` with its own lock beside a second lock was two states
+  to keep in step.
+
+Each point was fixed:
+
+- The count waits for an empty queue.
+- `main` sets the deadline in a `finally`.
+- Entries carry their count.
+- The assertion now checks the whole output.
+- A subprocess test was added.
+- An out-of-range `retry_after` counts as none.
+- One `deque` sits under one condition.
+
+Two mutations then survived and showed code that did nothing, which was
+removed: a check that only the first `end` counts, and a check on queuing
+the count into a queue that is always empty there. Each of these
+mutations of the result fails at least one test:
+
+- no exit function;
+- no `end` in `main`'s `finally`;
+- the seconds counted from the exit function;
+- the stop forgetting the message being sent;
+- a waiting count reported as a line, or forgotten;
+- the count taking freed slots;
+- no count sent;
+- drops not counted, or not reported;
+- sending on the caller's thread;
+- the thread ending on an exception;
+- the overflow unguarded;
+- the note at the end;
+- a failed login not sent;
+- the selectors inside the `try`.
 
 ## What this does not cover
 

@@ -133,7 +133,7 @@ sequenceDiagram
     SL-->>CR: uvicorn's log settings,<br/>access line without the request line
     CR->>U: run(app, host="0.0.0.0", port, log_config)
     U-->>CR: returns once the server stops
-    Note over EP,U: Python waits for the webhook's threads, then runs<br/>the notifier's exit function: up to 5 s for the queue
+    Note over EP,U: main's finally: end(5 s). Python waits for the webhook's threads,<br/>then runs the notifier's exit function, until those 5 s run out
 ```
 
 A bad setting stops at step 3, a bad account selector at step 7, and a
@@ -435,9 +435,11 @@ design.
   many it dropped once the queue is empty. `Delivery` tries a message
   three times, waiting 2 s and 10 s or Telegram's `retry_after` up to 10
   minutes, marks a message a minute late or more, and reports one it
-  could not send in a red line that is never sent itself. `stop(seconds)`
-  waits for the queue and reports what it loses, and a dropped count the
-  chat has not heard of.
+  could not send in a red line that is never sent itself. `end(seconds)`
+  sets the stop's deadline; `stop()` waits for the queue until then and
+  reports the lines it loses, and a dropped count the chat has not heard
+  of. One condition guards the queue, the message being sent and the
+  counts.
 - `SystemClock` implements `Clock` over `time.monotonic` and `time.sleep`.
   The monotonic clock, because the wall clock can step after an NTP
   correction or a manual change (ADR 0022).
@@ -501,11 +503,12 @@ layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
   prints the content
   ([ADR 0024](adr/0024-read-the-password-from-a-file.md)).
 - `start_notifier` starts Telegram's notifier when `telegram_from` gave
-  settings, and registers its `stop` as an exit function, which gives the
-  queue 5 seconds once `main` and the webhook's threads have ended,
-  however they end. `main` passes its `notify` on, or `no_notification`.
-  A failed login is sent as `Login failed:` before its exception leaves
-  `main`. Both
+  settings, and registers its `stop` as an exit function, which Python
+  runs once the webhook's threads have ended. `main` hands the banners,
+  the login and the server to `log_in_and_serve`, with the notifier's
+  `notify` or `no_notification`, and in a `finally` gives the queue 5
+  seconds from that moment (`end`), however it ends. A failed login is
+  sent as `Login failed:` before its exception leaves. Both
   Telegram settings come only from the environment
   ([ADR 0027](adr/0027-send-the-red-lines-to-telegram.md)).
 - It creates the one lock that every request shares.
