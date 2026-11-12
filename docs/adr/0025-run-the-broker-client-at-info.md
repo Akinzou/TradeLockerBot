@@ -73,6 +73,8 @@ flowchart LR
   flush writes out everything printed before it too: the greeting, and
   with `url=generate` the generated path, which without a terminal used
   to wait for the first request.
+  *Update:* [ADR 0026](0026-write-stdout-line-by-line.md) sets stdout to
+  line buffering for every line, and the flush is gone.
 - **One client call for every selector.** The selector becomes the one
   keyword it sets, so no branch can leave out the level.
 
@@ -112,6 +114,8 @@ flowchart LR
   `0`, so only the client's values can make that line. A second pin gives
   the startup a stdout that writes out only when flushed, and finds the
   greeting and the line written out before the server starts.
+  *Update:* that pin moved to `test_output_buffering.py`
+  ([ADR 0026](0026-write-stdout-line-by-line.md)).
 - **The real client's attributes.** `test_client_log.py` also checks
   that the real client's `account_id` and `acc_num` are the chosen
   account, as plain integers, for each selector. The startup pins use the
@@ -172,6 +176,7 @@ these mutations fails at least one test:
 - **The bot's later lines are not flushed.** Without a terminal, the
   lines about signals and orders still wait in stdout's buffer; a known
   defect in the roadmap, for the next step.
+  *Update:* fixed by [ADR 0026](0026-write-stdout-line-by-line.md).
 - **The order lines** hold each order's request: instrument, side,
   quantity and prices. That is trading data, not a credential.
 

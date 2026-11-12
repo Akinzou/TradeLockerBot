@@ -377,6 +377,11 @@ alerts.
 > which carried the password and the tokens. A `Logged in: acc_id ...,
 > acc_num ...` line names the account instead. Removing the old container
 > removes its log; see [Security](#security).
+>
+> Since [ADR 0026](docs/adr/0026-write-stdout-line-by-line.md), each line
+> reaches `docker logs` when the bot prints it, also without `-t` or
+> `tty: true`. Before, a trade's lines and every rejection waited there
+> for the next alert.
 
 ## Security
 
