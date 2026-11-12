@@ -54,4 +54,6 @@ def test_the_line_is_written_out_before_the_server_starts(monkeypatch):
     Startup(monkeypatch, broker()).run(DEMO)
 
     assert "Logged in: acc_id 76, acc_num 1\n" in stdout.flushed
+    # The flush writes out the whole buffer, the greeting before the line too.
+    assert "|_   _| __ __ _" in stdout.flushed
     assert SERVE not in stdout.flushed

@@ -437,8 +437,11 @@ alerts.
   trade on the account. The bot now runs the client at `info`, which
   logs no request. A container started from an older image keeps them
   in its log until you remove it with `docker rm`, which the
-  [Updating](#updating) steps do. If such a log has left the host, in a
-  log collector or a pasted support request, change the password.
+  [Updating](#updating) steps do. That holds for Docker's default
+  `json-file` log driver; with another driver, such as `journald` or a
+  log shipper, the log outlives the container. If such a log has left the
+  host, in a log collector or a pasted support request, change the
+  password.
 
 ## Troubleshooting
 

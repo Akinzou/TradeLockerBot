@@ -69,7 +69,10 @@ flowchart LR
 - **The line is flushed.** Without a terminal, as in the README's Compose
   example, Python buffers stdout until uvicorn logs the first request, so
   the first alert could trade before the operator saw the account. The
-  client's line went to stderr, which Python writes out line by line.
+  client's line went to stderr, which Python writes out line by line. The
+  flush writes out everything printed before it too: the greeting, and
+  with `url=generate` the generated path, which without a terminal used
+  to wait for the first request.
 - **One client call for every selector.** The selector becomes the one
   keyword it sets, so no branch can leave out the level.
 
@@ -108,7 +111,12 @@ flowchart LR
   the real client's attribute names. With no selector the settings hold
   `0`, so only the client's values can make that line. A second pin gives
   the startup a stdout that writes out only when flushed, and finds the
-  line written out before the server starts.
+  greeting and the line written out before the server starts.
+- **The real client's attributes.** `test_client_log.py` also checks
+  that the real client's `account_id` and `acc_num` are the chosen
+  account, as plain integers, for each selector. The startup pins use the
+  fake, and the CI runs of the image fail at the login, so nothing else
+  reads them from the real client.
 - **CI.** The two steps that start the real image with a password, from a
   file and from the variable, now also require the client's
   `[CRITICAL ...] Failed to fetch authentication tokens` line, in the
@@ -161,9 +169,9 @@ these mutations fails at least one test:
   the client's handler and the root's, in two formats. Fewer lines are
   logged now, but the doubling stays; it holds nothing the first copy
   does not.
-- **The bot's other lines are not flushed.** Without a terminal, the
-  greeting and the lines about signals and orders still wait in stdout's
-  buffer; a known defect in the roadmap, for the next step.
+- **The bot's later lines are not flushed.** Without a terminal, the
+  lines about signals and orders still wait in stdout's buffer; a known
+  defect in the roadmap, for the next step.
 - **The order lines** hold each order's request: instrument, side,
   quantity and prices. That is trading data, not a credential.
 

@@ -114,12 +114,13 @@ Fixed in behaviour steps, never during restructuring.
 - **Without a terminal, the bot's lines wait in a buffer** (found in step
   6m's review). Python buffers stdout when it is not a terminal, and the
   image sets nothing to change that. The README's `docker run` has `-t`,
-  but its Compose example has no `tty: true`. There, the greeting,
-  `Signal rejected:`, `Order placed`, `Order rejected:` and
-  `Still closing:` lines reach `docker logs` only when uvicorn logs a
-  request, which flushes stdout, or the buffer fills. A trade's lines are
-  printed after its alert's own request line, so they wait for the next
-  alert. Only the account line is flushed
+  but its Compose example has no `tty: true`. There, the lines printed
+  after the start, such as `Normal: Locked`, `Signal rejected:`,
+  `Order placed`, `Order rejected:` and `Still closing:`, reach
+  `docker logs` only when uvicorn logs a request, which flushes stdout,
+  or the buffer fills. A trade's lines are printed after its alert's own
+  request line, so they wait for the next alert. The startup's output is
+  flushed with the account line
   ([ADR 0025](adr/0025-run-the-broker-client-at-info.md)).
 
 ## Kept by decision

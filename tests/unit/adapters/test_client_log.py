@@ -94,14 +94,20 @@ def log(monkeypatch):
     logger.removeHandler(records)
 
 
-@pytest.mark.parametrize(("acc_num", "acc_id"), [(0, 0), (2, 0), (0, 77)])
-def test_a_login_writes_no_password_or_token_to_the_log(server, log, acc_num, acc_id):
+@pytest.mark.parametrize(
+    ("acc_num", "acc_id", "account"), [(0, 0, (76, 1)), (2, 0, (77, 2)), (0, 77, (77, 2))]
+)
+def test_a_login_writes_no_password_or_token_to_the_log(server, log, acc_num, acc_id, account):
     client = log_in("demo", "u", PASSWORD, "s", acc_num, acc_id)
 
     # It sent all three secrets, so a clean log is not an idle client's.
     assert server.paths == ["/auth/jwt/token", "/auth/jwt/refresh", "/auth/jwt/all-accounts"]
     assert client._access_token == REFRESHED["accessToken"]
     assert [secret for secret in SECRETS if any(secret in line for line in log)] == []
+    # The attributes the bot's account line reads, as plain integers, so the
+    # fake that stands in for the client at startup has the real names.
+    assert (client.account_id, client.acc_num) == account
+    assert (type(client.account_id), type(client.acc_num)) == (int, int)
 
 
 def test_the_client_still_logs_its_progress(server, log):
