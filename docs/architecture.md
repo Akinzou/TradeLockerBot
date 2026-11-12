@@ -24,7 +24,7 @@ describes the code as it is on `master`.
 |-------------------|------------------------------------|-------------------------------------------------|----------------------------------------------------------------|
 | Domain            | `tradelocker_bot.domain`           | standard library                                | Trading rules as plain values and functions, with no I/O       |
 | Application       | `tradelocker_bot.application`      | domain                                          | Use cases and the ports they need                              |
-| Adapters          | `tradelocker_bot.adapters`         | application, domain, third-party clients        | TradeLocker client and login, operator console, system clock, HTTP webhook, signal handler, password file |
+| Adapters          | `tradelocker_bot.adapters`         | application, domain, third-party clients        | TradeLocker client and login, operator console, system clock, HTTP webhook, signal handler, secret files, Telegram chat and notifier |
 | Composition root  | `tradelocker_bot.composition_root` | everything above                                | Start settings, banners, wiring, the lock, the server start    |
 | Entrypoint        | `main_without_ssl.py`              | the composition root                            | The container's command; calls `main()` and nothing else       |
 
@@ -45,7 +45,10 @@ flowchart TB
         SC[system_clock<br/>SystemClock]
         AA[ascii_alerts<br/>colours, banners]
         WP[webhook_path<br/>random_webhook_path]
-        PF[password_file<br/>read_password_file]
+        PF[secret_file<br/>read_secret_file]
+        TG[telegram<br/>telegram_from, TelegramChat]
+        NT[notifier<br/>BackgroundNotifier, Delivery]
+        SHW[shown<br/>shown]
     end
     subgraph application [tradelocker_bot.application]
         ES[ExecuteSignal]
@@ -58,11 +61,13 @@ flowchart TB
         RES[result: Ok, Err]
     end
     EP --> CR
-    CR --> WH & SL & SH & TLB & PC & SC & AA & WP & PF & ES
+    CR --> WH & SL & SH & TLB & PC & SC & AA & WP & PF & TG & NT & ES
     PF --> RES
+    TG --> PF & SHW & RES
+    NT --> AA & PORTS & RES
     SH --> PC & ES & PORTS & RES & SIG
     TLB --> PORTS & RES & SIG
-    PC --> AA & REF & LS & SIG
+    PC --> AA & SHW & REF & LS & SIG
     ES --> PORTS & REF & LS & RES & SIG
     PORTS --> RES & SIG
     REF --> LS
@@ -73,7 +78,8 @@ flowchart TB
     SL --> UVICORN
     TLB --> CLIENT[(tradelocker client)]
     SC --> TIME[(time: monotonic, sleep)]
-    PF --> FILE[(the password file)]
+    PF --> FILE[(the password and token files)]
+    TG --> TGAPI[(api.telegram.org, through urllib)]
 ```
 
 Dependencies point inwards only. `tests/test_layer_dependencies.py` enforces
@@ -108,16 +114,19 @@ sequenceDiagram
     participant U as uvicorn
     EP->>CR: main()
     CR->>CR: stdout to line buffering (ADR 0026)
-    CR->>CR: parse_args: the environment, then the options,<br/>then the password from password_file or password<br/>(exit 2 on a bad, missing or empty setting, --password,<br/>both password sources, a password file that is not one line,<br/>a url without a leading / or with a brace, ?, # or %)
+    CR->>CR: parse_args: the environment, then the options,<br/>then the password from password_file or password,<br/>then telegram_token_file and telegram_chat_id<br/>(exit 2 on a bad, missing or empty setting, --password,<br/>both password sources, a password file that is not one line,<br/>a url without a leading / or with a brace, ?, # or %,<br/>one Telegram setting alone, a file with no bot token, a bad chat id)
+    opt the Telegram settings are set
+        CR->>CR: start_notifier: the notifier's thread (ADR 0027)
+    end
     opt --url generate
         CR->>CR: print the URL banner and random_webhook_path()
     end
-    CR->>CR: print the greeting
+    CR->>CR: print the greeting, and Telegram: on when it is
     CR->>CR: int(acc_num), int(acc_id)
     CR->>TB: log_in(env, credentials, selectors)
     TB-->>CR: TLAPI client at log level info<br/>(or the client's exception)
-    CR->>CR: print Logged in: acc_id, acc_num
-    CR->>CR: build_signal_handler(client, one Lock, SystemClock)
+    CR->>CR: print Logged in: acc_id, acc_num, and notify it
+    CR->>CR: build_signal_handler(client, one Lock, SystemClock, notify)
     CR->>WH: create_app(url, handler.handle)
     WH-->>CR: FastAPI app
     CR->>SL: server_log_config()
@@ -125,8 +134,8 @@ sequenceDiagram
     CR->>U: run(app, host="0.0.0.0", port, log_config)
 ```
 
-A bad setting stops at step 2, a bad account selector at step 5, and a
-failed login at step 6. Each leaves every later step undone, so the server
+A bad setting stops at step 3, a bad account selector at step 7, and a
+failed login at step 8. Each leaves every later step undone, so the server
 never starts on a half-built bot.
 
 ## Data flow
@@ -149,8 +158,15 @@ flowchart LR
     UC -- "OperatorConsole port" --> CON
     UC -- "Clock port: now, sleep" --> CLK[SystemClock<br/>adapter]
     UC -- "Err(Refusal)" --> CON
-    UC -- "Err(BrokerFailure)" --> RAISE[re-raised in the thread]
+    UC -- "Err(BrokerFailure)" --> SH
+    SH -- "Broker failed: line,<br/>then re-raised in the thread" --> CON
+    CON -- "red lines: notify(text)" --> NT[BackgroundNotifier<br/>its own thread]
+    NT -- "HTTPS, when set" --> TGAPI[(Telegram chat)]
 ```
+
+The console's red lines reach Telegram only when its settings are set,
+and only through the notifier's queue, so no signal waits on Telegram
+([ADR 0027](adr/0027-send-the-red-lines-to-telegram.md)).
 
 | Value                         | Made by                    | Read by                                   |
 |-------------------------------|----------------------------|-------------------------------------------|
@@ -291,7 +307,7 @@ stateDiagram-v2
     Rejected --> [*]: one red line, no broker call, no lock
     Refused --> [*]: one red line, nothing closed
     OrderRejected --> [*]: one red line with a fresh count, Normal Unlocked line
-    Failed --> [*]: client exception re-raised in the thread
+    Failed --> [*]: Broker failed line, client exception re-raised in the thread
     Handled --> [*]
 ```
 
@@ -300,7 +316,7 @@ stateDiagram-v2
 | Rejected | none                  | no                 | `Signal rejected: line N ...` | ends normally  |
 | Refused  | balance and/or lookup | no                 | `Signal rejected: ...`        | ends normally  |
 | Order rejected | all, order once, a recount | closed, none opened | `Order rejected: ...`, `Unlocked` | ends normally |
-| Failed   | up to the failing one | possibly closed    | the client's traceback        | raises         |
+| Failed   | up to the failing one | possibly closed    | `Broker failed: ...`, then the client's traceback | raises |
 | Handled  | all                   | replaced or closed | `Normal: Locked` ... `Unlocked` | ends normally |
 
 The webhook answers `200 OK` before any of this, so the caller never learns
@@ -398,6 +414,23 @@ design.
   - Its `still_closing` prints one red line with the open positions, the
     whole seconds since the first close request, and that later signals
     wait.
+  - Its `broker_failed` prints one red line with the symbol and the
+    exception's type, never its text.
+  - Every red line goes through `_alert`, which prints it and hands its
+    text, without colours, to the `notify` it was built with: the
+    notifier's, or `no_notification` when Telegram is off
+    ([ADR 0027](adr/0027-send-the-red-lines-to-telegram.md)).
+- `shown` escapes a value from outside with `repr` and cuts it, for the
+  console's lines and Telegram's error descriptions alike.
+- `telegram_from` (`telegram`) reads the two Telegram settings, both or
+  neither, and checks the token's form before it goes into a URL.
+  `TelegramChat` sends one plain-text message through `urllib` and
+  returns a `SendFailure` that says whether to try again; nothing it
+  returns holds the token. `urlopen` is an argument with no default.
+- `BackgroundNotifier` (`notifier`) queues each message, up to 100, for
+  one daemon thread. `Delivery` tries a message three times, waiting
+  2 s and 10 s or Telegram's `retry_after` up to 60 s, and reports one
+  it could not send in a red line that is never sent itself.
 - `SystemClock` implements `Clock` over `time.monotonic` and `time.sleep`.
   The monotonic clock, because the wall clock can step after an NTP
   correction or a manual change (ADR 0022).
@@ -421,15 +454,17 @@ design.
 - `SignalHandler` runs one request's lines. It parses them before the lock
   and runs a valid signal inside it.
   - A rejection or a refusal gets one operator line.
-  - A broker failure is re-raised as the client's own exception, so the
-    webhook thread fails as before.
+  - A broker failure gets one red `Broker failed:` line, then is re-raised
+    as the client's own exception, so the webhook thread fails as before.
 - `ascii_alerts` holds the console's colours and the startup banners, and
   `webhook_path` makes the random path for `--url generate`, from
   `secrets` ([ADR 0012](adr/0012-generate-the-webhook-path-with-secrets.md)).
-- `password_file` reads the file `password_file` names, at most 1025
-  bytes, and checks the bytes in a function with no I/O. An adapter module
-  rather than a port: only the composition root asks for the password
-  ([ADR 0024](adr/0024-read-the-password-from-a-file.md)).
+- `secret_file` reads the file `password_file` or `telegram_token_file`
+  names, at most 1025 bytes, and checks the bytes in a function with no
+  I/O; each message names the setting. An adapter module rather than a
+  port: only the composition root asks for a secret
+  ([ADR 0024](adr/0024-read-the-password-from-a-file.md),
+  [ADR 0027](adr/0027-send-the-red-lines-to-telegram.md)).
 
 ## Composition root
 
@@ -453,9 +488,13 @@ layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
   of `docker inspect`, or the `password` variable. Both set stops the bot,
   as does a file that is not one line of UTF-8 text of at most 1024
   bytes; one trailing line ending is dropped and nothing else. The
-  adapter `password_file` reads the file and checks its bytes. No message
+  adapter `secret_file` reads the file and checks its bytes. No message
   prints the content
   ([ADR 0024](adr/0024-read-the-password-from-a-file.md)).
+- `start_notifier` starts Telegram's notifier when `telegram_from` gave
+  settings, and returns its `notify`; otherwise `no_notification`. Both
+  Telegram settings come only from the environment
+  ([ADR 0027](adr/0027-send-the-red-lines-to-telegram.md)).
 - It creates the one lock that every request shares.
 - `webhook_url` checks `url` as the settings are read: `generate` or a
   path that starts with `/` and has no `{` or `}`, so the route is one
@@ -465,11 +504,12 @@ layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
   ([ADR 0014](adr/0014-require-a-leading-slash.md),
   [ADR 0015](adr/0015-refuse-braces-in-the-webhook-path.md),
   [ADR 0020](adr/0020-refuse-query-fragment-and-escape-characters-in-the-webhook-path.md)).
-- `build_signal_handler(client, lock, clock)` builds the console, the
-  broker adapter, the use case and the handler once, at startup. The
+- `build_signal_handler(client, lock, clock, notify)` builds the console,
+  the broker adapter, the use case and the handler once, at startup. The
   characterization tests build theirs through the same function, with a
-  fake clock that records each pause; the clock has no default, so none
-  can get the real one by leaving it out.
+  fake clock that records each pause and `no_notification`; neither has a
+  default, so no test can get the real clock or Telegram by leaving it
+  out.
 - `main_without_ssl.py` imports `main` and calls it, and does nothing else.
 
 ## Decisions
@@ -502,3 +542,4 @@ layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
 | [0024](adr/0024-read-the-password-from-a-file.md) | Read the password from a file |
 | [0025](adr/0025-run-the-broker-client-at-info.md) | Run the broker client at `info`, and name the account in the bot's own line |
 | [0026](adr/0026-write-stdout-line-by-line.md) | Write the bot's output line by line, with or without a terminal |
+| [0027](adr/0027-send-the-red-lines-to-telegram.md) | Send the operator's red lines to Telegram, off the trading path |

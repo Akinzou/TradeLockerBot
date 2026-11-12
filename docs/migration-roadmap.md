@@ -41,6 +41,8 @@ migration pull request.
 | 6l | Read the password from the file `password_file` names, such as a Docker secret, so `docker inspect` shows only the path; beside the `password` variable rather than in its place, exactly one of the two set; one line, one trailing line ending dropped, nothing trimmed; a file that cannot be read, is empty, is longer than 1024 bytes, holds more than one line or a NUL, is not UTF-8 or starts with a byte order mark stops the bot without printing its content ([ADR 0024](adr/0024-read-the-password-from-a-file.md)). Pins flipped: the messages for a missing password and for `--password` name both ways; new pins for the file, both sources set and `--password_file` refused | behaviour | done |
 | 6m | Run the broker client at `info` rather than its default `debug`, which logged every request whole: the password, the refresh token and the bearer token; the bot prints `Logged in: acc_id ..., acc_num ...` itself, since the client names the account only at `debug` ([ADR 0025](adr/0025-run-the-broker-client-at-info.md)). Pins flipped: the login carries `log_level`, the greeting pins add the account line; new pins run the real client on a stubbed transport and find no secret in its log, and CI refuses the password in the image's output | behaviour | done |
 | 6n | Set stdout to line buffering at the start of `main()`, so each line reaches the log when printed, with or without a terminal; without one, a trade's lines and every rejection waited for the next alert's request ([ADR 0026](adr/0026-write-stdout-line-by-line.md)). The account line's own flush is gone. New pins give the bot a block-buffered stdout and find the startup's lines written out when the server starts, and a trade's, a close's, a rejected payload's and a rejected order's lines written out with no request after them; a missing stdout or one that is not Python's text layer is left as it is | behaviour | done |
+| 6o | With `telegram_token_file` and `telegram_chat_id` set, send the account line at each start and every red line (`Signal rejected:`, `Order rejected:`, `Still closing:`, and a new `Broker failed:` line that names the symbol and the exception's type) to a Telegram chat. A queue and one thread of its own keep it off the trading path; it tries each message three times and logs one it could not send. One setting alone, a file with no bot token or a bad chat id stops the bot. No token in any output ([ADR 0027](adr/0027-send-the-red-lines-to-telegram.md)). Pins: the broker-failure pins gain the `Broker failed:` line; new pins run the chat over the real `urllib` against a local server, the notifier's tries and queue, and the startup with and without the settings | behaviour | done |
+| 6p | Log, and send, one `Closed after N s` line when a close that logged `Still closing:` ends, so the operator knows when the lock let go | behaviour | next |
 
 ```mermaid
 flowchart LR
@@ -67,23 +69,25 @@ flowchart LR
     S6k --> S6l[6l password file]
     S6l --> S6m[6m client log level]
     S6m --> S6n[6n line-buffered output]
+    S6n --> S6o[6o Telegram notifications]
+    S6o --> S6p[6p Closed after line]
     S2af --> S2g[2g base image digest]
     S2af --> S2h[2h patched client pins]
     classDef done fill:#d4edda,stroke:#28a745,color:#155724
-    class S1,S1abc,S2,S2af,S2g,S2h,S4,S4b,S3,S3b,S5a,S5,S6a,S6b,S6c,S6d,S6e,S6f,S6g,S6h,S6i,S6j,S6k,S6l,S6m,S6n done
+    class S1,S1abc,S2,S2af,S2g,S2h,S4,S4b,S3,S3b,S5a,S5,S6a,S6b,S6c,S6d,S6e,S6f,S6g,S6h,S6i,S6j,S6k,S6l,S6m,S6n,S6o done
 ```
 
 Each arrow points from a step to one that builds on it. Green is done.
 
-No known defect is open. These wait on the owner's decision:
+No known defect is open, and no decision waits on the owner. The owner
+asked for whatever is good and reliable:
 
-- a channel outside the log, such as an issue or a chat message, for
-  `Signal rejected:`, `Order rejected:` and `Still closing:`
-  ([ADR 0023](adr/0023-the-webhook-answer-acknowledges-receipt.md));
-- answering `4xx` for a payload the bot rejects
-  ([ADR 0023](adr/0023-the-webhook-answer-acknowledges-receipt.md));
-- removing the `password` variable once deployments use `password_file`
-  ([ADR 0024](adr/0024-read-the-password-from-a-file.md)).
+- a channel outside the log: Telegram, in step 6o
+  ([ADR 0027](adr/0027-send-the-red-lines-to-telegram.md));
+- answering `4xx` for a payload the bot rejects: kept at `200`
+  (see [Kept by decision](#kept-by-decision));
+- removing the `password` variable: kept (see
+  [Kept by decision](#kept-by-decision)).
 
 Structure steps must keep `tests/characterization/` green with **unchanged
 assertions**. Only the seam may move, meaning the module the tests import
@@ -100,7 +104,8 @@ These stay unchanged until an ADR changes them:
 - Docker image name `ghcr.io/akinzou/tradelocker_bot:latest`, and
   `main_without_ssl.py` as the container command.
 - Container environment variables `username`, `password`, `server`, `env`,
-  `url`, `acc_num`, `acc_id`, and since ADR 0024 `password_file`.
+  `url`, `acc_num`, `acc_id`, since ADR 0024 `password_file`, and since
+  ADR 0027 the optional `telegram_token_file` and `telegram_chat_id`.
 - Default webhook path `/strategy`, `url=generate` for a random path, and port
   443 by default.
 - The webhook body: seven newline-separated lines (symbol, `buy`/`sell`,
@@ -130,6 +135,16 @@ that says why.
   `test_the_answer_is_the_same_whatever_the_signal_comes_to` and
   `test_a_broker_failure_ends_the_handler_thread_with_the_clients_exception`
   ([ADR 0023](adr/0023-the-webhook-answer-acknowledges-receipt.md)).
+  A `4xx` for a rejected payload was weighed again in step 6o and kept
+  out. TradingView does not send an alert again after a `4xx` and shows
+  the answer only in its alert log. The operator now gets the
+  `Signal rejected:` line on Telegram, which says more
+  ([ADR 0027](adr/0027-send-the-red-lines-to-telegram.md)).
+- **The `password` variable stays beside `password_file`** (step 6o).
+  Removing it would stop every deployment that still sets it at its next
+  update, and a bot that does not start misses trades. `docker inspect`
+  shows it; the README steers to `password_file`
+  ([ADR 0024](adr/0024-read-the-password-from-a-file.md)).
 
 ## Fixed defects
 

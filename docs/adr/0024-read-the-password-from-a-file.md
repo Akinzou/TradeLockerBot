@@ -120,6 +120,10 @@ flowchart TD
   argparse error and exit status `2`. An adapter module rather than a
   port: only the composition root asks for the password, so a port would
   have one implementation and no caller inside the layers.
+  *Update:* the module is now `adapters/secret_file.py`, with
+  `read_secret_file` and `secret_from_bytes`, and each message names the
+  setting, since the Telegram token file is read under the same rules
+  ([ADR 0027](0027-send-the-red-lines-to-telegram.md)).
 - **Tests.** A new `tests/characterization/test_startup_password_file.py`
   pins:
   - the line reaching the login as written, with each line ending;
