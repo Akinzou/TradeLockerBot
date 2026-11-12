@@ -159,8 +159,8 @@ def no_notification(_text: str) -> None:
     """Telegram is off: the console line is the operator's only record."""
 
 
-# What the stop gives the notifier's queue: well inside the 10 seconds
-# `docker stop` waits before it kills the process.
+# What the notifier's queue gets once `main` ends: well inside the 10
+# seconds `docker stop` waits after its SIGTERM before it kills the process.
 STOP_SECONDS = 5.0
 
 
@@ -175,8 +175,8 @@ def start_notifier(settings: TelegramSettings | None, clock) -> BackgroundNotifi
     # At exit rather than after the server: Python runs exit functions only
     # once the webhook's threads have ended, so their last red lines are
     # queued too, and it runs them however `main` ends, a failed login or
-    # Ctrl+C included.
-    atexit.register(notifier.stop, STOP_SECONDS)
+    # Ctrl+C included. The seconds still count from the end of `main`.
+    atexit.register(notifier.stop)
     return notifier
 
 
@@ -207,8 +207,18 @@ def main():
     args = parse_args()
     clock = SystemClock()
     notifier = start_notifier(args.telegram, clock)
-    notify = no_notification if notifier is None else notifier.notify
+    try:
+        log_in_and_serve(args, clock, no_notification if notifier is None else notifier.notify)
+    finally:
+        # From here, however the bot ends: `docker stop`'s seconds run from
+        # its SIGTERM, not from when Python has waited for the webhook's
+        # threads and reaches the exit function.
+        if notifier is not None:
+            notifier.end(STOP_SECONDS)
 
+
+def log_in_and_serve(args, clock, notify: Callable[[str], None]) -> None:
+    """The banners, the login and the server, until the server stops."""
     if args.url == "generate":
         print(ascii_alerts.RED + ascii_alerts.ascii_art_url + ascii_alerts.RESET)
         args.url = random_webhook_path()

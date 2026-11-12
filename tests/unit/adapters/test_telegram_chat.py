@@ -140,6 +140,9 @@ def test_a_text_longer_than_telegram_takes_is_cut_rather_than_refused(telegram):
         # Passed on as given: the notifier decides which waits it keeps.
         ((429, {"ok": False, "parameters": {"retry_after": -1}}),
          SendFailure("HTTP 429", retry=True, retry_after=-1.0)),
+        # JSON reads any integer; one beyond a float's range is no wait.
+        ((429, b'{"ok": false, "parameters": {"retry_after": 1' + b"0" * 400 + b"}}"),
+         SendFailure("HTTP 429", retry=True)),
     ],
 )
 def test_an_answer_that_is_not_a_sent_message_is_a_failure_that_says_whether_to_try_again(

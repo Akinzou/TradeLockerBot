@@ -172,18 +172,17 @@ def test_a_failed_login_is_sent_before_the_bot_stops(monkeypatch, capsys, telegr
     assert raised.value is failure
     assert telegram.messages == ["Login failed: ConnectionError; the bot stops, the log has the error"]
     assert startup.served == []
-    assert console_lines(capsys)[-1] != "Telegram: the bot stopped with 1 of its messages not sent; the log has them"
+    assert "Telegram: the bot stopped with 1 of its messages not sent; the log has them" not in console_lines(capsys)
 
 
 def test_at_exit_the_queue_gets_its_seconds_and_what_is_left_is_reported(monkeypatch, capsys, telegram, tmp_path):
     telegram.gate.clear()
     monkeypatch.setattr(composition_root, "STOP_SECONDS", 0.1)
     Startup(monkeypatch, broker()).run(_with_telegram(tmp_path))
-    [(stop, (seconds,))] = telegram.exit.functions
+    [(stop, ())] = telegram.exit.functions
 
     telegram.exit.run()
 
-    assert seconds == 0.1
     assert ("Telegram: the bot stopped with 1 of its messages not sent; the log has them"
             in console_lines(capsys))
 

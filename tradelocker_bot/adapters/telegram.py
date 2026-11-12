@@ -143,4 +143,12 @@ def _outcome(status: int, answer: bytes) -> Result[None, SendFailure]:
     # to decide, in one place.
     if isinstance(retry_after, bool) or not isinstance(retry_after, int | float):
         retry_after = None
-    return Err(SendFailure(reason, retry=retry, retry_after=None if retry_after is None else float(retry_after)))
+    return Err(SendFailure(reason, retry=retry, retry_after=_seconds(retry_after)))
+
+
+def _seconds(value: int | float | None) -> float | None:
+    # JSON reads any integer, and one beyond a float's range cannot be one.
+    try:
+        return None if value is None else float(value)
+    except OverflowError:
+        return None

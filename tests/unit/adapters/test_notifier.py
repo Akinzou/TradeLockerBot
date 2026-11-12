@@ -1,17 +1,15 @@
-"""The notifier: tries a message again while the chat may get over the
-failure, says when a message comes late, and sends from its own thread, so
-no signal waits on the chat (ADR 0027)."""
+"""``Delivery``: tries a message again while the chat may get over the
+failure, and says when a message comes late (ADR 0027). The queue and its
+thread are pinned in ``test_background_notifier.py``."""
 
 import math
-import threading
 
 import pytest
 
 from tests.fake_clock import FakeClock
-from tradelocker_bot.adapters.notifier import ATTEMPTS, BackgroundNotifier, Delivery, SendFailure
+from tradelocker_bot.adapters.notifier import ATTEMPTS, Delivery, SendFailure
 from tradelocker_bot.domain.result import Err, Ok
 
-WAIT_SECONDS = 5
 TEXT = "Signal rejected: line 2 (direction) is 'long', expected buy or sell"
 
 
@@ -118,124 +116,3 @@ def test_the_report_names_the_message_by_its_first_words(text):
     deliver(text, 0.0)
 
     assert reports == ['Telegram: the "Still closing" message was not sent: HTTP 400']
-
-
-class GatedDelivery:
-    """Holds each message until the test opens the gate, so the test knows
-    where the worker is."""
-
-    def __init__(self, last="last"):
-        self.last = last
-        self.gate = threading.Event()
-        self.entered = threading.Event()
-        self.delivered = []
-        self.done = threading.Event()
-
-    def __call__(self, text, logged_at):
-        self.entered.set()
-        assert self.gate.wait(WAIT_SECONDS)
-        if text == "raises":
-            raise RuntimeError(f"a bug, with {text}")
-        self.delivered.append((text, logged_at))
-        if text.startswith(self.last):
-            self.done.set()
-
-
-def _started(deliver, capacity=10):
-    reports = []
-    clock = FakeClock(lambda sleep: None)
-    notifier = BackgroundNotifier(deliver, clock, reports.append, capacity=capacity)
-    notifier.start()
-    return notifier, clock, reports
-
-
-def test_a_message_waits_for_the_chat_on_the_notifiers_thread_not_the_callers():
-    deliver = GatedDelivery()
-    notifier, clock, _ = _started(deliver)
-
-    notifier.notify("first")
-    clock.advance(30.0)
-    notifier.notify("last")
-
-    # Both returned while the first is still held.
-    assert deliver.entered.wait(WAIT_SECONDS)
-    assert deliver.delivered == []
-    deliver.gate.set()
-    assert deliver.done.wait(WAIT_SECONDS)
-    # Each with the time it was logged, not the time it is sent.
-    assert deliver.delivered == [("first", 0.0), ("last", 30.0)]
-
-
-def test_a_message_beyond_the_queue_is_dropped_and_the_chat_hears_how_many_once_there_is_room():
-    deliver = GatedDelivery(last="Telegram: the queue was full")
-    notifier, _, reports = _started(deliver, capacity=2)
-    notifier.notify("first")
-    assert deliver.entered.wait(WAIT_SECONDS)
-    notifier.notify("second")
-    notifier.notify("last")
-
-    notifier.notify("Order rejected: the broker refused to buy XAUUSD")
-    notifier.notify("Broker failed: a call for XAUUSD got no answer")
-
-    assert reports == ['Telegram: the "Order rejected" message was not sent: the queue of 2 was full',
-                       'Telegram: the "Broker failed" message was not sent: the queue of 2 was full']
-    deliver.gate.set()
-    assert deliver.done.wait(WAIT_SECONDS)
-    assert [text for text, _ in deliver.delivered] == [
-        "first", "second", "last", "Telegram: the queue was full and dropped 2 of the bot's messages; the log has them"]
-
-
-def test_a_delivery_that_raises_is_reported_by_type_and_the_next_message_still_goes():
-    deliver = GatedDelivery()
-    deliver.gate.set()
-    notifier, _, reports = _started(deliver)
-
-    notifier.notify("raises")
-    notifier.notify("last")
-
-    assert deliver.done.wait(WAIT_SECONDS)
-    assert reports == ['Telegram: the "raises" message was not sent: an error in the bot (RuntimeError)']
-
-
-def test_the_stop_waits_for_the_queue_and_reports_nothing_when_it_empties():
-    deliver = GatedDelivery()
-    deliver.gate.set()
-    notifier, _, reports = _started(deliver)
-    notifier.notify("first")
-    notifier.notify("last")
-
-    notifier.stop(WAIT_SECONDS)
-
-    assert [text for text, _ in deliver.delivered] == ["first", "last"]
-    assert reports == []
-
-
-def test_the_stop_reports_the_messages_it_loses_rather_than_waiting_for_them():
-    deliver = GatedDelivery()
-    notifier, _, reports = _started(deliver)
-    notifier.notify("first")
-    assert deliver.entered.wait(WAIT_SECONDS)
-    notifier.notify("second")
-    notifier.notify("last")
-
-    notifier.stop(0.1)
-
-    # The one being sent and the two behind it.
-    assert reports == ["Telegram: the bot stopped with 3 of its messages not sent; the log has them"]
-    deliver.gate.set()
-
-
-def test_the_stop_reports_a_dropped_count_the_chat_has_not_heard_of():
-    deliver = GatedDelivery()
-    notifier, _, reports = _started(deliver, capacity=1)
-    notifier.notify("first")
-    assert deliver.entered.wait(WAIT_SECONDS)
-    notifier.notify("second")
-    notifier.notify("Order rejected: the broker refused to buy XAUUSD")
-    reports.clear()
-
-    notifier.stop(0.1)
-
-    assert reports == ["Telegram: the bot stopped with 2 of its messages not sent; the log has them",
-                       "Telegram: the queue was full and dropped 1 of the bot's messages; the log has them"]
-    deliver.gate.set()
