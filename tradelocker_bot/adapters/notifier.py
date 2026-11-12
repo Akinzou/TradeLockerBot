@@ -134,11 +134,14 @@ class BackgroundNotifier:
         self._report = report
         self._capacity = capacity
         self._state = threading.Condition()
-        # Each entry: the text, when it was logged, and how many dropped
-        # messages it reports (0 for the bot's own lines).
+        # Each entry carries how many dropped messages it reports, 0 for the
+        # bot's own lines, rather than the stop telling a count by its text:
+        # the stop then reports a waiting count as a count, not as a line
+        # the log would have.
         self._waiting = collections.deque()
         self._sending = None
-        # Dropped messages no queued count reports yet.
+        # Apart from the counts already queued, so a drop is reported once:
+        # by the queued count or by this one, never by both or neither.
         self._dropped = 0
         self._deadline = None
 
@@ -180,7 +183,8 @@ class BackgroundNotifier:
                          "the log has them")
 
     def _queue(self, text: str, reports: int) -> bool:
-        # Called holding the condition.
+        # The caller holds the condition, so the room check, the append and
+        # whatever count the caller keeps are one step for every thread.
         if len(self._waiting) >= self._capacity:
             return False
         self._waiting.append((text, self._clock.now(), reports))
