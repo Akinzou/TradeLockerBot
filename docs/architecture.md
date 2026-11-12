@@ -124,7 +124,7 @@ sequenceDiagram
     CR->>CR: print the greeting, and Telegram: on when it is
     CR->>CR: int(acc_num), int(acc_id)
     CR->>TB: log_in(env, credentials, selectors)
-    TB-->>CR: TLAPI client at log level info<br/>(or the client's exception)
+    TB-->>CR: TLAPI client at log level info<br/>(or the client's exception:<br/>Login failed: sent, stop_notifier, raised)
     CR->>CR: print Logged in: acc_id, acc_num, and notify it
     CR->>CR: build_signal_handler(client, one Lock, SystemClock, notify)
     CR->>WH: create_app(url, handler.handle)
@@ -132,6 +132,8 @@ sequenceDiagram
     CR->>SL: server_log_config()
     SL-->>CR: uvicorn's log settings,<br/>access line without the request line
     CR->>U: run(app, host="0.0.0.0", port, log_config)
+    U-->>CR: returns once the server stops
+    CR->>CR: stop_notifier: up to 5 s for the queue
 ```
 
 A bad setting stops at step 3, a bad account selector at step 7, and a
@@ -307,7 +309,7 @@ stateDiagram-v2
     Rejected --> [*]: one red line, no broker call, no lock
     Refused --> [*]: one red line, nothing closed
     OrderRejected --> [*]: one red line with a fresh count, Normal Unlocked line
-    Failed --> [*]: Broker failed line, client exception re-raised in the thread
+    Failed --> [*]: Broker failed or Bot failed line, the exception re-raised in the thread
     Handled --> [*]
 ```
 
@@ -414,8 +416,8 @@ design.
   - Its `still_closing` prints one red line with the open positions, the
     whole seconds since the first close request, and that later signals
     wait.
-  - Its `broker_failed` prints one red line with the symbol and the
-    exception's type, never its text.
+  - Its `broker_failed` and `bot_failed` print one red line each with the
+    symbol and the exception's type, never its text.
   - Every red line goes through `_alert`, which prints it and hands its
     text, without colours, to the `notify` it was built with: the
     notifier's, or `no_notification` when Telegram is off
@@ -427,10 +429,14 @@ design.
   `TelegramChat` sends one plain-text message through `urllib` and
   returns a `SendFailure` that says whether to try again; nothing it
   returns holds the token. `urlopen` is an argument with no default.
-- `BackgroundNotifier` (`notifier`) queues each message, up to 100, for
-  one daemon thread. `Delivery` tries a message three times, waiting
-  2 s and 10 s or Telegram's `retry_after` up to 60 s, and reports one
-  it could not send in a red line that is never sent itself.
+  It is the adapter of the `Chat` port, which `notifier` declares.
+- `BackgroundNotifier` (`notifier`) queues each message, with the time it
+  was logged, up to 100, for one daemon thread, and tells the chat how
+  many it dropped once the queue is empty. `Delivery` tries a message
+  three times, waiting 2 s and 10 s or Telegram's `retry_after` up to 10
+  minutes, marks a message a minute late or more, and reports one it
+  could not send in a red line that is never sent itself. `stop(seconds)`
+  waits for the queue and reports what it loses.
 - `SystemClock` implements `Clock` over `time.monotonic` and `time.sleep`.
   The monotonic clock, because the wall clock can step after an NTP
   correction or a manual change (ADR 0022).
@@ -456,6 +462,8 @@ design.
   - A rejection or a refusal gets one operator line.
   - A broker failure gets one red `Broker failed:` line, then is re-raised
     as the client's own exception, so the webhook thread fails as before.
+  - Any other exception from the use case gets one red `Bot failed:`
+    line, then is re-raised as it was.
 - `ascii_alerts` holds the console's colours and the startup banners, and
   `webhook_path` makes the random path for `--url generate`, from
   `secrets` ([ADR 0012](adr/0012-generate-the-webhook-path-with-secrets.md)).
@@ -492,7 +500,10 @@ layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
   prints the content
   ([ADR 0024](adr/0024-read-the-password-from-a-file.md)).
 - `start_notifier` starts Telegram's notifier when `telegram_from` gave
-  settings, and returns its `notify`; otherwise `no_notification`. Both
+  settings; `main` passes its `notify` on, or `no_notification`. A
+  failed login is sent as `Login failed:`, and `stop_notifier` gives the
+  queue 5 seconds before the login's exception leaves `main`, and again
+  once uvicorn returns. Both
   Telegram settings come only from the environment
   ([ADR 0027](adr/0027-send-the-red-lines-to-telegram.md)).
 - It creates the one lock that every request shares.

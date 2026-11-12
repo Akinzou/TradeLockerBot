@@ -44,6 +44,9 @@ What goes to the chat, as plain text with no colours:
 | `Order rejected: ...`                         | As in the log                                         |
 | `Still closing: ...`                          | As in the log                                         |
 | `Broker failed: a call for XAUUSD got no answer (TLAPIException); the signal stopped there, check XAUUSD in TradeLocker` | A broker call got no answer. This line is new in the log too, printed before the traceback |
+| `Bot failed: an error in the bot (TypeError) while handling XAUUSD; ...` | Any other exception ended a valid signal, a bug for one. New in the log too, before the traceback |
+| `Login failed: ConnectionError; the bot stops, the log has the error` | The login failed. Sent only, given up to 5 s, before the bot stops |
+| `Telegram: the queue was full and dropped 3 of the bot's messages; the log has them` | Once the queue is empty again after a flood |
 
 ```mermaid
 flowchart LR
@@ -55,7 +58,8 @@ flowchart LR
     D --> TC[TelegramChat.send<br/>urllib, 10 s timeout]
     TC -- "HTTPS POST sendMessage,<br/>plain text" --> TG[(api.telegram.org)]
     D -- "not sent: the message's first words<br/>and why, never sent itself" --> LOG
-    N -- "queue full: dropped, reported" --> LOG
+    N -- "queue full: dropped, reported,<br/>and counted for the chat" --> LOG
+    CR -- "after the server stops, or a failed login:<br/>stop(5 s), what is left reported" --> N
 ```
 
 ### Why
@@ -83,13 +87,18 @@ flowchart LR
   line would bury those. The account line goes first, at each start, so a
   wrong chat, or a bot the operator never started a chat with, shows up in
   the log at startup rather than on the first alert that needed it.
-- **The broker failure gets its own red line.** The traceback says
-  nothing to the operator's phone. The line names the symbol and the
-  exception's type only. The client's exception text can hold a token or
-  the server's whole answer
-  ([ADR 0025](0025-run-the-broker-client-at-info.md)), and this line
-  leaves the host. The traceback after it still has the text, in the
+- **The broker failure gets its own red line, and so does any other
+  exception that ends a valid signal.** The traceback says nothing to the
+  operator's phone. `Broker failed:` and `Bot failed:` name the symbol and
+  the exception's type only. The client's exception text can hold a token
+  or the server's whole answer
+  ([ADR 0025](0025-run-the-broker-client-at-info.md)), and these lines
+  leave the host. The traceback after them still has the text, in the
   log.
+- **A failed login is sent too, before the bot stops.** Otherwise the
+  phone would only miss a `Logged in:` message. The bot gives the message
+  up to 5 seconds before it raises the login's exception. Under
+  `--restart`, that is one message per attempt.
 - **Off the trading path.**
   - The console runs inside the lock that every signal shares, so it
     only queues the text.
@@ -98,12 +107,23 @@ flowchart LR
     places an order while Telegram never answers.
   - The queue holds 100 messages. A message beyond that, from a flood of
     rejected alerts for instance, is dropped and reported rather than
-    held in memory.
+    held in memory. Once the queue is empty again, the chat gets one
+    message with how many were dropped, since one of them may have been
+    the one that needed action.
+  - When the server stops, on `docker stop` for one, the bot gives the
+    queue up to 5 seconds, within the 10 that `docker stop` waits, and
+    logs how many messages it could not send.
 - **Tried again when Telegram may get over it.**
   - Three tries in all, for a `429`, a `5xx`, an answer that is not
     Telegram's, and no answer at all.
   - The waits between them are 2 s and 10 s, or Telegram's own
-    `retry_after` up to 60 s.
+    `retry_after` up to 10 minutes: a try before that wait ends is refused
+    too, so a shorter cap would spend the tries and lose the message. A
+    `retry_after` that is negative, not finite or not a number gets the
+    usual wait.
+  - A message sent a minute or more after the bot logged it ends with
+    `(sent N seconds after the bot logged it)`, so the operator does not
+    act on a state that may have changed since.
   - Any other `4xx` is not tried again, because the same request would get
     the same answer.
   - A message that is still not sent is reported in one red log line,
@@ -119,6 +139,11 @@ flowchart LR
     An uncaught one would print its traceback, and the text of some, an
     invalid URL's for one, holds the URL.
   - The settings' `repr` leaves the token out.
+- **A `Chat` port.** Telegram is a process boundary, so the notifier
+  depends on a `Chat` protocol, `send(text) -> Result[None, SendFailure]`,
+  and `TelegramChat` is its adapter. The port is declared in the
+  notifier's module rather than among the use case's ports, because only
+  adapters hand it text.
 - **`urllib` rather than `requests`.** It is in the standard library, so
   there is no new direct dependency. `requests`' connection errors also
   name the URL, token included, in their text.
@@ -163,12 +188,15 @@ flowchart LR
   - eight chat ids that name no chat;
   - a `repr` without the token.
 - **`test_notifier.py`** covers the notifier:
-  - the tries and their waits, with Telegram's `retry_after` capped;
+  - the tries and their waits, with Telegram's `retry_after` kept up to
+    10 minutes, and a negative, NaN or infinite one replaced;
   - one report after the last try, and an immediate one for a refused
     message;
+  - the lateness note, from the time the message was logged;
   - `notify` returning while a message is held;
-  - the report for a full queue;
-  - a delivery that raises does not end the thread.
+  - the report for a full queue, and the count sent once it empties;
+  - a delivery that raises does not end the thread;
+  - the stop, which waits for the queue, or reports what it loses.
 - **`test_printing_console.py`** checks that each red line is handed on as
   its text without colours, and that the other lines are not. It also
   pins the `Broker failed:` line with the type alone.
@@ -181,6 +209,11 @@ flowchart LR
   - An order is placed while Telegram never answers.
   - Four bad settings stop the bot before any output and before the
     login.
+  - A failed login is sent before its exception leaves the bot.
+  - Once the server stops, the messages still queued are reported.
+- **`test_signal_handler.py`** gives the handler a use case that raises a
+  `TypeError`. The handler prints `Bot failed:` with the type only,
+  re-raises the same object, and releases the lock.
 - **`test_broker_failures.py`** adds the `Broker failed:` line to every
   failing call's pinned lines, before the lock is released.
 
@@ -206,25 +239,60 @@ exist, the failure pins lacked the new line, and the startup had no
 - the thread ending on an exception;
 - a full queue not reported.
 
+A review then found ten points, and each was fixed:
+
+1. The 60-second cap on `retry_after` lost messages during a longer flood
+   wait.
+2. A dropped message reached only the log.
+3. Late messages carried no mark.
+4. A negative or NaN `retry_after` stopped the sleep with an error.
+5. A failed login was not sent.
+6. Messages queued at the stop were lost unreported.
+7. There was no port for the chat.
+8. Exceptions other than the broker's had no red line.
+9. Two places held the red-line format.
+10. Two places held the queue's size.
+
+These fixes came before their tests. Each of these mutations of them
+fails at least one test:
+
+- the cap back at 60 s;
+- either side taking any `retry_after`;
+- no lateness note;
+- the time of sending rather than of logging;
+- no dropped count, or one sent while the queue is still full;
+- a stop that reports nothing, does not wait, or leaves out the message
+  being sent;
+- a failed login not sent, or not waited for;
+- no stop after the server;
+- the handler without `Bot failed:`;
+- that line showing the exception's text.
+
 ## What this does not cover
 
 - **A real send to Telegram.** The tests use a server on this machine and
   a replaced `urlopen`, and CI has no bot token. On the first start with
   the settings, check that the `Logged in:` message arrives.
-- **Messages queued when the bot stops are lost.** The thread is a daemon
-  thread, so it does not hold the stop for a minute of tries. Each of
-  those messages is in the log, and the next start sends `Logged in:`.
+- **Messages still queued 5 seconds into a stop are lost.** The thread is
+  a daemon thread, so it does not hold the stop for minutes of tries. The
+  log says how many, each of them is in the log, and the next start sends
+  `Logged in:`. A process that is killed, or that ends on an exception
+  other than the login's, reports nothing.
 - **A message can arrive twice.** When the answer to a sent message is
   lost, the next try sends it again.
-- **A message can wait.** Messages go one at a time, so one can wait
-  behind the tries of the one before. That wait is up to about two and a
-  half minutes: three 10-second timeouts and two 60-second waits.
+- **A message can wait.** Messages go one at a time, so each one waits
+  behind the tries of those before it. During an outage that adds up, to
+  hours behind a long queue. A message that goes a minute or more late
+  says so, but not the wall-clock time it was logged. The 10-second
+  timeout does not bound a slow DNS lookup.
 - **Trading data leaves the host.** Telegram's servers keep the messages:
   the account's id and number, symbols, sides, the broker's reasons, and
   in some rejections the account balance. Bot chats are not end-to-end
   encrypted. Anyone in the chat reads them.
 - **The chat cannot answer the bot.** The bot only sends, and reads
   nothing from the chat.
+- **A flood of one kind of message can still push out another** while
+  the queue is full. The chat learns how many were dropped, not which.
 - **When a long close ended.** A `Still closing:` message has no
   follow-up yet; that is the next step.
 - **Images built before this change** ignore both settings and start
@@ -238,7 +306,8 @@ exist, the failure pins lacked the new line, and the startup had no
 - A Telegram outage or a wrong setting costs trading nothing. It shows
   in the log as one red line per message not sent.
 - The frozen contract gains two optional variables. None is removed.
-- The log gains the `Broker failed:` line, with or without Telegram.
+- The log gains the `Broker failed:` and `Bot failed:` lines, with or
+  without Telegram.
 
 ## Alternatives considered
 

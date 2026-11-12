@@ -331,12 +331,17 @@ INFO:     203.0.113.7:52403 - "<request line hidden>" 405 Method Not Allowed
 ## Telegram notifications
 
 The bot can also send to a Telegram chat every line you have to act on:
-`Signal rejected:`, `Order rejected:`, `Still closing:` and
-`Broker failed:`, and the `Logged in:` line at each start. Lines for
-signals that went as expected stay in the log only. Sending never delays
-a trade: if Telegram is slow or down, the bot trades on, tries each
-message three times, and logs one red line for a message it could not
-send ([ADR 0027](docs/adr/0027-send-the-red-lines-to-telegram.md)).
+`Signal rejected:`, `Order rejected:`, `Still closing:`,
+`Broker failed:` and `Bot failed:`. It also sends the `Logged in:` line
+at each start, and `Login failed:` when the login fails. Lines for
+signals that went as expected stay in the log only.
+
+Sending never delays a trade. If Telegram is slow or down, the bot trades
+on, tries each message three times, and logs one red line for each
+message it could not send. A message that arrives a minute or more after
+the bot logged it says how late it is. If more than 100 messages are
+waiting, the newest are dropped, and the chat later hears how many
+([ADR 0027](docs/adr/0027-send-the-red-lines-to-telegram.md)).
 
 1. In Telegram, open a chat with **@BotFather**, send `/newbot` and
    follow its questions. It answers with the bot's token, such as
@@ -449,7 +454,8 @@ alerts.
 >
 > Since [ADR 0027](docs/adr/0027-send-the-red-lines-to-telegram.md), a
 > broker call that gets no answer logs one red `Broker failed:` line
-> before the client's traceback, and the bot can send the red lines to
+> before the client's traceback, any other exception that ends a signal
+> one `Bot failed:` line, and the bot can send the red lines to
 > Telegram. Images built before ignore `telegram_token_file` and
 > `telegram_chat_id` and start without Telegram: pull the new image
 > before you set them.
@@ -554,6 +560,8 @@ alerts.
 | Container keeps restarting, `docker logs` shows `argument --url: must not contain ?, # or %` | `url` has a `?`, `#` or `%`. Remove it, or make a new path with the command in [Quick start](#quick-start). Alerts must then use the new path. |
 | Error about account number and ID at start  | Both `acc_id` and `acc_num` are set; keep only one.                                            |
 | `Broker failed: a call for XAUUSD got no answer (...); the signal stopped there, check XAUUSD in TradeLocker` | A broker call failed, for the reason in the traceback below it. The signal stopped at that call, possibly after the positions were closed and before the order: check the instrument in TradeLocker. |
+| `Bot failed: an error in the bot (...) while handling XAUUSD; ...` | A fault in the bot itself ended the signal; the traceback below it shows where. Check the instrument in TradeLocker, and please report it with the traceback, without the secrets in it. |
+| `Telegram: the bot stopped with N of its messages not sent; the log has them` | The bot stopped while Telegram was slow or down. The messages are in the log above. |
 | Container keeps restarting, `docker logs` shows `telegram_chat_id is set without telegram_token_file` or `telegram_token_file is set without telegram_chat_id` | Set both, or neither (see [Telegram notifications](#telegram-notifications)). An empty value counts as not set. |
 | `docker logs` shows `telegram_token_file: the file holds no bot token, ...` | The file does not hold a token in BotFather's form, digits, a colon and the rest, alone on one line. Copy it again from BotFather. The other `telegram_token_file:` messages mean what they mean for `password_file`. |
 | `docker logs` shows `telegram_chat_id: expected a chat's number, ...` | Use the number from `getUpdates`, with its `-` if it has one, or `@` and a public channel's name. |
