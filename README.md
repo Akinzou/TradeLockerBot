@@ -141,8 +141,10 @@ or expands a value with spaces, `*`, `?` or `[`; on those, use a password
 without them.
 
 When you run the bot outside the image, every setting except the password
-can also be given as an option of the same name, such as `--url /path`,
-which wins over the variable.
+can also be given as an option of the same name, such as `--url /path`.
+The option replaces the variable, and `--acc_num` or `--acc_id` replaces
+both. On Windows, give `--username`: variable names ignore case there, so
+`USERNAME`, your Windows login, would be read as `username`.
 
 ## Connecting TradingView
 
@@ -341,6 +343,7 @@ alerts.
 | Position closed but no new one opened       | The broker rejected the order; the log shows its error. |
 | Bot does not start, login fails             | Wrong credentials or `env`. On images built before [ADR 0018](docs/adr/0018-read-the-settings-from-the-environment.md), also a password with spaces or shell characters (see [Configuration](#configuration)). |
 | Container keeps restarting, `docker logs` shows `the password environment variable is not set or is empty` | Set `password` with `-e` or in the `--env-file`. The bot does not read `--password`. |
+| `docker logs` shows `the following arguments are required: --server` or `argument --server: must not be empty` | The messages name the option the image fills from the variable of the same name. Set `server` (or the variable named) to a non-empty value. |
 | `Method Not Allowed` in the browser         | Expected; see [Verifying the setup](#verifying-the-setup).                                     |
 | Every alert gets `404 Not Found`            | Each one leaves a `<request line hidden>` line in the log with the status `404 Not Found`. The alert's URL does not match the `url` setting exactly (case included). A trailing `/` counts: `/strategy/` is not `/strategy`. On images built before [ADR 0014](docs/adr/0014-require-a-leading-slash.md), also check that `url` starts with `/`. |
 | Container keeps restarting, `docker logs` shows `argument --url: must start with / or be generate` | `url` is neither `generate` nor a path that starts with `/`. Add the leading `/`. An empty `url` gets the same message; images built before [ADR 0018](docs/adr/0018-read-the-settings-from-the-environment.md) show `argument --url: expected one argument` instead. |

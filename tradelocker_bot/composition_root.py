@@ -64,26 +64,42 @@ def refuse_password(_value):
 # same names: the frozen contract's variables, less the password.
 FROM_ENVIRONMENT = ("username", "server", "env", "url", "acc_num", "acc_id")
 
+# They exclude each other, so one given on the command line stands for both.
+ACCOUNT_SELECTORS = {"acc_num", "acc_id"}
 
-def environment_args(env):
-    """Each variable that is set as the option of the same name, put before
-    the command line so that an option given there wins.
+
+def environment_args(env, argv):
+    """Each variable that is set and whose option ``argv`` does not give, as
+    that option.
 
     One parser for both sources rather than a second set of checks: a value
-    from either gets the same validation and the same message. The ``=``
-    form keeps a value that starts with ``-`` from reading as an option.
+    from either gets the same validation and the same message. A variable
+    the command line replaces is left out rather than overridden, so a bad
+    value there cannot stop the bot; with ``--help`` every variable is, so
+    a bad one cannot hide the help. The ``=`` form keeps a value that starts
+    with ``-`` from reading as an option.
     """
-    return [f"--{name}={env[name]}" for name in FROM_ENVIRONMENT if name in env]
+    given = {arg[2:].split("=", 1)[0] for arg in argv if arg.startswith("--")}
+    if "help" in given or "-h" in argv:
+        return []
+    if given & ACCOUNT_SELECTORS:
+        given |= ACCOUNT_SELECTORS
+    return [f"--{name}={env[name]}" for name in FROM_ENVIRONMENT if name in env and name not in given]
 
 
 def parse_args(argv=None, env=None):
     """The start settings: the options in ``argv``, those not given there
     from ``env``, and the password only from ``env``."""
-    argv = sys.argv[1:] if argv is None else argv
+    argv = list(sys.argv[1:] if argv is None else argv)
     env = environ if env is None else env
+    # No abbreviations, and no unknown argument printed: argparse would print
+    # an ambiguous `--p=...` or a misspelt `--passwd ...` in full, password
+    # included, to the container's log.
     parser = argparse.ArgumentParser(
-        description="Every option can instead be set in the environment variable of the same name, "
-        "and the option wins. The password is read only from the password environment variable.",
+        allow_abbrev=False,
+        description="Each option but --port can instead be set in the environment variable of the same name; "
+        "an option given here replaces its variable, and --acc_num or --acc_id here replaces both. "
+        "The password is read only from the password environment variable.",
     )
     parser.add_argument('--username', type=not_empty, required=True, help='username/email')
     parser.add_argument('--password', type=refuse_password, help=argparse.SUPPRESS)
@@ -93,7 +109,9 @@ def parse_args(argv=None, env=None):
     parser.add_argument('--acc_num', type=str, default='0', help='Optional account number')
     parser.add_argument('--acc_id', type=str, default='0', help='Optional account ID')
     parser.add_argument('--port', type=int, default=443, help='Port to run the application')
-    args = parser.parse_args(environment_args(env) + list(argv))
+    args, unknown = parser.parse_known_args(environment_args(env, argv) + argv)
+    if unknown:
+        parser.error("unrecognized arguments, not shown: one may be the password")
     args.password = env.get("password", "")
     if not args.password:
         parser.error("the password environment variable is not set or is empty")

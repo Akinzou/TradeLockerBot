@@ -82,6 +82,38 @@ def test_an_option_on_the_command_line_wins_over_its_environment_variable(startu
     assert post(startup.app, "/zq7env", b"")[0].status_code == 404
 
 
+def test_a_variable_an_option_replaces_is_not_checked(startup):
+    # Replaced means unread: a bad value there cannot stop the bot.
+    startup.run({**DEMO, "env": "paper", "url": "zq7", "username": ""},
+                "--env", "demo", "--url", "/zq7flag", "--username", "u")
+
+    assert startup.logins == [DEMO_LOGIN]
+    assert post(startup.app, "/zq7flag", b"")[0].status_code == 200
+
+
+@pytest.mark.parametrize(
+    ("environ", "argv", "login"),
+    [
+        ({"acc_num": "2"}, ("--acc_id", "77"), {"account_id": 77}),
+        ({"acc_id": "77"}, ("--acc_num", "2"), {"acc_num": 2}),
+    ],
+)
+def test_an_account_selector_on_the_command_line_replaces_both_variables(startup, environ, argv, login):
+    # The two exclude each other, so one given here stands for the pair.
+    startup.run({**DEMO, **environ}, *argv)
+
+    assert startup.logins == [{**DEMO_LOGIN, **login}]
+
+
+def test_help_ignores_the_environment(startup, capsys):
+    # The operator whose bot stops on a bad variable needs the help most.
+    with pytest.raises(SystemExit) as exited:
+        startup.run({**DEMO, "env": "paper", "url": "zq7"}, "--help")
+
+    assert exited.value.code == 0
+    assert capsys.readouterr().out.startswith("usage: ")
+
+
 @pytest.mark.parametrize("environ", [_without("password"), {**DEMO, "password": ""}])
 def test_a_missing_or_empty_password_stops_before_any_output(startup, capsys, environ):
     with pytest.raises(SystemExit) as exited:
@@ -95,18 +127,34 @@ def test_a_missing_or_empty_password_stops_before_any_output(startup, capsys, en
     assert startup.served == []
 
 
-@pytest.mark.parametrize("argv", [("--password", "zq7pw"), ("--password=zq7pw",), ("--pass", "zq7pw")])
-def test_a_password_on_the_command_line_stops_the_bot_and_is_not_echoed(startup, capsys, argv):
+REFUSED = "error: argument --password: set the password environment variable instead"
+UNSHOWN = "error: unrecognized arguments, not shown: one may be the password"
+
+
+@pytest.mark.parametrize(
+    ("argv", "message"),
+    [
+        (("--password", "zq7pw"), REFUSED),
+        (("--password=zq7pw",), REFUSED),
+        # argparse prints an unknown or ambiguous argument in full, so a
+        # misspelt or shortened option would put the password in the log.
+        (("--pass", "zq7pw"), UNSHOWN),
+        (("--p=zq7pw",), UNSHOWN),
+        (("--passwd=zq7pw",), UNSHOWN),
+        (("--passwd", "zq7pw"), UNSHOWN),
+        (("zq7pw",), UNSHOWN),
+    ],
+)
+def test_a_password_on_the_command_line_stops_the_bot_and_is_not_echoed(startup, capsys, argv, message):
     # The process list shows the command line to every user of the host, so
-    # the option is refused rather than read; refused rather than unknown,
-    # because argparse prints an unknown argument, value included.
+    # the option is refused rather than read.
     with pytest.raises(SystemExit) as exited:
         startup.run(DEMO, *argv)
 
     out, err = capsys.readouterr()
     assert exited.value.code == 2
     assert out == ""
-    assert err.splitlines()[-1].endswith("error: argument --password: set the password environment variable instead")
+    assert err.splitlines()[-1].endswith(message)
     assert "zq7pw" not in err
     assert startup.logins == []
     assert startup.served == []

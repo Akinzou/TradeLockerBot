@@ -346,11 +346,13 @@ layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
   app and starts the server, in the order the [startup](#startup) diagram
   shows.
 - `parse_args` reads the settings from the environment variables the
-  image is started with, and lets an option of the same name on the
-  command line win. Each set variable becomes `--name=value` ahead of the
-  command line, so one parser checks both sources. The password is read
-  only from the environment, and `--password` is refused without its
-  value, because the host's process list shows every command line
+  image is started with. An option of the same name on the command line
+  replaces its variable. Each variable the command line does not replace
+  becomes `--name=value` ahead of it, so one parser checks both sources.
+  The password is read only from the environment, and `--password` is
+  refused without its value, because the host's process list shows every
+  command line. Unknown or shortened arguments are refused without being
+  printed
   ([ADR 0018](adr/0018-read-the-settings-from-the-environment.md)).
 - It creates the one lock that every request shares.
 - `webhook_url` checks `url` as the settings are read: `generate` or a

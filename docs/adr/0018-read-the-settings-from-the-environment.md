@@ -48,10 +48,10 @@ CMD ["python", "main_without_ssl.py"]
 
 ```mermaid
 flowchart LR
-    ENV[(container environment)] -- "username, server, env, url,<br/>acc_num, acc_id as --name=value" --> P[parse_args]
-    ARGV["command line<br/>(empty in the image)"] -- "after them, so an option wins" --> P
+    ENV[(container environment)] -- "username, server, env, url,<br/>acc_num, acc_id as --name=value,<br/>unless the command line gives it" --> P[parse_args]
+    ARGV["command line<br/>(empty in the image)"] --> P
     ENV -- "password, only from here" --> P
-    P -- "a value missing, empty or invalid;<br/>--password on the command line" --> STOP["exit 2, before any output"]
+    P -- "a value missing, empty or invalid;<br/>--password or an unknown argument" --> STOP["exit 2, before any output"]
     P -- settings --> START["greeting, login, server"]
 ```
 
@@ -62,21 +62,28 @@ flowchart LR
   - Each variable that is set becomes the option of the same name, in the
     `--name=value` form, placed before the real command line. The `=`
     keeps a value that starts with `-` from reading as an option.
-  - argparse keeps the last value it sees, so an option given on the
-    command line wins over its variable. That keeps the options usable
-    when running the bot outside the image, `--port` included.
+  - A variable whose option the command line gives is left out, not
+    overridden, so a bad value in it cannot stop the bot. `--acc_num` or
+    `--acc_id` on the command line leaves out both variables, because the
+    two exclude each other. With `--help`, every variable is left out, so a
+    bad one cannot hide the help. That keeps the options usable when
+    running the bot outside the image, and `--port` stays an option only.
   - A value from either source gets the same checks and the same message:
     `argument --url: must start with / or be generate` stays as the README
-    documents it.
+    documents it. Messages therefore name the option, `--server`, for a
+    value that came from the variable `server`; the README's
+    troubleshooting table says so.
 - **The password only from the environment.**
   - `parse_args` reads `password` itself. When it is unset or empty, the bot
     stops with exit status `2` and
     `error: the password environment variable is not set or is empty`.
   - `--password` stays registered so that it can be refused:
     `argument --password: set the password environment variable instead`.
-    An unknown option would not be safer, because argparse prints an
-    unrecognized argument in full, password included, to the container's
-    log.
+  - argparse prints an unrecognized or ambiguous argument in full, so a
+    misspelt `--passwd ...` or a shortened `--p=...` would put the password
+    in the container's log. Options cannot be shortened, and any argument
+    the parser does not know stops the bot with
+    `unrecognized arguments, not shown: one may be the password`.
   - `--help` does not list the option, and its description says where the
     password comes from.
 - **No value is trimmed or dropped.** The shell no longer splits values,
@@ -95,6 +102,7 @@ flowchart LR
 | A password with spaces or `*`, `?`, `[`       | Split or globbed; argument error or a wrong login       | Reaches the login exactly as set |
 | A value that starts with `-`                  | Read as an option                                       | Read as the value |
 | `--password` on the command line              | Read                                                    | Exit `2`, value not printed |
+| An unknown or shortened argument (`--passwd`, `--p=`) | Printed in full in the error                   | Exit `2`, not printed |
 | `password` unset or empty                     | Exit `2`, a message about `--password`                  | Exit `2`, `the password environment variable is not set or is empty` |
 | `url` empty                                   | `argument --url: expected one argument`                 | `argument --url: must start with / or be generate` |
 | `env=demo ` (trailing space)                  | Trimmed to `demo`                                       | Exit `2`, invalid choice |
@@ -117,13 +125,18 @@ flowchart LR
 - **New pins in `tests/characterization/test_startup_settings.py`.**
   - Thirteen credentials reach the login exactly as set: spaces, `$`, `*`,
     `;`, quotes, a leading `-` and an embedded `--env=live`.
-  - An option on the command line wins over its variable.
+  - An option on the command line wins over its variable, and a bad value
+    in a variable it replaces stops nothing.
+  - An account selector on the command line replaces both selector
+    variables.
+  - `--help` works whatever the variables hold.
   - A missing or empty password stops the bot before any output.
-  - `--password`, `--password=` and the abbreviation `--pass` are refused
-    without the value appearing anywhere.
+  - `--password`, `--password=`, `--pass`, `--p=`, `--passwd` and a stray
+    value are refused without the value appearing anywhere.
 - **`tests/test_image_command.py`** checks that the image's `CMD` is
   exactly `["python", "main_without_ssl.py"]` and that there is no
-  `ENTRYPOINT`.
+  `ENTRYPOINT`. It reads instructions as Docker does, in any case and
+  across `\` continuations, and a second test pins that reading.
 - **Two CI steps run the built image's own start command**, with no network.
   - Without a password, it must exit with status `2`, print nothing to
     stdout, and name the variable.
@@ -132,15 +145,23 @@ flowchart LR
     The old image stopped at the settings with status `2`.
 
 Before the fix, 81 of the changed and new tests failed and 2 errored: the
-bot read no variable, and the image command was `sh -c`. Six mutations of the new code
-each fail at least one test:
+bot read no variable, and the image command was `sh -c`. The pins added
+after review failed too, before their fixes: the shortened and misspelt
+options, the replaced bad variable, the account selectors, `--help` with a
+bad variable, and the Dockerfile reader, which missed an instruction in
+lower case or split over lines. Each of these mutations of the new code
+fails at least one test:
 
 - dropping the empty check;
-- putting the command line before the variables;
 - unregistering `--password`;
 - passing values without the `=` form;
 - accepting an empty password;
-- trimming the password.
+- trimming the password;
+- reading the variables with `--help`;
+- not pairing the account selectors;
+- allowing shortened options;
+- accepting unknown arguments;
+- passing a variable the command line replaces.
 
 ## What this does not cover
 
@@ -159,6 +180,11 @@ each fail at least one test:
   the shell and the command line. Pull the new image.
 - **A custom command that passes `--password`** now stops with exit status
   `2`. Move the password into the `password` variable.
+- **Windows, outside the image.** Environment variable names ignore case
+  there, so `USERNAME`, the Windows login, is read as `username` unless
+  `--username` is given. The image runs on Linux, where names keep their
+  case; the README tells Windows users to pass `--username`. The test
+  harness gives the bot its whole environment for the same reason.
 
 ## Consequences
 
