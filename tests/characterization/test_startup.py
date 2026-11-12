@@ -288,5 +288,6 @@ def test_help_lists_every_option_and_exits_cleanly(startup, capsys):
     # Where the settings come from, wrapping undone as above.
     text = " ".join(out.split())
     assert "Each option but --port can instead be set in the environment variable of the same name" in text
-    assert "password environment variable" in text
+    assert ("The password is read only from the environment: from the file password_file names, "
+            "or from the password variable.") in text
     assert startup.logins == []

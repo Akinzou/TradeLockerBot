@@ -2,9 +2,10 @@
 
 The image starts the bot with no arguments, so every setting comes from its
 environment variables; an option on the command line wins over its variable,
-and the password is read only from the environment (ADR 0018). The image's
-shell used to split, expand and glob these values and put them all in the
-host's process list.
+and the password is read only from the environment (ADR 0018), from the
+variable or from the file it names (ADR 0024). The image's shell used to
+split, expand and glob these values and put them all in the host's process
+list.
 """
 
 import pytest
@@ -114,7 +115,9 @@ def test_help_ignores_the_environment(startup, capsys):
     assert capsys.readouterr().out.startswith("usage: ")
 
 
-@pytest.mark.parametrize("environ", [_without("password"), {**DEMO, "password": ""}])
+@pytest.mark.parametrize(
+    "environ", [_without("password"), {**DEMO, "password": ""}, {**DEMO, "password": "", "password_file": ""}]
+)
 def test_a_missing_or_empty_password_stops_before_any_output(startup, capsys, environ):
     with pytest.raises(SystemExit) as exited:
         startup.run(environ)
@@ -122,12 +125,15 @@ def test_a_missing_or_empty_password_stops_before_any_output(startup, capsys, en
     out, err = capsys.readouterr()
     assert exited.value.code == 2
     assert out == ""
-    assert err.splitlines()[-1].endswith("error: the password environment variable is not set or is empty")
+    # It names both ways to set the password (ADR 0024).
+    assert err.splitlines()[-1].endswith(
+        "error: no password: set password_file to a file that holds it, or the password environment variable"
+    )
     assert startup.logins == []
     assert startup.served == []
 
 
-REFUSED = "error: argument --password: set the password environment variable instead"
+REFUSED = "error: argument --password: set password_file or the password environment variable instead"
 UNSHOWN = "error: unrecognized arguments, not shown: one may be the password"
 
 

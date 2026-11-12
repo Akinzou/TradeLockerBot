@@ -84,7 +84,7 @@ jobs:
         run: docker run --rm --entrypoint python tradelocker_bot:ci main_without_ssl.py --help
       # The image's own start command, which no test runs (ADR 0018). Without
       # a network, so nothing here can reach a broker. Without a password the
-      # bot must stop before any output, naming the variable it lacks.
+      # bot must stop before any output, naming both ways to set one (ADR 0024).
       - name: Start the image without a password
         run: |
           status=0
@@ -93,7 +93,32 @@ jobs:
           cat out.txt err.txt
           test "$status" = 2
           test ! -s out.txt
-          tail -n 1 err.txt | grep -q 'error: the password environment variable is not set or is empty$'
+          tail -n 1 err.txt | grep -q 'error: no password: set password_file to a file that holds it, or the password environment variable$'
+      # A secret mounted read-only, as the README shows it (ADR 0024), must get
+      # past the settings. The file is written outside the build context and
+      # after the build, so no image can hold it.
+      - name: Start the image with a password file
+        run: |
+          printf 'p a $HOME *\n' > "$RUNNER_TEMP/password"
+          status=0
+          docker run --rm --network none -e username=u -e server=s -e env=demo \
+            -v "$RUNNER_TEMP/password:/run/secrets/password:ro" -e password_file=/run/secrets/password \
+            tradelocker_bot:ci > out.txt 2> err.txt || status=$?
+          cat out.txt err.txt
+          test "$status" != 0
+          test "$status" != 2
+          grep -qF '|_   _| __ __ _' out.txt
+      # A path that names no file in the container, a mount left out for one,
+      # must stop the bot before any output, with the system's reason.
+      - name: Start the image with a password file that is not there
+        run: |
+          status=0
+          docker run --rm --network none -e username=u -e server=s -e env=demo \
+            -e password_file=/run/secrets/password tradelocker_bot:ci > out.txt 2> err.txt || status=$?
+          cat out.txt err.txt
+          test "$status" = 2
+          test ! -s out.txt
+          tail -n 1 err.txt | grep -q 'error: password_file: the file cannot be read (No such file or directory)$'
       # A password the old shell form split and globbed must get past the
       # settings: the greeting is printed, then the login fails for want of
       # a network. The old image stopped at the settings with status 2.
