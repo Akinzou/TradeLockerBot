@@ -16,6 +16,6 @@ def test_a_coloured_line_and_its_reset_are_one_print(monkeypatch, write, colour)
     printed = []
     monkeypatch.setattr(ascii_alerts, "print", lambda *args: printed.append(args), raising=False)
 
-    write("Closed after 70 seconds")
+    write("Closed: no open XAUUSD position")
 
-    assert printed == [(f"{colour}Closed after 70 seconds\n{ascii_alerts.RESET}",)]
+    assert printed == [(f"{colour}Closed: no open XAUUSD position\n{ascii_alerts.RESET}",)]

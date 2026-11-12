@@ -94,12 +94,15 @@ class PrintingConsole:
         Handed on like a red line, though it asks nothing of the operator:
         the chat that was told later signals wait has to learn that the wait
         is over. Green for that reason, and no word on what comes next, since
-        an open signal's order still follows and has lines of its own. The
-        seconds name their start, the one ``still_closing`` counts from: the
-        chat may show this line late, with a lateness note of its own.
+        an open signal's order still follows and has lines of its own.
+
+        Worded as ``still_closing``, which it answers: the seconds name
+        their start, since the chat may show this line late, with a lateness
+        note of its own, and the word before the colon stays one word, which
+        the notifier names a message by.
         """
-        text = (f"Closed after {int(seconds)} seconds from the first close request: "
-                f"the broker lists no open {symbol} position")
+        text = (f"Closed: the broker lists no open {symbol} position {int(seconds)} seconds "
+                "after the first close request")
         ascii_alerts.print_green(text)
         self._notify(text)
 

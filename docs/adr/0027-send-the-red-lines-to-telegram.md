@@ -88,7 +88,7 @@ flowchart LR
   line would bury those. The account line goes first, at each start, so a
   wrong chat, or a bot the operator never started a chat with, shows up in
   the log at startup rather than on the first alert that needed it.
-  *Update:* the green `Closed after N seconds from the first close request:` line that ends a
+  *Update:* the green `Closed:` line that ends a
   `Still closing:` one goes too, since it answers a message the chat
   already holds ([ADR 0028](0028-say-when-a-slow-close-ended.md)).
 - **The broker failure gets its own red line, and so does any other
@@ -192,7 +192,7 @@ flowchart LR
 
 | Without the settings | With them |
 |----------------------|-----------|
-| No thread, no request, no new line on startup | `Telegram: on; the account line and every red line also go to the chat` after the greeting, and the account line in the chat (since [ADR 0028](0028-say-when-a-slow-close-ended.md): `Telegram: on; the account line, every red line and each Closed after line also go to the chat`) |
+| No thread, no request, no new line on startup | `Telegram: on; the account line and every red line also go to the chat` after the greeting, and the account line in the chat (since [ADR 0028](0028-say-when-a-slow-close-ended.md): `Telegram: on; the account line, every red line and each Closed line also go to the chat`) |
 | A broker failure: the traceback | A broker failure: one red `Broker failed:` line, then the traceback, with or without the settings |
 | | Each red line in the chat too |
 | | A message not sent: `Telegram: the "Signal rejected" message was not sent after 3 tries: HTTP 502` in the log |

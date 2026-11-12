@@ -162,11 +162,11 @@ flowchart LR
     UC -- "Err(Refusal)" --> CON
     UC -- "Err(BrokerFailure)" --> SH
     SH -- "Broker failed: line,<br/>then re-raised in the thread" --> CON
-    CON -- "red lines, Closed after line:<br/>notify(text)" --> NT[BackgroundNotifier<br/>its own thread]
+    CON -- "red lines, Closed line:<br/>notify(text)" --> NT[BackgroundNotifier<br/>its own thread]
     NT -- "HTTPS, when set" --> TGAPI[(Telegram chat)]
 ```
 
-The console's red lines, and the green `Closed after` line that ends a
+The console's red lines, and the green `Closed:` line that ends a
 `Still closing:` one
 ([ADR 0028](adr/0028-say-when-a-slow-close-ended.md)), reach Telegram only
 when its settings are set,
@@ -261,7 +261,7 @@ have passed on the `Clock`. A minute after the first request it prints one
 red `Still closing:` line. A count or request that gets no answer still
 ends the loop as a `BrokerFailure`
 ([ADR 0022](adr/0022-pace-the-close-loop-on-a-clock.md)). A close that
-printed that line ends with one green `Closed after N seconds from the first close request:` line, at
+printed that line ends with one green `Closed:` line, at
 the count that lists no position; one that failed does not
 ([ADR 0028](adr/0028-say-when-a-slow-close-ended.md)).
 
@@ -313,7 +313,7 @@ stateDiagram-v2
     Locked --> Failed: broker call failed before any close
     Locked --> Working: checks passed, Normal Locked line
     Working --> Working: position still open, Still closing line once after a minute
-    Working --> Working: closed after that line, Closed after line once
+    Working --> Working: closed after that line, Closed line once
     Working --> Failed: broker call failed while closing or ordering
     Working --> OrderRejected: broker answered the order without creating it
     Working --> Handled: Normal Unlocked line

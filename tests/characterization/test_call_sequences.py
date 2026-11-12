@@ -124,7 +124,7 @@ PLACED = "Order placed successfully, order ID: 9001"
 FLAT = "no XAUUSD position is open"
 STILL_OPEN = ("Still closing: the broker lists 1 open XAUUSD position 60 seconds after the first close request; "
               "later signals wait until it closes, check it in TradeLocker")
-CLOSED = "Closed after 70 seconds from the first close request: the broker lists no open XAUUSD position"
+CLOSED = "Closed: the broker lists no open XAUUSD position 70 seconds after the first close request"
 REJECTED = f"Order rejected: the broker refused to buy XAUUSD ('Not enough margin'); {FLAT}"
 
 

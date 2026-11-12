@@ -7,6 +7,7 @@ import math
 import pytest
 
 from tests.fake_clock import FakeClock
+from tradelocker_bot.adapters.console import PrintingConsole
 from tradelocker_bot.adapters.notifier import ATTEMPTS, Delivery, SendFailure
 from tradelocker_bot.domain.result import Err, Ok
 
@@ -116,3 +117,16 @@ def test_the_report_names_the_message_by_its_first_words(text):
     deliver(text, 0.0)
 
     assert reports == ['Telegram: the "Still closing" message was not sent: HTTP 400']
+
+
+def test_the_closed_line_is_named_by_its_one_word():
+    # The console's own text: words before its colon that ran past the cut
+    # at 40 characters would name it mid-word (ADR 0028).
+    texts = []
+    PrintingConsole(texts.append).closed("XAUUSD", 138.5)
+    chat = Chat(Err(SendFailure("HTTP 400", retry=False)))
+    deliver, _, _, reports = _deliver(chat)
+
+    deliver(texts[0], 0.0)
+
+    assert reports == ['Telegram: the "Closed" message was not sent: HTTP 400']

@@ -2,7 +2,7 @@
 (ADR 0027).
 
 The adapter of the ``Chat`` port, which the notifier declares: only
-adapters hand it text, the console's red lines, its ``Closed after`` line
+adapters hand it text, the console's red lines, its ``Closed:`` line
 (ADR 0028) and the startup's account line, and the use case knows nothing
 of it. The bot token is part of every request's path, so nothing here returns
 or prints a request, a URL or an exception's text: a failure is the HTTP

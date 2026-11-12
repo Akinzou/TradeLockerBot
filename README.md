@@ -63,7 +63,7 @@ flowchart LR
      the broker to close again every 10 seconds. If a position is still
      open a minute after the first request, for example with the market
      closed, the log shows one `Still closing:` line, and once the broker
-     lists none, one `Closed after N seconds from the first close request:` line. Every later signal
+     lists none, one `Closed:` line. Every later signal
      waits until the close is done, then runs, in no set order. A check or
      request that gets no answer ends the wait with the client's error.
    - If the broker answers the order without creating it, the bot does not
@@ -85,7 +85,7 @@ flowchart TD
     E -- "found, open" --> F["Close the instrument's positions"] --> G["Place a market order, once"]
     G -- "rejected by the broker" --> R["Count the positions again,<br/>log an Order rejected line"]
     E -- "found, close" --> H["Close the instrument's positions"]
-    F & H -.- W["Until none is open: check about every 2 s,<br/>ask again every 10 s,<br/>a Still closing line after a minute,<br/>then a Closed after line"]
+    F & H -.- W["Until none is open: check about every 2 s,<br/>ask again every 10 s,<br/>a Still closing line after a minute,<br/>then a Closed line"]
 ```
 
 For a component-level view, see [docs/architecture.md](docs/architecture.md).
@@ -335,7 +335,7 @@ The bot can also send to a Telegram chat every line you have to act on:
 `Signal rejected:`, `Order rejected:`, `Still closing:`,
 `Broker failed:` and `Bot failed:`. It also sends the `Logged in:` line
 at each start, `Login failed:` when the login fails, and the
-`Closed after N seconds from the first close request:` line that ends a `Still closing:` one, so the
+`Closed:` line that ends a `Still closing:` one, so the
 chat learns that the wait is over. Other lines for signals that went as
 expected stay in the log only.
 
@@ -383,7 +383,7 @@ waiting, the newest are dropped, and the chat later hears how many
 5. Start the bot. After the greeting the log shows
 
    ```text
-   Telegram: on; the account line, every red line and each Closed after line also go to the chat
+   Telegram: on; the account line, every red line and each Closed line also go to the chat
    ```
 
    and the chat gets `Logged in: acc_id ..., acc_num ...`. If it does
@@ -468,9 +468,9 @@ alerts.
 >
 > Since [ADR 0028](docs/adr/0028-say-when-a-slow-close-ended.md), a close
 > that logged `Still closing:` ends with one green
-> `Closed after N seconds from the first close request: the broker lists no open XAUUSD position`
+> `Closed: the broker lists no open XAUUSD position N seconds after the first close request`
 > line, also sent to Telegram. With Telegram on, the startup line reads
-> `Telegram: on; the account line, every red line and each Closed after line also go to the chat`.
+> `Telegram: on; the account line, every red line and each Closed line also go to the chat`.
 
 ## Security
 
@@ -538,7 +538,7 @@ alerts.
   password.
 - **Telegram sees what the bot sends there.** With
   [Telegram notifications](#telegram-notifications) on, each red line,
-  each `Closed after` line and the account line leave the host: the
+  each `Closed:` line and the account line leave the host: the
   account's id and number, symbols,
   sides, the broker's reasons, and in some rejections the balance.
   Telegram keeps them, without end-to-end encryption, and everyone in the
@@ -557,7 +557,7 @@ alerts.
 | `Signal rejected: the account balance is ...` | The broker reported no balance, a balance that is not a number, or one that is not above zero. Check the account in TradeLocker, then send the alert again. |
 | `Order rejected: the broker refused to buy XAUUSD (...); no XAUUSD position is open` | The broker answered the order without creating it, for the reason in brackets; margin, its minimum lot or a closed market are the likely causes. The positions on the instrument were closed first, and the broker lists none now. The bot does not send the order again; open the position by hand or wait for the next alert. |
 | `Order rejected: ...; the broker lists 1 open XAUUSD position, check it in TradeLocker` | The order was rejected, but a position is open on the instrument: an earlier attempt of the same order may have filled before the client resent it, or one was opened by hand. Check it in TradeLocker before you open another. With `the position count got no answer`, the bot could not count, and a traceback follows. |
-| `Still closing: the broker lists 1 open XAUUSD position 60 seconds after the first close request; ...` | The broker has not filled the close. A closed market, a weekend for example, is the likely cause. The bot keeps asking every 10 seconds, with no time limit, and every alert that arrives meanwhile waits. Once the position closes they all run, one at a time but in no set order, on alerts that may be old. If they should not, restart the container: that drops them, but the bot then stops asking, so an `open` that was closing never places its order. A plain stop waits for the close and needs Docker's timeout to kill the process. What the broker does with the close requests already sent was not observed: check the instrument in TradeLocker. If a check gets no answer, the wait ends with the client's error instead. Once the broker lists none, the log shows `Closed after N seconds from the first close request:`, and with Telegram on so does the chat; a restart before that leaves the chat without it. |
+| `Still closing: the broker lists 1 open XAUUSD position 60 seconds after the first close request; ...` | The broker has not filled the close. A closed market, a weekend for example, is the likely cause. The bot keeps asking every 10 seconds, with no time limit, and every alert that arrives meanwhile waits. Once the position closes they all run, one at a time but in no set order, on alerts that may be old. If they should not, restart the container: that drops them, but the bot then stops asking, so an `open` that was closing never places its order. A plain stop waits for the close and needs Docker's timeout to kill the process. What the broker does with the close requests already sent was not observed: check the instrument in TradeLocker. If a check gets no answer, the wait ends with the client's error instead. Once the broker lists none, the log shows `Closed:`, and with Telegram on so does the chat; a restart before that leaves the chat without it. |
 | One alert traded more than once | TradingView sends an alert again, up to three times, after a `5xx` other than `504`. The bot answers `5xx` only when it started nothing, but a reverse proxy in front of it can answer `502` or `503` after passing the alert on, for example when its connection to the bot drops. Check the proxy's error log and TradingView's alert log for those times ([ADR 0023](docs/adr/0023-the-webhook-answer-acknowledges-receipt.md)). |
 | Position closed but no new one opened, and no `Order rejected:` line | The order request got no answer, and the log shows the client's error. The order may still have been placed: check the account in TradeLocker. |
 | Bot does not start, login fails             | Wrong credentials or `env`. On images built before [ADR 0018](docs/adr/0018-read-the-settings-from-the-environment.md), also a password with spaces or shell characters (see [Configuration](#configuration)). |

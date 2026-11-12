@@ -175,8 +175,8 @@ def test_the_lines_of_a_signal_that_went_as_expected_are_not_handed_on(call):
 @pytest.mark.parametrize(
     ("seconds", "text"),
     [
-        (138.5, "Closed after 138 seconds from the first close request: the broker lists no open XAUUSD position"),
-        (3600.0, "Closed after 3600 seconds from the first close request: the broker lists no open XAUUSD position"),
+        (138.5, "Closed: the broker lists no open XAUUSD position 138 seconds after the first close request"),
+        (3600.0, "Closed: the broker lists no open XAUUSD position 3600 seconds after the first close request"),
     ],
 )
 def test_a_close_that_ends_after_the_warning_prints_green_and_is_handed_on(capsys, seconds, text):

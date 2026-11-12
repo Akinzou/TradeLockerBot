@@ -31,21 +31,24 @@ the log to see whether that worked.
   `Still closing:`:**
 
   ```text
-  Closed after 138 seconds from the first close request: the broker lists no open XAUUSD position
+  Closed: the broker lists no open XAUUSD position 138 seconds after the first close request
   ```
 
 - **Only after the warning.** A close that fills within the minute, which
   is nearly every one, prints nothing new. Every signal that replaces a
   position closes one, and a line for each would bury the one that
   matters, in the log and in the chat.
-- **The seconds run from the first close request to the count that lists
-  none.** That is the same start as `Still closing:`, so the two lines
-  read as one story, and the line names that start: a bare
+- **Worded as the `Still closing:` line it answers.** The same start for
+  the seconds, the first close request, and the line names it: a bare
   "Closed after 138 seconds" could be read as counted from the alert or
   from the `Still closing:` message, and the chat may show it late, with
-  a lateness note of its own. The clock is read at that count, and only
-  for a close that warned, not taken from the poll before it. The seconds
-  are whole, cut like those of `Still closing:`.
+  a lateness note of its own. One word before the colon, since the
+  notifier names a message it could not send by those words, cut at 40
+  characters; "Closed after 138 seconds from the first close request"
+  would be named mid-word.
+- **The seconds run to the count that lists none.** The clock is read at
+  that count, and only for a close that warned, not taken from the poll
+  before it. They are whole, cut like those of `Still closing:`.
 - **Green, and handed to Telegram too.** It asks nothing of the operator,
   so it is not red. It still goes to the chat: the chat holds the
   `Still closing:` message it answers. It goes through the same `notify`
@@ -92,10 +95,10 @@ flowchart TD
 | | Before | After |
 |---|---|---|
 | A close that fills within the minute | `Closing:` lines, then the order or `Normal: Unlocked` | the same |
-| A close that logged `Still closing:`, then fills | more `Closing:` lines, then the order or `Normal: Unlocked` | the same, with one green `Closed after N seconds from the first close request: ...` line before them |
-| The same, with Telegram on | the chat gets `Still closing:` only | the chat gets `Still closing:`, then `Closed after N seconds from the first close request: ...` |
-| A broker failure after `Still closing:` | `Broker failed:`, then the traceback | the same, with no `Closed after` line |
-| The startup line with Telegram on | `Telegram: on; the account line and every red line also go to the chat` | `Telegram: on; the account line, every red line and each Closed after line also go to the chat` |
+| A close that logged `Still closing:`, then fills | more `Closing:` lines, then the order or `Normal: Unlocked` | the same, with one green `Closed: ...` line before them |
+| The same, with Telegram on | the chat gets `Still closing:` only | the chat gets `Still closing:`, then `Closed: ...` |
+| A broker failure after `Still closing:` | `Broker failed:`, then the traceback | the same, with no `Closed:` line |
+| The startup line with Telegram on | `Telegram: on; the account line and every red line also go to the chat` | `Telegram: on; the account line, every red line and each Closed line also go to the chat` |
 
 ## Tests
 
@@ -118,6 +121,8 @@ flowchart TD
   `open` that does, with the order after the line.
 - **`tests/characterization/test_startup_telegram.py`** pins the new
   startup line.
+- **`tests/unit/adapters/test_notifier.py`** pins that a report of the
+  console's `Closed:` text not sent names it `"Closed"`.
 
 Each of these mutations of the code fails at least one test:
 
@@ -127,13 +132,14 @@ Each of these mutations of the code fails at least one test:
 - the seconds from the last request rather than the first;
 - the seconds from the poll before the count;
 - the line without the start of its seconds;
+- the earlier wording, whose words before the colon the notifier named
+  mid-word;
 - a line when a count fails after the warning;
 - a line when a close request fails after the warning;
 - the seconds not cut to whole ones;
 - the line in red;
 - the line not handed to `notify`;
-- the shared helper printing the reset in a second call, and the same
-  for `print_red` alone, checked by hand;
+- the shared helper printing the reset in a second call;
 - `print_green` printing red;
 - the old startup line.
 
@@ -141,14 +147,14 @@ Each of these mutations of the code fails at least one test:
 
 - **A restart between the two lines.** The close and its wait end with
   the process, so the chat holds a `Still closing:` message with no
-  `Closed after` one. The startup's `Logged in:` message is the only sign
+  `Closed:` one. The startup's `Logged in:` message is the only sign
   of the restart.
 - **When the position closed, to the second.** The line comes at the
   first count that lists none. Counts are about two seconds apart, and
   one that gets a slow answer takes longer, so the seconds can be late by
   that much.
 - **What follows an `open` signal's close.** A placed order prints no red
-  line, so the chat sees `Closed after` and then nothing. A rejected order
+  line, so the chat sees `Closed:` and then nothing. A rejected order
   and a failed call still send their own lines.
 
 ## Alternatives considered
