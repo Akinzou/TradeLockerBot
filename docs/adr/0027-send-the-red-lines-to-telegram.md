@@ -202,9 +202,13 @@ flowchart LR
     id as a number, or as written for `@name`, and with no `parse_mode`.
     The text is cut at 4096 characters.
   - Every kind of answer becomes a failure that says whether to try
-    again: `400`, `401`, `403`, a `429` with and without `retry_after`,
-    `500`, `502` with an HTML page, a `200` that is not Telegram's, a
-    refused connection and a timeout.
+    again:
+    - `400`, `401` and `403`;
+    - a `429` with and without `retry_after`, a negative one, and one
+      beyond a float's range;
+    - `500`, and `502` with an HTML page;
+    - a `200` that is not Telegram's;
+    - a refused connection, and a timeout.
   - No failure, and nothing printed, holds the token.
 - **`test_telegram_settings.py`** covers the settings:
   - neither set, and both set;
@@ -214,153 +218,113 @@ flowchart LR
     message;
   - eight chat ids that name no chat;
   - a `repr` without the token.
-- **`test_notifier.py`** covers the notifier:
-  - the tries and their waits, with Telegram's `retry_after` kept up to
-    10 minutes, and a negative, NaN or infinite one replaced;
+- **`test_notifier.py`** covers `Delivery`:
+  - the tries and their waits;
+  - Telegram's `retry_after` kept up to 10 minutes, and a negative, NaN
+    or infinite one replaced;
   - one report after the last try, and an immediate one for a refused
     message;
-  - the lateness note, from the time the message was logged;
-  - `notify` returning while a message is held;
-  - the report for a full queue, and the count sent once it empties;
+  - the lateness note, first, from the time the message was logged.
+- **`test_background_notifier.py`** covers the queue and its thread:
+  - `notify` returning while a message is held, with each message's
+    logged time;
+  - a full queue reported;
+  - the dropped count sent once the queue is empty, and not ahead of a
+    line that arrives meanwhile;
   - a delivery that raises does not end the thread;
-  - the stop, which waits for the queue, or reports what it loses.
+  - the stop, which waits for the queue and reports nothing, or reports
+    the lines it loses;
+  - the stop's seconds counted from `end`;
+  - a waiting count reported as a count.
 - **`test_printing_console.py`** checks that each red line is handed on as
   its text without colours, and that the other lines are not. It also
-  pins the `Broker failed:` line with the type alone.
-- **`tests/characterization/test_startup_telegram.py`** runs the startup,
-  with `urlopen` replaced where the composition root takes it.
-  - Without the settings, no thread starts and nothing is sent.
-  - With them, the account line is sent to the right URL once logged in,
-    and the token is not printed.
-  - A rejected payload posted to the app reaches the chat.
-  - An order is placed while Telegram never answers.
-  - Four bad settings stop the bot before any output and before the
-    login.
-  - A failed login is sent before its exception leaves the bot.
-  - Once the server stops, the messages still queued are reported.
+  pins `Broker failed:` and `Bot failed:` with the type alone.
 - **`test_signal_handler.py`** gives the handler a use case that raises a
   `TypeError`. The handler prints `Bot failed:` with the type only,
   re-raises the same object, and releases the lock.
 - **`test_broker_failures.py`** adds the `Broker failed:` line to every
   failing call's pinned lines, before the lock is released.
+- **`tests/characterization/test_startup_telegram.py`** runs the startup,
+  with `urlopen` and `atexit` replaced where the composition root takes
+  them.
+  - Without the settings, no thread starts, no exit function is
+    registered, and nothing is sent.
+  - With them, the account line goes to the right URL once logged in,
+    and the token is not printed.
+  - A rejected payload posted to the app reaches the chat.
+  - An order is placed while Telegram never answers.
+  - Four bad settings stop the bot before any output and before the
+    login.
+  - A failed login is sent by the time the exit function returns.
+  - A selector that is not a number sends nothing.
+  - At exit, a message Telegram never answers is reported.
+- **`test_notifier_at_exit.py`** runs a separate interpreter. It starts the
+  notifier and sets its stop's seconds, as `main`'s `finally` does, then
+  ends four ways: a return, an exception, Ctrl+C and `sys.exit`. In each,
+  a line that a thread still running queues after that point is sent
+  before the process ends. That pins Python's own order: the exit function
+  runs after the other threads. Calling `end` from `main`'s `finally` is
+  pinned by the startup tests, not by this one.
 
-Before the code, the new tests failed. The console tests failed on a
-constructor with no `notify`, the Telegram and notifier modules did not
-exist, the failure pins lacked the new line, and the startup had no
-`urlopen` to replace. Each of these mutations fails at least one test:
+The first tests came before the code. The console tests failed on a
+constructor with no `notify`. The Telegram and notifier modules did not
+exist. The failure pins lacked the new line, and the startup had no
+`urlopen` to replace.
 
-- the console not handing a red line on;
-- the handler leaving out the `Broker failed:` line;
-- that line showing the exception's text;
-- the notifier not started;
-- the account line not sent;
-- sending on the caller's thread;
-- one setting alone leaving Telegram off;
-- the token not checked;
-- adding `parse_mode`;
-- trying every `4xx` again;
-- a transport failure carrying the exception's text;
-- ignoring `retry_after`;
-- not capping it;
-- trying a refused message again;
-- the thread ending on an exception;
-- a full queue not reported.
+Three reviews followed, and their fixes came before their tests. Each fix
+was then proven by mutation instead.
 
-A review then found ten points, and each was fixed:
+- **The first review** found ten points:
+  - the cap on `retry_after`;
+  - drops reaching only the log;
+  - no mark on a late message;
+  - a `retry_after` that stopped the sleep;
+  - an unsent failed login;
+  - an unreported stop;
+  - no port;
+  - no line for other exceptions;
+  - two copies of the red-line format and of the queue's size.
+- **The second and third reviews** found races in the stop and in the
+  dropped count, each in code the round before had added. The stop was
+  redesigned twice, into the form above, rather than patched.
 
-1. The 60-second cap on `retry_after` lost messages during a longer flood
-   wait.
-2. A dropped message reached only the log.
-3. Late messages carried no mark.
-4. A negative or NaN `retry_after` stopped the sleep with an error.
-5. A failed login was not sent.
-6. Messages queued at the stop were lost unreported.
-7. There was no port for the chat.
-8. Exceptions other than the broker's had no red line.
-9. Two places held the red-line format.
-10. Two places held the queue's size.
+One script then ran 35 mutations against the final code, and each fails
+at least one test:
 
-These fixes came before their tests. Each of these mutations of them
-fails at least one test:
-
-- the cap back at 60 s;
-- either side taking any `retry_after`;
-- no lateness note;
-- the time of sending rather than of logging;
-- no dropped count, or one sent while the queue is still full;
-- a stop that reports nothing, does not wait, or leaves out the message
-  being sent;
-- a failed login not sent, or not waited for;
-- no stop after the server;
-- the handler without `Bot failed:`;
-- that line showing the exception's text.
-
-A second review, of these fixes, found races in the stop:
-
-- A message just taken off the queue was in neither count.
-- The dropped count was cleared before its message was queued.
-- With a full queue, the stop waited the whole 5 seconds.
-- A webhook thread still running after the server returned could queue
-  a line after the stop.
-
-It also found that the lateness note could be cut off, that two places
-checked `retry_after`, and that one wording read "1 messages". The stop
-was redesigned, as above, rather than patched. A second Ctrl+C during the
-stop's wait still ends it unreported; that is the operator's own
-"stop now". Each of these mutations of the redesign fails at least one
-test:
-
-- no exit function;
-- the pending count dropped before the delivery;
-- a stop that does not wait, or forgets the dropped count;
-- no dropped count sent;
-- dropped messages not counted;
-- the lateness note at the end;
-- a failed login not sent;
-- the selectors converted inside the login's `try`.
-
-A third review, of the redesign, found:
-
-- In a long flood, the dropped count took every slot that freed up,
-  ahead of the lines.
-- The stop's 5 seconds began only after the webhook's threads had
-  ended, so it could overrun `docker stop`'s 10.
-- A dropped count still waiting at the stop was reported as a line.
-- One assertion was too weak.
-- No test ran a real interpreter's exit.
-- A `retry_after` beyond a float's range raised `OverflowError`.
-- A `queue.Queue` with its own lock beside a second lock was two states
-  to keep in step.
-
-Each point was fixed:
-
-- The count waits for an empty queue.
-- `main` sets the deadline in a `finally`.
-- Entries carry their count.
-- The assertion now checks the whole output.
-- A subprocess test was added.
-- An out-of-range `retry_after` counts as none.
-- One `deque` sits under one condition.
-
-Two mutations then survived and showed code that did nothing, which was
-removed: a check that only the first `end` counts, and a check on queuing
-the count into a queue that is always empty there. Each of these
-mutations of the result fails at least one test:
-
-- no exit function;
-- no `end` in `main`'s `finally`;
-- the seconds counted from the exit function;
-- the stop forgetting the message being sent;
-- a waiting count reported as a line, or forgotten;
-- the count taking freed slots;
-- no count sent;
-- drops not counted, or not reported;
-- sending on the caller's thread;
-- the thread ending on an exception;
-- the overflow unguarded;
-- the note at the end;
-- a failed login not sent;
-- the selectors inside the `try`.
+- **The console and the handler:**
+  - the console not handing a red line on;
+  - the handler leaving out `Broker failed:` or `Bot failed:`;
+  - either line showing the exception's text.
+- **The settings and the chat:**
+  - one setting alone leaving Telegram off;
+  - the token not checked;
+  - adding `parse_mode`;
+  - trying every `4xx` again;
+  - a transport failure carrying its text;
+  - an out-of-range `retry_after` raising.
+- **`Delivery`:**
+  - `retry_after` ignored, not capped, or capped back at 60 s;
+  - any `retry_after` kept;
+  - a refused message tried again;
+  - no lateness note, or the note at the end;
+  - the time of sending rather than of logging.
+- **The queue:**
+  - sending on the caller's thread;
+  - the thread ending on an exception;
+  - drops not counted, or not reported;
+  - no dropped count sent;
+  - the count taking freed slots.
+- **The stop:**
+  - no exit function;
+  - no `end` in `main`'s `finally`;
+  - the seconds counted from the exit function;
+  - the stop forgetting the message being sent;
+  - a waiting count reported as a line, or forgotten.
+- **The startup:**
+  - the notifier not started;
+  - the account line not sent;
+  - a failed login not sent;
+  - the selectors converted inside the login's `try`.
 
 ## What this does not cover
 
@@ -400,6 +364,23 @@ mutations of the result fails at least one test:
   nothing from the chat.
 - **A flood of one kind of message can still push out another** while
   the queue is full. The chat learns how many were dropped, not which.
+- **Limits of the stop and the dropped count**, found by the last review
+  and left for a step of their own (6q). Each one costs a message only
+  with a line in the log that says so:
+  - The seconds count from the end of `main`, so a signal that runs
+    5 seconds past it leaves the stop none, even when Docker's grace
+    period, or a terminal's, has more.
+  - If `main` never reaches its `finally`, after a second Ctrl+C at the
+    wrong moment, the stop waits no time at all.
+  - The dropped count waits for an empty queue, so under steady traffic
+    with a slow chat it can wait for a long time, and it takes a slot
+    that a line could need.
+  - The stop's report can say a message was not sent while the thread
+    still sends it during the rest of the shutdown.
+- **A daemon thread that prints at exit.** If the notifier's thread is in
+  the middle of a `print` while Python ends, Python can stop with "could
+  not acquire lock for stdout". That happens only at shutdown, after the
+  stop's report.
 - **When a long close ended.** A `Still closing:` message has no
   follow-up yet; that is the next step.
 - **Images built before this change** ignore both settings and start

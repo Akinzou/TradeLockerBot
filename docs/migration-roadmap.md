@@ -43,6 +43,7 @@ migration pull request.
 | 6n | Set stdout to line buffering at the start of `main()`, so each line reaches the log when printed, with or without a terminal; without one, a trade's lines and every rejection waited for the next alert's request ([ADR 0026](adr/0026-write-stdout-line-by-line.md)). The account line's own flush is gone. New pins give the bot a block-buffered stdout and find the startup's lines written out when the server starts, and a trade's, a close's, a rejected payload's and a rejected order's lines written out with no request after them; a missing stdout or one that is not Python's text layer is left as it is | behaviour | done |
 | 6o | With `telegram_token_file` and `telegram_chat_id` set, send the account line at each start, a failed login, and every red line (`Signal rejected:`, `Order rejected:`, `Still closing:`, and new `Broker failed:` and `Bot failed:` lines that name the symbol and the exception's type) to a Telegram chat. A queue and one thread of its own keep it off the trading path; it tries each message three times, keeping Telegram's own wait, marks a message a minute late, tells the chat how many a full queue dropped, gives the queue 5 seconds at a stop, and logs every message it could not send. One setting alone, a file with no bot token or a bad chat id stops the bot. No token in any output ([ADR 0027](adr/0027-send-the-red-lines-to-telegram.md)). Pins: the broker-failure pins gain the `Broker failed:` line; new pins run the chat over the real `urllib` against a local server, the notifier's tries and queue, and the startup with and without the settings | behaviour | done |
 | 6p | Log, and send, one `Closed after N s` line when a close that logged `Still closing:` ends, so the operator knows when the lock let go | behaviour | next |
+| 6q | The notifier's stop and dropped count: a floor under the stop's seconds when a signal runs past the end of `main`, a deadline even without `end`, one count entry kept up to date in place rather than one that waits for an empty queue and takes a slot, and no send after the stop's report ([ADR 0027](adr/0027-send-the-red-lines-to-telegram.md), "What this does not cover") | behaviour | planned |
 
 ```mermaid
 flowchart LR
@@ -71,6 +72,7 @@ flowchart LR
     S6m --> S6n[6n line-buffered output]
     S6n --> S6o[6o Telegram notifications]
     S6o --> S6p[6p Closed after line]
+    S6o --> S6q[6q notifier stop and count]
     S2af --> S2g[2g base image digest]
     S2af --> S2h[2h patched client pins]
     classDef done fill:#d4edda,stroke:#28a745,color:#155724
