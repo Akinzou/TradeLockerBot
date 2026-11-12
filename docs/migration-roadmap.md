@@ -21,6 +21,7 @@ migration pull request.
 | 2f | Pin a failure at every broker call: calls made, console lines, lock released, the client's exception re-raised as the same object                        | safety    | done                                 |
 | 2g | Pin the base image `python:3.11-slim` by digest, so a rebuild cannot change the interpreter or system libraries unreviewed; Dependabot proposes the tag's new digest, and a weekly check keeps an issue open while the pin is behind ([ADR 0019](adr/0019-pin-the-base-image-by-digest.md)). New pins: every `FROM` has a full digest, the tag matches the lock's Python, and the image runs it | safety | done |
 | 2h | Lift the `tradelocker` client's exact pins on PyJWT, requests and python-dotenv, whose pinned versions have published advisories; install the lock with `--no-deps` and check in CI that it holds what its packages need ([ADR 0017](adr/0017-override-the-clients-vulnerable-pins.md)). No pin changed: the suite passes against the new versions | safety | done |
+| 2i | Measure the suite's line and branch coverage of `tradelocker_bot` in CI and fail a run below 99%; the README's badge states that floor, and a test ties the two ([ADR 0030](adr/0030-gate-the-test-coverage.md)). New pins: the badge beside the title equals `fail_under`, and the workflow runs `coverage report` | safety | done |
 | 3  | Validate the whole signal before any broker call, as a Result, and report a rejection by one operator line ([ADR 0008](adr/0008-validate-the-signal-before-any-broker-call.md)). Pins updated: wrong-side and NonInvert-forwarding, invalid-invert-after-close, invalid invert ignored outside `open`, truncated payload, non-numeric take profit and stop loss, unknown action, malformed and nonsensical lot; `close` no longer reads the balance | behaviour | done |
 | 3b | Refuse, before the first close request, what needs the broker's answer: an account state without a balance, an unknown symbol, a quantity that is not finite or not above zero ([ADR 0009](adr/0009-refuse-what-the-broker-rules-out-before-closing.md)). The instrument is looked up once, from the instrument list. Pins updated: missing balance, unknown symbol and unusable quantity refused; second lookup gone; a lookup failure no longer prints `Normal: Locked` | behaviour | done |
 | 4  | Application: execute-signal use case behind broker and console ports; TradeLocker and console adapters implement them ([ADR 0005](adr/0005-execute-signal-use-case-and-ports.md)) | structure | done                                 |
@@ -75,8 +76,9 @@ flowchart LR
     S6o --> S6q[6q notifier stop and count]
     S2af --> S2g[2g base image digest]
     S2af --> S2h[2h patched client pins]
+    S2af --> S2i[2i coverage gate]
     classDef done fill:#d4edda,stroke:#28a745,color:#155724
-    class S1,S1abc,S2,S2af,S2g,S2h,S4,S4b,S3,S3b,S5a,S5,S6a,S6b,S6c,S6d,S6e,S6f,S6g,S6h,S6i,S6j,S6k,S6l,S6m,S6n,S6o,S6p,S6q done
+    class S1,S1abc,S2,S2af,S2g,S2h,S2i,S4,S4b,S3,S3b,S5a,S5,S6a,S6b,S6c,S6d,S6e,S6f,S6g,S6h,S6i,S6j,S6k,S6l,S6m,S6n,S6o,S6p,S6q done
 ```
 
 Each arrow points from a step to one that builds on it. Green is done.
