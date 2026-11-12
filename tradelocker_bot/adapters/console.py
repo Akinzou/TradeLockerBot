@@ -52,8 +52,9 @@ class PrintingConsole:
     its format; that is a behaviour step, not this move.
 
     Each red line, one the operator has to act on, is also handed to
-    ``notify`` as its text without colours (ADR 0027). Here rather than in a
-    second console wrapped around this one: the red lines are written here,
+    ``notify`` as its text without colours (ADR 0027), and so is the green
+    line that ends a ``still_closing`` one (ADR 0028). Here rather than in a
+    second console wrapped around this one: the lines are written here,
     and a wrapper would have to forward every other line and build these
     again, so one wording could drift from the other.
     """
@@ -86,6 +87,24 @@ class PrintingConsole:
         closes = "it closes" if open_positions == 1 else "they close"
         self._alert(f"Still closing: {listed} {int(seconds)} seconds after the first close request; "
                     f"later signals wait until {closes}, check {them} in TradeLocker")
+
+    def closed(self, symbol: str, seconds: float) -> None:
+        """The end of a close that logged ``still_closing`` (ADR 0028).
+
+        Handed on like a red line, though it asks nothing of the operator:
+        the chat that was told later signals wait has to learn that the wait
+        is over. Green for that reason, and no word on what comes next, since
+        an open signal's order still follows and has lines of its own.
+
+        Worded as ``still_closing``, which it answers: the seconds name
+        their start, since the chat may show this line late, with a lateness
+        note of its own, and the word before the colon stays one word, which
+        the notifier names a message by.
+        """
+        text = (f"Closed: the broker lists no open {symbol} position {int(seconds)} seconds "
+                "after the first close request")
+        ascii_alerts.print_green(text)
+        self._notify(text)
 
     def unlocked(self) -> None:
         print("Normal: Unlocked")

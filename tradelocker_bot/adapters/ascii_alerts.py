@@ -15,11 +15,20 @@ def reset_style():
     print(RESET)
 
 
+def _print_coloured(colour, text):
+    """One coloured line, with the reset inside the same print rather than
+    in a line after it: another thread's line can print in between, and it
+    must not inherit the colour. ``order_placed`` keeps the legacy two
+    prints, which its tests pin; a new line has no such bytes to keep."""
+    print(f"{colour}{text}\n{RESET}")
+
+
 def print_red(text):
-    """One red line, with the reset inside the same print rather than in a
-    line after it: another thread's line can print in between, and it must
-    not inherit the red."""
-    print(f"{RED}{text}\n{RESET}")
+    _print_coloured(RED, text)
+
+
+def print_green(text):
+    _print_coloured(GREEN, text)
 
 
 ascii_art_url = """

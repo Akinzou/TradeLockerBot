@@ -85,6 +85,9 @@ class FakeConsole:
     def still_closing(self, symbol, open_positions, seconds):
         self._journal.append(("still closing", symbol, open_positions, seconds))
 
+    def closed(self, symbol, seconds):
+        self._journal.append(("closed", symbol, seconds))
+
     def unlocked(self):
         self._journal.append(("unlocked",))
 
