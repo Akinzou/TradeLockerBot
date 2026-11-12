@@ -86,6 +86,9 @@ flowchart LR
     `unrecognized arguments, not shown: one may be the password`.
   - `--help` does not list the option, and its description says where the
     password comes from.
+  - *Update:* since step 6l the password may instead come from the file
+    `password_file` names, and both messages above name both ways to set
+    it ([ADR 0024](0024-read-the-password-from-a-file.md)).
 - **No value is trimmed or dropped.** The shell no longer splits values,
   so `env=demo ` with a trailing space is refused as an invalid choice
   rather than read as `demo`. An empty `username` or `server` stops the bot
@@ -173,6 +176,8 @@ fails at least one test:
     root.
   - A secret file, such as a Docker secret, would avoid both. It would be a
     new setting and a new step for the operator, so it is left for later.
+    *Update:* added in step 6l as `password_file`
+    ([ADR 0024](0024-read-the-password-from-a-file.md)).
 - **The `docker run` command on the host.** `-e password=...` typed in a
   shell lands in its history. The README now recommends `--env-file` with
   a file only the operator can read.
@@ -210,4 +215,6 @@ fails at least one test:
   second set of checks would be needed to make up for it.
 - **A secret file** such as `password_file`. It is the strongest option,
   but it needs a new setting and a new step for the operator, so it is
-  left for a later step.
+  left for a later step. *Update:* taken in step 6l, beside the variable
+  rather than in its place
+  ([ADR 0024](0024-read-the-password-from-a-file.md)).
