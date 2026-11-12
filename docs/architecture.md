@@ -107,6 +107,7 @@ sequenceDiagram
     participant SL as server_log
     participant U as uvicorn
     EP->>CR: main()
+    CR->>CR: stdout to line buffering (ADR 0026)
     CR->>CR: parse_args: the environment, then the options,<br/>then the password from password_file or password<br/>(exit 2 on a bad, missing or empty setting, --password,<br/>both password sources, a password file that is not one line,<br/>a url without a leading / or with a brace, ?, # or %)
     opt --url generate
         CR->>CR: print the URL banner and random_webhook_path()
@@ -385,6 +386,9 @@ design.
     ([ADR 0025](adr/0025-run-the-broker-client-at-info.md)).
 - `PrintingConsole` implements `OperatorConsole` as the legacy coloured
   stdout lines.
+  - Each line reaches the log when printed, terminal or not: `main()`
+    sets stdout to line buffering before anything else
+    ([ADR 0026](adr/0026-write-stdout-line-by-line.md)).
   - Its `rejected` prints one red line for an `InvalidSignal` or a
     `Refusal`, using the same "found, expected" shape for both.
   - Webhook text in that line is escaped with `repr` and cut after 40
@@ -497,3 +501,4 @@ layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
 | [0023](adr/0023-the-webhook-answer-acknowledges-receipt.md) | The webhook's answer acknowledges receipt, not the outcome |
 | [0024](adr/0024-read-the-password-from-a-file.md) | Read the password from a file |
 | [0025](adr/0025-run-the-broker-client-at-info.md) | Run the broker client at `info`, and name the account in the bot's own line |
+| [0026](adr/0026-write-stdout-line-by-line.md) | Write the bot's output line by line, with or without a terminal |

@@ -40,6 +40,7 @@ migration pull request.
 | 6k | Keep the webhook's immediate `200` and record what it means: receipt, not the outcome; TradingView cancels a request after 3 seconds and sends it again after a `5xx`, so an answer after handling would be cancelled and one by outcome sent again ([ADR 0023](adr/0023-the-webhook-answer-acknowledges-receipt.md)). No behaviour change; the known defect becomes a decision. New pin: a rejected payload, a refusal, a rejected order and a trade get the same `200` | decision | done |
 | 6l | Read the password from the file `password_file` names, such as a Docker secret, so `docker inspect` shows only the path; beside the `password` variable rather than in its place, exactly one of the two set; one line, one trailing line ending dropped, nothing trimmed; a file that cannot be read, is empty, is longer than 1024 bytes, holds more than one line or a NUL, is not UTF-8 or starts with a byte order mark stops the bot without printing its content ([ADR 0024](adr/0024-read-the-password-from-a-file.md)). Pins flipped: the messages for a missing password and for `--password` name both ways; new pins for the file, both sources set and `--password_file` refused | behaviour | done |
 | 6m | Run the broker client at `info` rather than its default `debug`, which logged every request whole: the password, the refresh token and the bearer token; the bot prints `Logged in: acc_id ..., acc_num ...` itself, since the client names the account only at `debug` ([ADR 0025](adr/0025-run-the-broker-client-at-info.md)). Pins flipped: the login carries `log_level`, the greeting pins add the account line; new pins run the real client on a stubbed transport and find no secret in its log, and CI refuses the password in the image's output | behaviour | done |
+| 6n | Set stdout to line buffering at the start of `main()`, so each line reaches the log when printed, with or without a terminal; without one, a trade's lines and every rejection waited for the next alert's request ([ADR 0026](adr/0026-write-stdout-line-by-line.md)). The account line's own flush is gone. New pins give the bot a block-buffered stdout and find the startup's lines written out when the server starts, and a trade's, a close's, a rejected payload's and a rejected order's lines written out with no request after them; a missing stdout or one that is not Python's text layer is left as it is | behaviour | done |
 
 ```mermaid
 flowchart LR
@@ -65,16 +66,16 @@ flowchart LR
     S6j --> S6k[6k answer means receipt]
     S6k --> S6l[6l password file]
     S6l --> S6m[6m client log level]
+    S6m --> S6n[6n line-buffered output]
     S2af --> S2g[2g base image digest]
     S2af --> S2h[2h patched client pins]
     classDef done fill:#d4edda,stroke:#28a745,color:#155724
-    class S1,S1abc,S2,S2af,S2g,S2h,S4,S4b,S3,S3b,S5a,S5,S6a,S6b,S6c,S6d,S6e,S6f,S6g,S6h,S6i,S6j,S6k,S6l,S6m done
+    class S1,S1abc,S2,S2af,S2g,S2h,S4,S4b,S3,S3b,S5a,S5,S6a,S6b,S6c,S6d,S6e,S6f,S6g,S6h,S6i,S6j,S6k,S6l,S6m,S6n done
 ```
 
 Each arrow points from a step to one that builds on it. Green is done.
 
-The next step fixes the known defect below: the bot's output waits in a
-buffer without a terminal. These wait on the owner's decision:
+No known defect is open. These wait on the owner's decision:
 
 - a channel outside the log, such as an issue or a chat message, for
   `Signal rejected:`, `Order rejected:` and `Still closing:`
@@ -111,17 +112,7 @@ These stay unchanged until an ADR changes them:
 
 Fixed in behaviour steps, never during restructuring.
 
-- **Without a terminal, the bot's lines wait in a buffer** (found in step
-  6m's review). Python buffers stdout when it is not a terminal, and the
-  image sets nothing to change that. The README's `docker run` has `-t`,
-  but its Compose example has no `tty: true`. There, the lines printed
-  after the start, such as `Normal: Locked`, `Signal rejected:`,
-  `Order placed`, `Order rejected:` and `Still closing:`, reach
-  `docker logs` only when uvicorn logs a request, which flushes stdout,
-  or the buffer fills. A trade's lines are printed after its alert's own
-  request line, so they wait for the next alert. The startup's output is
-  flushed with the account line
-  ([ADR 0025](adr/0025-run-the-broker-client-at-info.md)).
+None open.
 
 ## Kept by decision
 
@@ -142,6 +133,14 @@ that says why.
 
 ## Fixed defects
 
+- **Without a terminal, the bot's lines waited in a buffer** (found in
+  step 6m's review, fixed in step 6n). Python buffers stdout when it is
+  not a terminal, and the README's Compose example has no `tty: true`.
+  There, `Normal: Locked`, `Signal rejected:`, `Order placed`,
+  `Order rejected:` and `Still closing:` reached `docker logs` only when
+  uvicorn logged the next request, so a trade's lines waited for the next
+  alert. The bot now sets stdout to line buffering as it starts
+  ([ADR 0026](adr/0026-write-stdout-line-by-line.md)).
 - **The client wrote the password and its tokens to the container's log**
   (found in step 6l, fixed in step 6m). The `tradelocker` client logs at
   `debug` unless told otherwise, and at that level it writes each request
