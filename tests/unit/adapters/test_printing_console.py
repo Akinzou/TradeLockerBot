@@ -1,5 +1,6 @@
 """Exact console bytes, colour codes and reset lines included: the
-characterization suite strips colours, so they are pinned here."""
+characterization suite strips colours, so they are pinned here. And which
+lines are handed on to the notification channel, as what text (ADR 0027)."""
 
 import math
 
@@ -12,6 +13,10 @@ from tradelocker_bot.domain.signal import InvalidSignal, Side
 
 GREEN, RED, RESET = "\033[92m", "\033[91m", "\033[0m"
 
+# The texts the console hands on; no test above reads it, and each test
+# below gives the console its own list.
+NOTIFIED = []
+
 
 @pytest.mark.parametrize(
     ("call", "expected"),
@@ -23,7 +28,7 @@ GREEN, RED, RESET = "\033[92m", "\033[91m", "\033[0m"
     ],
 )
 def test_prints_the_legacy_line(capsys, call, expected):
-    call(PrintingConsole())
+    call(PrintingConsole(NOTIFIED.append))
 
     assert capsys.readouterr().out == expected
 
@@ -57,7 +62,7 @@ def test_prints_the_legacy_line(capsys, call, expected):
     ],
 )
 def test_a_rejected_signal_names_the_line_and_shows_its_value_escaped(capsys, reason, expected):
-    PrintingConsole().rejected(reason)
+    PrintingConsole(NOTIFIED.append).rejected(reason)
 
     assert capsys.readouterr().out == f"{RED}Signal rejected: {expected}\n{RESET}\n"
 
@@ -77,7 +82,7 @@ NO_POSITION = "no XAUUSD position is open"
     ],
 )
 def test_a_rejected_order_names_the_side_the_symbol_and_the_brokers_reason(capsys, side, reason, expected):
-    PrintingConsole().order_rejected("XAUUSD", side, reason, 0)
+    PrintingConsole(NOTIFIED.append).order_rejected("XAUUSD", side, reason, 0)
 
     assert capsys.readouterr().out == f"{RED}Order rejected: {expected}\n{RESET}\n"
 
@@ -92,7 +97,7 @@ def test_a_rejected_order_names_the_side_the_symbol_and_the_brokers_reason(capsy
     ],
 )
 def test_a_rejected_order_ends_with_what_the_broker_lists_afterwards(capsys, open_positions, state):
-    PrintingConsole().order_rejected("XAUUSD", Side.BUY, "Not enough margin", open_positions)
+    PrintingConsole(NOTIFIED.append).order_rejected("XAUUSD", Side.BUY, "Not enough margin", open_positions)
 
     out = capsys.readouterr().out
     assert out == f"{RED}Order rejected: the broker refused to buy XAUUSD ('Not enough margin'); {state}\n{RESET}\n"
@@ -109,6 +114,59 @@ def test_a_rejected_order_ends_with_what_the_broker_lists_afterwards(capsys, ope
     ],
 )
 def test_a_position_still_open_says_how_long_and_that_later_signals_wait(capsys, open_positions, seconds, state):
-    PrintingConsole().still_closing("XAUUSD", open_positions, seconds)
+    PrintingConsole(NOTIFIED.append).still_closing("XAUUSD", open_positions, seconds)
 
     assert capsys.readouterr().out == f"{RED}Still closing: {state}\n{RESET}\n"
+
+
+def test_a_broker_call_without_an_answer_names_the_symbol_and_the_exception_type_alone(capsys):
+    class TLAPIException(Exception):
+        pass
+
+    # The exception's text stays out: the client's can hold a token or the
+    # server's answer (ADR 0025), and this line leaves the host.
+    PrintingConsole(NOTIFIED.append).broker_failed("XAUUSD", TLAPIException("Bearer eyJhbGciOi..."))
+
+    assert capsys.readouterr().out == (
+        f"{RED}Broker failed: a call for XAUUSD got no answer (TLAPIException); the signal stopped there, "
+        f"check XAUUSD in TradeLocker\n{RESET}\n")
+
+
+@pytest.mark.parametrize(
+    ("call", "text"),
+    [
+        (lambda c: c.rejected(UnknownSymbol("GBPUSD")),
+         "Signal rejected: line 1 (symbol) is 'GBPUSD', expected an instrument the broker lists"),
+        (lambda c: c.order_rejected("XAUUSD", Side.BUY, None, 1),
+         "Order rejected: the broker refused to buy XAUUSD (no reason given); "
+         "the broker lists 1 open XAUUSD position, check it in TradeLocker"),
+        (lambda c: c.still_closing("XAUUSD", 1, 60.0),
+         "Still closing: the broker lists 1 open XAUUSD position 60 seconds after the first close request; "
+         "later signals wait until it closes, check it in TradeLocker"),
+        (lambda c: c.broker_failed("XAUUSD", ConnectionError("refused")),
+         "Broker failed: a call for XAUUSD got no answer (ConnectionError); the signal stopped there, "
+         "check XAUUSD in TradeLocker"),
+        (lambda c: c.bot_failed("XAUUSD", KeyError("access_token: eyJ...")),
+         "Bot failed: an error in the bot (KeyError) while handling XAUUSD; the signal stopped there, "
+         "check XAUUSD in TradeLocker"),
+    ],
+)
+def test_each_red_line_is_handed_on_as_its_text_without_colours(capsys, call, text):
+    notified = []
+
+    call(PrintingConsole(notified.append))
+
+    assert notified == [text]
+    assert capsys.readouterr().out == f"{RED}{text}\n{RESET}\n"
+
+
+@pytest.mark.parametrize(
+    "call",
+    [lambda c: c.locked(), lambda c: c.closing("XAUUSD"), lambda c: c.order_placed(9001), lambda c: c.unlocked()],
+)
+def test_the_lines_of_a_signal_that_went_as_expected_are_not_handed_on(call):
+    notified = []
+
+    call(PrintingConsole(notified.append))
+
+    assert notified == []

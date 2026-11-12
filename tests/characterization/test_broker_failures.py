@@ -8,7 +8,9 @@ other pin. Identity rather than type is asserted, because a restructure that cat
 the client's exception and raises a new one of the same type would pass a type
 check and still lose the original's attributes and traceback.
 
-The handler is called directly, so these pins end at its caller. That the
+Each failure also writes one red line, naming the symbol and the
+exception's type (ADR 0027). The handler is called directly, so these pins
+end at its caller. That the
 webhook thread receives the exception is pinned in ``test_webhook_route.py``.
 """
 
@@ -34,6 +36,10 @@ from tests.characterization.harness import (
 
 LOCKED = [LOCK_ACQUIRED, "Normal: Locked"]
 CLOSING = "Closing: XAUUSD"
+# The client's exception by its type alone, before the lock is released and
+# the exception leaves the handler (ADR 0027).
+FAILED = ("Broker failed: a call for XAUUSD got no answer (TLAPIException); the signal stopped there, "
+          "check XAUUSD in TradeLocker")
 TWO_ROWS = {"open_positions": [XAUUSD_ID, XAUUSD_ID]}
 ONE_ROW = {"open_positions": [XAUUSD_ID]}
 
@@ -42,34 +48,34 @@ ONE_ROW = {"open_positions": [XAUUSD_ID]}
     ("scenario", "failing_call", "fake_args", "lines", "calls", "console"),
     [
         ("balance read", ("get_account_state", 1), {}, payload(),
-         [BALANCE], [LOCK_ACQUIRED, LOCK_RELEASED]),
+         [BALANCE], [LOCK_ACQUIRED, FAILED, LOCK_RELEASED]),
         # The lookup now comes before the "Normal: Locked" line (ADR 0009).
         ("instrument lookup", ("get_all_instruments", 1), {}, payload(),
-         [BALANCE, LOOKUP], [LOCK_ACQUIRED, LOCK_RELEASED]),
+         [BALANCE, LOOKUP], [LOCK_ACQUIRED, FAILED, LOCK_RELEASED]),
         ("position list", ("get_all_positions", 1), {}, payload(),
-         [BALANCE, LOOKUP, POSITIONS], [*LOCKED, LOCK_RELEASED]),
+         [BALANCE, LOOKUP, POSITIONS], [*LOCKED, FAILED, LOCK_RELEASED]),
         ("first close request: no closing line", ("close_all_positions", 1), TWO_ROWS, payload(),
-         [BALANCE, LOOKUP, POSITIONS, CLOSE], [*LOCKED, LOCK_RELEASED]),
+         [BALANCE, LOOKUP, POSITIONS, CLOSE], [*LOCKED, FAILED, LOCK_RELEASED]),
         ("second close request in one poll", ("close_all_positions", 2), TWO_ROWS, payload(),
-         [BALANCE, LOOKUP, POSITIONS, CLOSE, CLOSE], [*LOCKED, CLOSING, LOCK_RELEASED]),
+         [BALANCE, LOOKUP, POSITIONS, CLOSE, CLOSE], [*LOCKED, CLOSING, FAILED, LOCK_RELEASED]),
         ("recount after closing", ("get_all_positions", 2), ONE_ROW, payload(),
-         [BALANCE, LOOKUP, POSITIONS, CLOSE, POSITIONS], [*LOCKED, CLOSING, LOCK_RELEASED]),
+         [BALANCE, LOOKUP, POSITIONS, CLOSE, POSITIONS], [*LOCKED, CLOSING, FAILED, LOCK_RELEASED]),
         ("order", ("create_order", 1), {}, payload(),
-         [BALANCE, LOOKUP, POSITIONS, ORDER], [*LOCKED, LOCK_RELEASED]),
+         [BALANCE, LOOKUP, POSITIONS, ORDER], [*LOCKED, FAILED, LOCK_RELEASED]),
         # The count after a rejected order (ADR 0021): the line says it got no
         # answer, then the failure raises like any other.
         ("recount after a rejected order", ("get_all_positions", 2), {"order_results": (order_rejection(),)},
          payload(), [BALANCE, LOOKUP, POSITIONS, ORDER, POSITIONS],
          [*LOCKED, "Order rejected: the broker refused to buy XAUUSD ('Not enough margin'); "
-          "the position count got no answer, check XAUUSD in TradeLocker", LOCK_RELEASED]),
+          "the position count got no answer, check XAUUSD in TradeLocker", FAILED, LOCK_RELEASED]),
         ("lookup on close", ("get_all_instruments", 1), {}, payload(action="close"),
-         [LOOKUP], [LOCK_ACQUIRED, LOCK_RELEASED]),
+         [LOOKUP], [LOCK_ACQUIRED, FAILED, LOCK_RELEASED]),
         ("position list on close", ("get_all_positions", 1), {}, payload(action="close"),
-         [LOOKUP, POSITIONS], [*LOCKED, LOCK_RELEASED]),
+         [LOOKUP, POSITIONS], [*LOCKED, FAILED, LOCK_RELEASED]),
         ("close request on close", ("close_all_positions", 1), ONE_ROW, payload(action="close"),
-         [LOOKUP, POSITIONS, CLOSE], [*LOCKED, LOCK_RELEASED]),
+         [LOOKUP, POSITIONS, CLOSE], [*LOCKED, FAILED, LOCK_RELEASED]),
         ("recount on close", ("get_all_positions", 2), ONE_ROW, payload(action="close"),
-         [LOOKUP, POSITIONS, CLOSE, POSITIONS], [*LOCKED, CLOSING, LOCK_RELEASED]),
+         [LOOKUP, POSITIONS, CLOSE, POSITIONS], [*LOCKED, CLOSING, FAILED, LOCK_RELEASED]),
     ],
 )
 def test_broker_failure_propagates_as_raised(capsys, scenario, failing_call, fake_args, lines, calls, console):
@@ -108,4 +114,5 @@ def test_a_failed_lookup_is_never_mistaken_for_an_unknown_symbol(capsys, failure
         handle(fake, payload())
 
     assert raised.value is failure
-    assert console_lines(capsys) == []
+    assert console_lines(capsys) == ["Broker failed: a call for XAUUSD got no answer (ValueError); "
+                                     "the signal stopped there, check XAUUSD in TradeLocker"]

@@ -207,6 +207,8 @@ Recorded at the owner's decision to keep no upper limit.
   again 10 s later.
 - **Nothing outside the log is told.** An operator who does not read the
   log does not see the `Still closing:` line.
+  *Update:* with its settings set, the line also goes to Telegram
+  ([ADR 0027](0027-send-the-red-lines-to-telegram.md)).
 
 ## Consequences
 

@@ -15,6 +15,13 @@ def reset_style():
     print(RESET)
 
 
+def print_red(text):
+    """One red line, with the reset inside the same print rather than in a
+    line after it: another thread's line can print in between, and it must
+    not inherit the red."""
+    print(f"{RED}{text}\n{RESET}")
+
+
 ascii_art_url = """
                                   _
  ___  __ ___   _____   _   _ _ __| |

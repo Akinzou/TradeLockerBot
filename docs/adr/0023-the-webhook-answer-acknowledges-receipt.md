@@ -141,6 +141,10 @@ rather than a fix, and these change with it:
   `Order rejected:` or `Still closing:` line is seen only by someone who
   reads the log. A channel such as an issue or a chat message is the
   owner's decision, not yet made.
+  *Update:* the owner asked for what is good and reliable. With its
+  settings set, the bot sends these lines to a Telegram chat, and the
+  answer stays `200`
+  ([ADR 0027](0027-send-the-red-lines-to-telegram.md)).
 - **A sender that sends one alert twice.** The bot has no way to tell, so
   it would run both. TradingView's help names resends only after a `5xx`,
   and the bot answers `5xx` only when it started nothing.
@@ -185,3 +189,6 @@ rather than a fix, and these change with it:
     "tradeable".
 
   It can be a step of its own if the owner wants it.
+  *Update:* weighed again in step 6o and kept out. The rejection reaches
+  the operator on Telegram, with the line to fix
+  ([ADR 0027](0027-send-the-red-lines-to-telegram.md)).

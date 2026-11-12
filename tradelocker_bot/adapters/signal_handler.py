@@ -5,6 +5,8 @@ The use case returns every outcome as a value; this is where each one is
 turned into what the webhook thread does today: one operator line for a
 rejection or a refusal, the client's own exception for a broker failure, and
 nothing more for an order the broker rejected, which the use case reports.
+A broker failure, and any other exception that ends a valid signal, also
+gets a red line before it is raised (ADR 0027).
 """
 
 from contextlib import AbstractContextManager
@@ -37,23 +39,41 @@ class SignalHandler:
             # (ADR 0008).
             self._console.rejected(signal.error)
             return
+        symbol = signal.value.symbol
         with self._lock:
-            result = self._execute_signal.execute(signal.value)
-            if isinstance(result, Err):
-                if isinstance(result.error, BrokerFailure):
-                    # The client's own exception object, raised inside the
-                    # lock: the webhook thread fails with the same type,
-                    # message and attributes as before the Result (ADR 0006).
-                    # Kept raising: no answer may still mean a placed order.
-                    raise result.error.cause
-                if isinstance(result.error, OrderRejected):
-                    # Not raised: the broker answered, the use case reported it
-                    # with the account's state, and a traceback would bury that
-                    # line. Still an `Err`, so a later caller, such as a webhook
-                    # answer, can tell a rejected order from a placed one
-                    # (ADR 0021).
-                    return
-                # The broker answered and ruled the signal out before any
-                # close request: reported like a payload rejection, without
-                # an exception (ADR 0009).
-                self._console.rejected(result.error)
+            # Any other exception, a bug for one, ends the thread as before,
+            # but named first in a red line too: a traceback alone says
+            # nothing to the operator's phone, and the signal may have
+            # stopped after the close (ADR 0027).
+            try:
+                unanswered = self._execute(signal.value)
+            except Exception as error:
+                self._console.bot_failed(symbol, error)
+                raise
+            if unanswered is not None:
+                # The client's own exception object, raised inside the lock:
+                # the webhook thread fails with the same type, message and
+                # attributes as before the Result (ADR 0006). Kept raising:
+                # no answer may still mean a placed order.
+                self._console.broker_failed(symbol, unanswered)
+                raise unanswered
+
+    def _execute(self, signal) -> Exception | None:
+        """The client's exception when a broker call got no answer; ``None``
+        once every other outcome is reported."""
+        result = self._execute_signal.execute(signal)
+        if not isinstance(result, Err):
+            return None
+        if isinstance(result.error, BrokerFailure):
+            return result.error.cause
+        if isinstance(result.error, OrderRejected):
+            # Not raised: the broker answered, the use case reported it with
+            # the account's state, and a traceback would bury that line.
+            # Still an `Err`, so a later caller, such as a webhook answer, can
+            # tell a rejected order from a placed one (ADR 0021).
+            return None
+        # The broker answered and ruled the signal out before any close
+        # request: reported like a payload rejection, without an exception
+        # (ADR 0009).
+        self._console.rejected(result.error)
+        return None

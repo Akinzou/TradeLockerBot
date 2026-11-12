@@ -139,7 +139,8 @@ def handle(fake, lines, lock=None):
     # The wiring the bot serves, not one assembled here: built around the given
     # client and lock, so the lock tests see the production lock handling.
     lock = lock if lock is not None else threading.Lock()
-    handler = composition_root.build_signal_handler(fake, lock, FakeClock(fake.calls.append))
+    handler = composition_root.build_signal_handler(fake, lock, FakeClock(fake.calls.append),
+                                                    composition_root.no_notification)
     handler.handle(lines)
 
 

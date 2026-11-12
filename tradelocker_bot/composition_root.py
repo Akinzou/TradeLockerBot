@@ -6,20 +6,25 @@ it; ``main_without_ssl.py``, the container's command, only calls ``main``.
 """
 
 import argparse
+import atexit
 import io
 import sys
 import threading
+from collections.abc import Callable
 from os import environ
+from urllib.request import urlopen
 
 import uvicorn
 
 from tradelocker_bot.adapters import ascii_alerts
 from tradelocker_bot.adapters.console import PrintingConsole
-from tradelocker_bot.adapters.password_file import read_password_file
+from tradelocker_bot.adapters.notifier import BackgroundNotifier, Delivery, print_report
+from tradelocker_bot.adapters.secret_file import read_secret_file
 from tradelocker_bot.adapters.signal_handler import SignalHandler
 from tradelocker_bot.adapters.system_clock import SystemClock
 from tradelocker_bot.adapters.tradelocker_broker import TradeLockerBroker, log_in
 from tradelocker_bot.adapters.server_log import server_log_config
+from tradelocker_bot.adapters.telegram import TelegramChat, TelegramSettings, telegram_from
 from tradelocker_bot.adapters.webhook import create_app
 from tradelocker_bot.adapters.webhook_path import random_webhook_path
 from tradelocker_bot.application.execute_signal import ExecuteSignal
@@ -79,7 +84,7 @@ def password_from(env) -> Result[str, str]:
     if path and variable:
         return Err("set either password_file or the password environment variable, not both")
     if path:
-        return read_password_file(path)
+        return read_secret_file(path, "password_file")
     if variable:
         return Ok(variable)
     return Err("no password: set password_file to a file that holds it, or the password environment variable")
@@ -126,7 +131,7 @@ def parse_args(argv=None, env=None):
         description="Each option but --port can instead be set in the environment variable of the same name; "
         "an option given here replaces its variable, and --acc_num or --acc_id here replaces both. "
         "The password is read only from the environment: from the file password_file names, "
-        "or from the password variable.",
+        "or from the password variable. So are telegram_token_file and telegram_chat_id.",
     )
     parser.add_argument('--username', type=not_empty, required=True, help='username/email')
     parser.add_argument('--password', type=refuse_password, help=argparse.SUPPRESS)
@@ -143,19 +148,48 @@ def parse_args(argv=None, env=None):
     if isinstance(password, Err):
         parser.error(password.error)
     args.password = password.value
+    telegram = telegram_from(env)
+    if isinstance(telegram, Err):
+        parser.error(telegram.error)
+    args.telegram = telegram.value
     return args
 
 
-def build_signal_handler(client, lock, clock) -> SignalHandler:
+def no_notification(_text: str) -> None:
+    """Telegram is off: the console line is the operator's only record."""
+
+
+# What the notifier's queue gets once `main` ends: well inside the 10
+# seconds `docker stop` waits after its SIGTERM before it kills the process.
+STOP_SECONDS = 5.0
+
+
+def start_notifier(settings: TelegramSettings | None, clock) -> BackgroundNotifier | None:
+    """Telegram's notifier, started, or ``None`` when its settings are not
+    set (ADR 0027)."""
+    if settings is None:
+        return None
+    notifier = BackgroundNotifier(Delivery(TelegramChat(settings, urlopen), clock, print_report), clock,
+                                  print_report)
+    notifier.start()
+    # At exit rather than after the server: Python runs exit functions only
+    # once the webhook's threads have ended, so their last red lines are
+    # queued too, and it runs them however `main` ends, a failed login or
+    # Ctrl+C included. The seconds still count from the end of `main`.
+    atexit.register(notifier.stop)
+    return notifier
+
+
+def build_signal_handler(client, lock, clock, notify: Callable[[str], None]) -> SignalHandler:
     """The handler for every webhook request, over one logged-in client.
 
     Built once rather than per request, as legacy did: the console, the
     broker adapter and the use case hold nothing but their collaborators, so
     sharing them changes no call and no line. The clock is an argument
     without a default, so a test cannot get the real one, and its pauses, by
-    leaving it out.
+    leaving it out; ``notify`` likewise, so none gets Telegram's.
     """
-    console = PrintingConsole()
+    console = PrintingConsole(notify)
     return SignalHandler(ExecuteSignal(TradeLockerBroker(client), console, clock), console, lock)
 
 
@@ -171,21 +205,51 @@ def main():
     if isinstance(sys.stdout, io.TextIOWrapper):
         sys.stdout.reconfigure(line_buffering=True)
     args = parse_args()
+    clock = SystemClock()
+    notifier = start_notifier(args.telegram, clock)
+    try:
+        log_in_and_serve(args, clock, no_notification if notifier is None else notifier.notify)
+    finally:
+        # From here, however the bot ends: `docker stop`'s seconds run from
+        # its SIGTERM, not from when Python has waited for the webhook's
+        # threads and reaches the exit function.
+        if notifier is not None:
+            notifier.end(STOP_SECONDS)
 
+
+def log_in_and_serve(args, clock, notify: Callable[[str], None]) -> None:
+    """The banners, the login and the server, until the server stops."""
     if args.url == "generate":
         print(ascii_alerts.RED + ascii_alerts.ascii_art_url + ascii_alerts.RESET)
         args.url = random_webhook_path()
         print(args.url)
 
     print(ascii_alerts.GREEN + ascii_alerts.ascii_art_hello + ascii_alerts.RESET)
+    if args.telegram is not None:
+        print("Telegram: on; the account line and every red line also go to the chat")
 
-    client = log_in(args.env, args.username, args.password, args.server, int(args.acc_num), int(args.acc_id))
+    # Converted before the login's `try`: a selector that is not a number is a
+    # bad setting, not a failed login.
+    acc_num, acc_id = int(args.acc_num), int(args.acc_id)
+    try:
+        client = log_in(args.env, args.username, args.password, args.server, acc_num, acc_id)
+    except Exception as failure:
+        # Sent, and given a few seconds at exit, before the bot stops: an
+        # operator who reads the phone would otherwise only miss the
+        # `Logged in:` message. By type alone, as the broker's lines: the
+        # client's text can hold the server's answer (ADR 0025).
+        notify(f"Login failed: {type(failure).__name__}; the bot stops, the log has the error")
+        raise
     # The client names the account it chose only at debug, which also logs the
     # password (ADR 0025); the operator still needs to see which account trades.
-    print(f"Logged in: acc_id {client.account_id}, acc_num {client.acc_num}")
+    logged_in = f"Logged in: acc_id {client.account_id}, acc_num {client.acc_num}"
+    print(logged_in)
+    # Sent as the first message, so a wrong chat or a bot never started in it
+    # shows in the log at startup, not on the first alert that needed it.
+    notify(logged_in)
 
     # One lock for the whole process: every request's signal runs inside it,
     # so two alerts never interleave between closing and ordering.
-    app = create_app(args.url, build_signal_handler(client, threading.Lock(), SystemClock()).handle)
+    app = create_app(args.url, build_signal_handler(client, threading.Lock(), clock, notify).handle)
 
     uvicorn.run(app, host="0.0.0.0", port=args.port, log_config=server_log_config())
