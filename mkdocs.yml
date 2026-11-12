@@ -1,0 +1,102 @@
+site_name: TradeLockerBot
+site_description: Automated TradeLocker position management driven by TradingView webhook alerts.
+site_url: https://akinzou.github.io/TradeLockerBot/
+repo_url: https://github.com/Akinzou/TradeLockerBot
+repo_name: Akinzou/TradeLockerBot
+edit_uri: edit/master/docs/
+docs_dir: docs
+site_dir: site
+strict: true
+
+nav:
+  - Home: index.md
+  - Architecture: architecture.md
+  - Migration roadmap: migration-roadmap.md
+  - Decision records:
+      - "0001 Incremental migration to a layered architecture": adr/0001-incremental-layered-migration.md
+      - "0002 CI quality gates and image publishing": adr/0002-ci-quality-gates.md
+      - "0003 Publish the image with the workflow token": adr/0003-publish-with-workflow-token.md
+      - "0004 A flat tradelocker_bot package next to the legacy entrypoint": adr/0004-flat-application-package.md
+      - "0005 The execute-signal use case and its broker and console ports": adr/0005-execute-signal-use-case-and-ports.md
+      - "0006 Broker failures as a Result at the port and use-case boundary": adr/0006-result-at-the-broker-boundary.md
+      - "0007 Install the image from a hashed lock of every runtime dependency": adr/0007-locked-runtime-dependencies.md
+      - "0008 Validate the whole signal before any broker call": adr/0008-validate-the-signal-before-any-broker-call.md
+      - "0009 Refuse what the broker rules out before closing anything": adr/0009-refuse-what-the-broker-rules-out-before-closing.md
+      - "0010 Inbound webhook adapter and a composition root": adr/0010-webhook-adapter-and-composition-root.md
+      - "0011 Serve no API docs, so no page names the webhook path": adr/0011-serve-no-api-docs.md
+      - "0012 Generate the webhook path with secrets": adr/0012-generate-the-webhook-path-with-secrets.md
+      - "0013 No trailing-slash redirect on the webhook": adr/0013-no-trailing-slash-redirect.md
+      - "0014 Refuse a webhook path without a leading slash": adr/0014-require-a-leading-slash.md
+      - "0015 Refuse braces in the webhook path": adr/0015-refuse-braces-in-the-webhook-path.md
+      - "0016 Hide the request line in the access log": adr/0016-hide-the-request-line-in-the-access-log.md
+      - "0017 Override the broker client's pins on vulnerable packages": adr/0017-override-the-clients-vulnerable-pins.md
+      - "0018 Read the settings from the environment, not the command line": adr/0018-read-the-settings-from-the-environment.md
+      - "0019 Pin the base image by digest": adr/0019-pin-the-base-image-by-digest.md
+      - "0020 Refuse ?, # and % in the webhook path": adr/0020-refuse-query-fragment-and-escape-characters-in-the-webhook-path.md
+      - "0021 Report a rejected order in one line and place it once": adr/0021-report-a-rejected-order-and-place-it-once.md
+      - "0022 Pace the close loop on a clock and say when a close takes a minute": adr/0022-pace-the-close-loop-on-a-clock.md
+      - "0023 The webhook's answer acknowledges receipt, not the outcome": adr/0023-the-webhook-answer-acknowledges-receipt.md
+      - "0024 Read the password from a file": adr/0024-read-the-password-from-a-file.md
+      - "0025 Run the broker client at info, and name the account in the bot's own line": adr/0025-run-the-broker-client-at-info.md
+      - "0026 Write the bot's output line by line, with or without a terminal": adr/0026-write-stdout-line-by-line.md
+      - "0027 Send the operator's red lines to Telegram, off the trading path": adr/0027-send-the-red-lines-to-telegram.md
+      - "0028 Say when a close that took a minute ended": adr/0028-say-when-a-slow-close-ended.md
+      - "0029 Tighten the notifier's stop and its dropped count": adr/0029-tighten-the-notifiers-stop-and-dropped-count.md
+      - "0030 Gate the test coverage, and state the floor on the README": adr/0030-gate-the-test-coverage.md
+      - "0031 Publish the documentation on GitHub Pages": adr/0031-publish-the-docs-on-github-pages.md
+
+theme:
+  name: material
+  custom_dir: docs-theme
+  font: false
+  features:
+    - content.code.copy
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - search.highlight
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      toggle:
+        icon: material/weather-night
+        name: Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Light mode
+
+plugins:
+  - search
+  - include-markdown
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - github-callouts
+  - mdx_truly_sane_lists:
+      nested_indent: 2
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+validation:
+  nav:
+    omitted_files: warn
+    not_found: warn
+    absolute_links: warn
+  links:
+    not_found: warn
+    anchors: warn
+    absolute_links: warn
+    unrecognized_links: warn

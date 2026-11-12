@@ -1,6 +1,6 @@
-<div align="center">
+<div align="center" markdown="1">
 
-# TradeLockerBot [![Coverage: 99%](https://img.shields.io/badge/coverage-99%25-brightgreen)](#test-coverage)
+# TradeLockerBot [![Coverage: 99%](https://img.shields.io/badge/coverage-99%25-brightgreen?logo=pytest&logoColor=white)](#test-coverage) [![Docs](https://img.shields.io/badge/docs-GitHub_Pages-blue?logo=materialformkdocs&logoColor=white)](https://akinzou.github.io/TradeLockerBot/)
 
 **Automated TradeLocker position management driven by TradingView webhook alerts.**
 
@@ -34,6 +34,7 @@
 - [Development](#development)
   - [Test coverage](#test-coverage)
   - [CI pipeline](#ci-pipeline)
+  - [Documentation site](#documentation-site)
   - [Code layout](#code-layout)
   - [Dependencies](#dependencies)
 - [Community](#community)
@@ -669,27 +670,50 @@ starts it inside the image instead.
 
 Every pull request to `master` must pass the CI gates described in
 [ADR 0002](docs/adr/0002-ci-quality-gates.md): tests and the coverage floor
-on Python 3.11 and 3.12, Semgrep, and a Docker build with a smoke run and a
-check of its packages and its Python against the lock. The `tests` job also
-checks that the lock holds every package its packages need. Only a green
-run on `master` publishes the image.
+on Python 3.11 and 3.12, Semgrep, a strict build of the documentation
+site, and a Docker build with a smoke run and a check of its packages and
+its Python against the lock. The `tests` job also checks that the lock
+holds every package its packages need. Only a green run on `master`
+publishes the image, and only a green push to `master` the site.
 
 ```mermaid
 flowchart LR
-    PR["Pull request, push to master,<br/>or a manual run"] --> T & S & D
+    PR["Pull request, push to master,<br/>or a manual run"] --> T & S & DOC & D
     T["tests, on 3.11 and 3.12<br/>lock checks, flake8,<br/>pytest, coverage of 99% or more"]
     S["semgrep<br/>ERROR findings block,<br/>the rest go to the summary"]
+    DOC["docs<br/>the site in strict mode:<br/>no broken link or anchor"]
     D["docker-build<br/>build, start without a network,<br/>packages and Python against the lock"]
-    T & S & D --> OK{ci-ok}
+    T & S & DOC & D --> OK{ci-ok}
     OK -- "pull request, all green" --> M[Ready to merge]
     OK -- "on master, pushed or run by hand,<br/>all green" --> P["Docker Image CI<br/>publishes the validated commit<br/>to ghcr.io"]
+    OK -- "push to master, all green" --> PG["Documentation site<br/>publishes the validated commit<br/>to GitHub Pages"]
 ```
+
+### Documentation site
+
+The [documentation site](https://akinzou.github.io/TradeLockerBot/) is
+built by MkDocs from this README, which is its home page, and the files in
+`docs/`. It has search across all of them and renders the diagrams
+([ADR 0031](docs/adr/0031-publish-the-docs-on-github-pages.md)). Its tools
+have their own lock, apart from the dev tools. To build it on your machine:
+
+```sh
+python -m venv .venv-docs
+.venv-docs/bin/python -m pip install --require-hashes -r requirements-docs.txt
+.venv-docs/bin/mkdocs serve     # or: mkdocs build --strict, as CI runs it
+```
+
+A new page in `docs/`, such as a decision record, must also be added to
+`nav` in `mkdocs.yml`: the strict build fails on a page left out, and on
+any link or anchor that leads nowhere. After changing
+`requirements-docs.in`, regenerate the lock with the command in its
+header.
 
 ### Code layout
 
 The codebase is being migrated, step by step, to a layered architecture;
 see [`docs/architecture.md`](docs/architecture.md), the
-[decision records](docs/adr) and the
+[decision records](docs/architecture.md#decisions) and the
 [migration roadmap](docs/migration-roadmap.md).
 
 `main_without_ssl.py` keeps its name because the image runs it, but it only

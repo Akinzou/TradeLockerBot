@@ -35,7 +35,10 @@ has fallen behind its tag is checked weekly outside CI, by a workflow that
 keeps an issue open, since the tag moves with no commit here. Since
 [ADR 0030](0030-gate-the-test-coverage.md), `tests` also fails when the
 suite's line and branch coverage of `tradelocker_bot` falls below the
-floor in `pyproject.toml`.
+floor in `pyproject.toml`. Since
+[ADR 0031](0031-publish-the-docs-on-github-pages.md), a `docs` job builds
+the documentation site in strict mode, `ci-ok` needs it too, and
+`pages.yml` publishes the site after a green push to `master`.
 
 Semgrep `WARNING` and `INFO` findings never fail the build. They are written
 to the job summary, and each pull request description records the decision

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{#
+  Mermaid at an exact version, checked by the browser against its hash, so
+  a changed or hijacked file on the CDN does not run on the site. The theme
+  otherwise loads the newest mermaid@11 from unpkg with no check; it uses
+  this one instead, since a global `mermaid` is already defined (ADR 0031).
+  To move to another version, take the hash of dist/mermaid.min.js from the
+  npm package, verified against the registry's integrity value.
+#}
+{% block libs %}
+  {{ super() }}
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js"
+          integrity="sha384-EOXBFmc3gx5mb+vn0vPvvGqACToJD24hhacX5Yx+8NUUQrHIle/Qi5Bg9o3zKwW2"
+          crossorigin="anonymous"></script>
+{% endblock %}
