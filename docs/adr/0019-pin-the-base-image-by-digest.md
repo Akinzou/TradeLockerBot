@@ -38,7 +38,7 @@ arrived with the next rebuild, without anyone acting.
 flowchart LR
     HUB[(Docker Hub<br/>python:3.11-slim)] -- "the tag moves" --> DB[Dependabot, weekly]
     DB -- "pull request:<br/>the tag's new digest" --> CI{CI}
-    HUB -. "the tag moves" .-> WARN["warning on every CI run<br/>until the pin follows"]
+    HUB -. "weekly check:<br/>tag past the pin" .-> ISSUE["one open issue,<br/>closed once the pin follows"]
     CI -- "build, tests, lock and<br/>interpreter checks pass" --> MERGE[merge to master]
     MERGE --> PUB[publish: the same digest<br/>CI built on]
     CI -- "a check fails" --> FIX[the bump waits for a fix]
@@ -59,12 +59,28 @@ flowchart LR
   the image's packages and interpreter are checked against the lock.
 - **Only the same tag's digest is proposed.** The configuration ignores
   minor and major versions of `python`: a move to Python 3.12 needs a lock
-  compiled for 3.12, which Dependabot cannot write.
-- **CI warns when the tag has moved past the pin.** The `docker-build` job
-  reads the tag's current digest and, if it differs from the pinned one,
-  writes a warning on the run. It warns rather than fails: the tag moves
-  with no commit here, so a failure would block every pull request, the
-  bump included, until someone fixed it by hand.
+  compiled for 3.12, which Dependabot cannot write. Without the rule,
+  Dependabot would keep a pull request to the newest Python open, red in
+  CI, every week.
+- **A weekly check keeps an issue open while the pin is behind.** The
+  `Base image freshness` workflow (`.github/workflows/base-image.yml`)
+  runs every Monday and on demand. It reads the tag's current digest and
+  compares it with the pinned one:
+  - behind: it opens the issue "The base image's pin may be stale", or
+    comments on the open one;
+  - the comparison could not run, because the registry failed or the
+    answer was not a digest: the same issue, saying so, and a red run;
+  - current: it closes the open issue.
+
+  It runs on a schedule rather than in CI: the tag moves with no commit
+  here, so a failing check would block every pull request, the bump
+  included, and a warning on a run shows only when someone pushes, and
+  only in that run. A failed publish went unnoticed for a year that way,
+  which is why `docker-image.yml` opens an issue too.
+- **One reader of the Dockerfile.** `tests/dockerfile.py` reads the base
+  image and the lock's Python for the tests, and, as
+  `python -m tests.dockerfile base` or `lock-python`, for the CI steps and
+  the weekly check, so the two cannot disagree about either.
 - **The interpreter is checked, not only the label.** Docker ignores the
   tag once a digest is given, so `3.11` in the tag proves nothing about the
   image. A unit test ties the tag to the lock's `--python-version`, and a
@@ -84,21 +100,29 @@ flowchart LR
 - `tests/test_image_command.py`, which already read the Dockerfile for the
   start command, now checks the base image too:
   - every `FROM` names its image with a tag and a full `sha256` digest,
-    read past `--platform=` and `AS name`;
+    read past `--platform=` and `AS name`. A reference without a tag, such
+    as `python@sha256:…`, is refused: Dependabot could never bump it;
   - the last `FROM`, the image the bot runs on, is
     `python:<the lock's Python>-slim`;
-  - two tests pin the reading itself: what a pinned reference is, and
-    where the image is in a `FROM`.
+  - the reader itself is pinned: what a pinned reference is, where the
+    image is in a `FROM`, and the lock's Python as `major.minor` only. A
+    patch version or none is refused with a message, not cut to fit.
 - Before the fix, the two Dockerfile tests failed on the unpinned
-  `python:3.11-slim`. Each of these changes to the Dockerfile fails at
-  least one test: dropping the digest, shortening it by one character,
-  dropping the tag, moving the tag to `3.12-slim`, dropping `-slim`, and
-  adding an unpinned second stage.
-- Two new CI steps in `docker-build`: "Check the image runs the Python
-  the lock was compiled for" fails the build, and "Warn when the base
-  image's tag has moved past the pin" only warns. The warning step's three
-  outcomes (same digest, moved, registry unreachable) were run locally
-  against a stand-in for `docker`.
+  `python:3.11-slim`. Each of these changes fails at least one test:
+  - in the Dockerfile: dropping the digest, shortening it by one
+    character, dropping the tag, moving the tag to `3.12-slim`, dropping
+    `-slim`, and adding an unpinned second stage;
+  - in the reader: accepting a reference without a tag, cutting a patch
+    version to `major.minor`, not reporting a missing version, and taking
+    the first `FROM` for the base.
+- A new CI step in `docker-build`, "Check the image runs the Python the
+  lock was compiled for", fails the build.
+- The weekly workflow cannot run before it is on `master`. Its steps were
+  run locally under `bash -e`, with the real `docker buildx imagetools
+  inspect` and a stand-in for `gh`, in six cases: the pin current with and
+  without an open issue, the pin behind with and without one, a registry
+  error, and an answer that is not a digest. Each opened, commented on,
+  closed or left the issue as described above.
 
 ## What this does not cover
 
@@ -114,8 +138,11 @@ flowchart LR
     candidate tags, not to the digest, in the source read. A bug there
     would hide digest bumps too.
 
-  The CI warning covers both: it appears once the tag has moved and stays
-  until the pin follows.
+  The weekly check covers both: it opens the issue once the tag has moved,
+  whatever Dependabot does. The `ignore` rule stays, because the source
+  read applies it before the digest is compared, and dropping it would
+  trade a possible silent gap, which the check now covers, for a certain
+  red pull request every week.
 - **Bumping by hand.** If no pull request comes, read the tag's digest
   with `docker buildx imagetools inspect python:3.11-slim` and put the
   `Digest:` it prints into the `FROM` line. Take the index digest, the
@@ -131,8 +158,8 @@ flowchart LR
   are all fixed by the commit.
 - Security fixes in the base image no longer arrive by themselves. They
   arrive as a pull request that someone has to merge. The pull request
-  should come within a week of the tag moving, and the CI warning shows on
-  every run until the pin follows.
+  should come within a week of the tag moving, and the issue stays open
+  until the pin follows.
 - Dependabot opens pull requests in this repository. They need the same
   review and green CI as any other.
 - Moving to a newer Python is one deliberate change: the tag, the digest and
@@ -153,6 +180,9 @@ flowchart LR
 - **Fail CI when the tag has moved.** Rejected: the failure would come with
   no change in this repository and block every pull request until the bump
   is merged, including unrelated fixes.
+- **Warn on every CI run instead of the weekly issue.** Tried first and
+  replaced in review: a warning appears only when someone pushes, and only
+  on that run, so in a quiet month nothing would show.
 - **A scheduled workflow that opens the bump itself.** Rejected for now:
   Dependabot already does this and keeps the pull request up to date; the
-  CI warning covers the case where it does not.
+  weekly issue covers the case where it does not.

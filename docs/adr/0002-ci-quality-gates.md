@@ -30,8 +30,9 @@ when the image's packages differ from the lock. Since
 packages need, or an override is not honoured or no longer needed. Since
 [ADR 0019](0019-pin-the-base-image-by-digest.md), `tests` fails when a
 `FROM` lacks a digest or its tag disagrees with the lock's Python, and
-`docker-build` fails when the image runs another Python; it only warns
-when the base image's tag has moved past the pin.
+`docker-build` fails when the image runs another Python. Whether the pin
+has fallen behind its tag is checked weekly outside CI, by a workflow that
+keeps an issue open, since the tag moves with no commit here.
 
 Semgrep `WARNING` and `INFO` findings never fail the build. They are written
 to the job summary, and each pull request description records the decision

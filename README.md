@@ -406,8 +406,8 @@ both installs again, in this order.
   of a commit gives the same image
   ([ADR 0019](docs/adr/0019-pin-the-base-image-by-digest.md)). Dependabot
   proposes the tag's new digest as a pull request; merge it once CI is
-  green. If it does not, CI warns that the tag has moved, and the ADR shows
-  how to bump the digest by hand. A newer Python means a new tag, digest
+  green. If it does not, a weekly check opens the issue "The base image's
+  pin may be stale", and the ADR shows how to bump the digest by hand. A newer Python means a new tag, digest
   and lock in one pull request.
 - The `tradelocker` client is pinned to the version the test suite's broker
   fake mirrors. Moving to a newer release means updating the pin and
