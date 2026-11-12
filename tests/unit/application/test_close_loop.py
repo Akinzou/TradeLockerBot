@@ -66,3 +66,17 @@ def test_the_warning_gives_the_time_since_the_first_request_not_the_threshold():
     journal = run(CLOSE_SIGNAL, rows=(1,) * 20 + (0,), seconds_per_count=6.0)
 
     assert [entry for entry in journal if entry[0] == "still closing"] == [("still closing", "XAUUSD", 1, 65.0)]
+
+
+def test_the_10_seconds_run_from_when_the_requests_were_sent():
+    # Each request takes 4 seconds here, as one the client has to retry can;
+    # timed from before it, the next would go out after 6 seconds, and with
+    # enough rows at once.
+    assert run(CLOSE_SIGNAL, rows=(1,) * 23 + (0,), seconds_per_close=4.0) == [
+        *CLOSE_START, *CLOSING, NO_ROWS,
+        *[PAUSE, NO_ROWS] * 10,
+        *CLOSING, NO_ROWS,
+        *[PAUSE, NO_ROWS] * 10,
+        *CLOSING, NO_ROWS,
+        ("unlocked",),
+    ]

@@ -95,33 +95,37 @@ class ExecuteSignal:
         # none, or when a call gets no answer. Every later signal waits on
         # the lock meanwhile, a weekend's close included (ADR 0022).
         rows = self._broker.open_position_count(instrument_id)
-        first_request = last_request = None
+        if isinstance(rows, Err) or not rows.value:
+            return rows if isinstance(rows, Err) else Ok(None)
+        closed = self._request_close(symbol, instrument_id, rows.value)
+        if isinstance(closed, Err):
+            return closed
+        # Read once the requests are out, not before: each takes a second or
+        # more in the client, so with several rows a reading taken before
+        # would make the next request due at once.
+        first_request = last_request = self._clock.now()
         warned = False
         while True:
-            if isinstance(rows, Err):
-                return rows
-            if not rows.value:
-                return Ok(None)
+            # Counted again straight after a request, since a close usually
+            # fills before that answer: the common case orders with no pause
+            # of the bot's own.
+            rows = self._broker.open_position_count(instrument_id)
+            if isinstance(rows, Err) or not rows.value:
+                return rows if isinstance(rows, Err) else Ok(None)
             now = self._clock.now()
-            # The first pass always asks, so this is when the first request went out.
-            first_request = now if first_request is None else first_request
             # Once: a line every minute of a weekend would bury the rest.
             if not warned and now - first_request >= STILL_CLOSING_AFTER_SECONDS:
                 self._console.still_closing(symbol, rows.value, now - first_request)
                 warned = True
-            if last_request is None or now - last_request >= CLOSE_AGAIN_AFTER_SECONDS:
-                # Counted again straight after the request, since a close
-                # usually fills before that answer: the common case orders
-                # with no pause of the bot's own. Asked again only every 10
-                # seconds rather than on every poll, so a slow fill is not
-                # met with a closing order every other second.
-                closed = self._request_close(symbol, instrument_id, rows.value)
-                if isinstance(closed, Err):
-                    return closed
-                last_request = now
-            else:
+            # Asked again only every 10 seconds rather than on every poll, so
+            # a slow fill is not met with a closing order every other second.
+            if now - last_request < CLOSE_AGAIN_AFTER_SECONDS:
                 self._clock.sleep(POLL_SECONDS)
-            rows = self._broker.open_position_count(instrument_id)
+                continue
+            closed = self._request_close(symbol, instrument_id, rows.value)
+            if isinstance(closed, Err):
+                return closed
+            last_request = self._clock.now()
 
     def _request_close(self, symbol: str, instrument_id: int, rows: int) -> Result[None, BrokerFailure]:
         for _ in range(rows):

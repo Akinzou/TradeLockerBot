@@ -15,6 +15,7 @@ from tradelocker.exceptions import TLAPIOrderException
 
 import main_without_ssl as entrypoint
 from tests.characterization.fake_tradelocker import FakeTradeLocker
+from tests.fake_clock import FakeClock
 from tradelocker_bot import composition_root
 from tradelocker_bot.adapters import tradelocker_broker
 from tradelocker_bot.adapters.webhook_path import random_webhook_path
@@ -132,35 +133,11 @@ class RecordingLock:
         self.release()
 
 
-class FakeClock:
-    """Time that moves only when the bot sleeps, each sleep recorded in the
-    fake's calls. A close that never ends fails on the budget, and one that
-    spins without sleeping on the reads, instead of hanging the suite."""
-
-    BUDGET_SECONDS = 3600.0
-    BUDGET_READS = 10_000
-
-    def __init__(self, fake):
-        self._fake = fake
-        self._now = 0.0
-        self._reads = 0
-
-    def now(self):
-        self._reads += 1
-        assert self._reads <= self.BUDGET_READS, "the close loop spins without sleeping"
-        return self._now
-
-    def sleep(self, seconds):
-        self._fake.calls.append(("sleep", seconds))
-        self._now += seconds
-        assert self._now <= self.BUDGET_SECONDS, "the close loop never ended"
-
-
 def handle(fake, lines, lock=None):
     # The wiring the bot serves, not one assembled here: built around the given
     # client and lock, so the lock tests see the production lock handling.
     lock = lock if lock is not None else threading.Lock()
-    handler = composition_root.build_signal_handler(fake, lock, FakeClock(fake))
+    handler = composition_root.build_signal_handler(fake, lock, FakeClock(fake.calls.append))
     handler.handle(lines)
 
 

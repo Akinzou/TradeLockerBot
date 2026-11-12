@@ -4,6 +4,7 @@ checked."""
 
 from collections import Counter
 
+from tests.fake_clock import FakeClock
 from tradelocker_bot.application.execute_signal import ExecuteSignal
 from tradelocker_bot.application.ports import BrokerFailure, OrderRejected
 from tradelocker_bot.domain.lot_sizing import LotSizing
@@ -22,10 +23,11 @@ class FakeBroker:
     CALLS = frozenset({"balance", "instrument_id", "position_count", "request_close", "place"})
 
     def __init__(self, journal, balance=1000.0, rows=(0,), order_results=(9001,), failures=None,
-                 clock=None, seconds_per_count=0.0):
+                 clock=None, seconds_per_count=0.0, seconds_per_close=0.0):
         self._journal = journal
         self._clock = clock
         self._seconds_per_count = seconds_per_count
+        self._seconds_per_close = seconds_per_close
         self._balance = balance
         self._rows = list(rows)
         self._order_results = list(order_results)
@@ -55,6 +57,8 @@ class FakeBroker:
         return self._answer(("position_count", instrument_id), self._rows.pop(0))
 
     def request_close(self, instrument_id):
+        if self._clock is not None:
+            self._clock.advance(self._seconds_per_close)
         return self._answer(("request_close", instrument_id), None)
 
     def place_market_order(self, instrument_id, quantity, side, stop_loss, take_profit):
@@ -85,34 +89,6 @@ class FakeConsole:
         self._journal.append(("unlocked",))
 
 
-class FakeClock:
-    """Time that moves only when the use case sleeps or a call advances it;
-    each sleep goes in the shared journal. A loop that never ends fails on the
-    budget, and one that spins without sleeping on the reads, instead of
-    hanging the suite."""
-
-    BUDGET_SECONDS = 3600.0
-    BUDGET_READS = 10_000
-
-    def __init__(self, journal):
-        self._journal = journal
-        self._now = 0.0
-        self._reads = 0
-
-    def now(self):
-        self._reads += 1
-        assert self._reads <= self.BUDGET_READS, "the close loop spins without sleeping"
-        return self._now
-
-    def advance(self, seconds):
-        self._now += seconds
-        assert self._now <= self.BUDGET_SECONDS, "the close loop never ended"
-
-    def sleep(self, seconds):
-        self._journal.append(("sleep", seconds))
-        self.advance(seconds)
-
-
 def signal(side=Side.BUY, base_lot=0.01, symbol="XAUUSD"):
     return OpenSignal(symbol=symbol, side=side, sizing=LotSizing(base_lot=base_lot, balance_step=100.0),
                       take_profit=500, stop_loss=1000)
@@ -122,7 +98,7 @@ CLOSE_SIGNAL = CloseSignal(symbol="XAUUSD")
 
 
 def use_case(journal, **broker_args):
-    clock = FakeClock(journal)
+    clock = FakeClock(journal.append)
     return ExecuteSignal(FakeBroker(journal, clock=clock, **broker_args), FakeConsole(journal), clock)
 
 

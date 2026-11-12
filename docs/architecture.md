@@ -182,20 +182,25 @@ sequenceDiagram
     UC->>C: locked()
     UC->>B: open_position_count(101)
     B-->>UC: Ok(n)
-    loop until the broker lists no position on 101
-        opt a minute since the first request, once
-            UC->>C: still_closing("XAUUSD", n, seconds)
+    opt n > 0
+        loop n times
+            UC->>B: request_close(101)
+            UC->>C: closing("XAUUSD")
         end
-        alt first pass, or 10 s on the clock since the last request
-            loop n times
-                UC->>B: request_close(101)
-                UC->>C: closing("XAUUSD")
+        UC->>K: now()
+        loop until the broker lists no position on 101
+            UC->>B: open_position_count(101), at once
+            B-->>UC: Ok(n)
+            opt a minute since the first requests, once
+                UC->>C: still_closing("XAUUSD", n, seconds)
             end
-        else
-            UC->>K: sleep(1)
+            alt 10 s on the clock since the last requests went out
+                UC->>B: request_close(101), n times, with closing("XAUUSD")
+                UC->>K: now()
+            else
+                UC->>K: sleep(1)
+            end
         end
-        UC->>B: open_position_count(101)
-        B-->>UC: Ok(n)
     end
     UC->>B: place_market_order(101, 0.1, side, sl, tp), once
     alt the broker created the order

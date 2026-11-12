@@ -42,14 +42,21 @@ def _why(reason: InvalidSignal | Refusal) -> str:
     raise TypeError(f"no operator line for {reason!r}")
 
 
+def _listed(symbol: str, open_positions: int) -> tuple[str, str]:
+    # One wording for every line that names open positions, so an
+    # `Order rejected:` and a `Still closing:` line read alike.
+    if open_positions == 1:
+        return f"the broker lists 1 open {symbol} position", "it"
+    return f"the broker lists {open_positions} open {symbol} positions", "them"
+
+
 def _left_open(symbol: str, open_positions: int | None) -> str:
     if open_positions is None:
         return f"the position count got no answer, check {symbol} in TradeLocker"
     if open_positions == 0:
         return f"no {symbol} position is open"
-    if open_positions == 1:
-        return f"the broker lists 1 open {symbol} position, check it in TradeLocker"
-    return f"the broker lists {open_positions} open {symbol} positions, check them in TradeLocker"
+    listed, them = _listed(symbol, open_positions)
+    return f"{listed}, check {them} in TradeLocker"
 
 
 class PrintingConsole:
@@ -77,15 +84,12 @@ class PrintingConsole:
         Says that later signals wait, because the lock is held until the
         position closes, and a closed market can keep it shut for a weekend.
         """
-        if open_positions == 1:
-            listed, closes, them = f"1 open {symbol} position", "it closes", "it"
-        else:
-            listed, closes, them = f"{open_positions} open {symbol} positions", "they close", "them"
+        listed, them = _listed(symbol, open_positions)
+        closes = "it closes" if open_positions == 1 else "they close"
         # One print with the reset inside, as for a rejected order: another
         # thread's rejection can print in between.
-        print(f"{ascii_alerts.RED}Still closing: the broker lists {listed} {int(seconds)} seconds after the "
-              f"first close request; later signals wait until {closes}, check {them} in TradeLocker\n"
-              f"{ascii_alerts.RESET}")
+        print(f"{ascii_alerts.RED}Still closing: {listed} {int(seconds)} seconds after the first close request; "
+              f"later signals wait until {closes}, check {them} in TradeLocker\n{ascii_alerts.RESET}")
 
     def unlocked(self) -> None:
         print("Normal: Unlocked")

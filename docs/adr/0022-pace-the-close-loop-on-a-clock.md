@@ -45,14 +45,17 @@ It is paced by a clock instead of by the client's delays:
 
 ```mermaid
 flowchart TD
-    C0["count the rows"] --> Z{"none?"}
-    Z -- "yes" --> DONE["closed: order next (open)<br/>or Normal: Unlocked (close)"]
-    Z -- "no" --> W{"60 s since the first request,<br/>and not yet said?"}
+    C0["count the rows"] --> Z0{"none?"}
+    Z0 -- "yes" --> DONE["closed: order next (open)<br/>or Normal: Unlocked (close)"]
+    Z0 -- "no" --> REQ["one close request per row,<br/>Closing: XAUUSD for each,<br/>then read the clock"]
+    REQ --> C1["count again, at once"]
+    C1 --> Z{"none?"}
+    Z -- "yes" --> DONE
+    Z -- "no" --> W{"60 s since the first requests,<br/>and not yet said?"}
     W -- "yes" --> WARN["one red Still closing: line"] --> R
-    W -- "no" --> R{"first pass, or 10 s<br/>since the last request?"}
-    R -- "yes" --> REQ["one close request per row,<br/>Closing: XAUUSD for each"] --> C1["count again at once"]
+    W -- "no" --> R{"10 s since the last<br/>requests went out?"}
+    R -- "yes" --> REQ
     R -- "no" --> P["pause 1 s"] --> C1
-    C1 --> Z
     C0 -. "no answer" .-> FAIL["BrokerFailure: raised, as before"]
     C1 -. "no answer" .-> FAIL
     REQ -. "no answer" .-> FAIL
@@ -69,9 +72,12 @@ flowchart TD
 - **Otherwise the bot pauses one second between counts.** With the
   client's own second, that is a count about every two seconds.
 - **A close is requested again only once 10 seconds have passed** since
-  the last request, on the clock. Seconds are measured, not polls counted:
-  a poll takes a second when the broker answers and minutes when it does
-  not, so ten polls could be twenty seconds or half an hour.
+  the last requests went out, on the clock. Seconds are measured, not
+  polls counted: a poll takes a second when the broker answers and minutes
+  when it does not, so ten polls could be twenty seconds or half an hour.
+  The clock is read once the requests are sent, not before: each takes a
+  second or more in the client, so with several rows a reading taken
+  before would make the next round due at once.
 - **One red line a minute after the first request, once:**
 
   ```text
@@ -121,6 +127,8 @@ The tests changed with it:
     - the pause comes after the immediate recount;
     - the request again comes only after 10 s;
     - the 10 s are the clock's, with counts that take 4 s each;
+    - they run from when the requests were sent, with requests that take
+      4 s each;
     - the warning comes once, at the first count a minute in, ahead of that
       count's request, with one row and with two;
     - it gives the time since the first request, with counts that take 6 s,
@@ -130,13 +138,16 @@ The tests changed with it:
   - `SystemClock` reads `time.monotonic` and sleeps through `time.sleep`.
   - The console's exact bytes for one position and for several, with the
     seconds cut to whole ones.
-- **No hang in the suite.** Both fake clocks fail a test that sleeps
-  beyond an hour, or reads the clock 10,000 times without sleeping.
+- **No hang in the suite.** One fake clock, `tests/fake_clock.py`, serves
+  both suites. It fails a test that sleeps beyond an hour, or reads the
+  clock 10,000 times without sleeping.
 - **Mutations.** Each of these changes fails at least one test:
   - dropping the pause;
   - requesting again on every poll;
   - requesting again after 11 s, or strictly after 10;
   - counting polls instead of seconds;
+  - reading the clock before the first requests are sent, or before a
+    request again;
   - pausing before the first recount;
   - sending one request a round instead of one per row;
   - warning on every poll;
@@ -148,7 +159,8 @@ The tests changed with it:
   - reading the wall clock;
   - not sleeping;
   - rounding the seconds rather than cutting them;
-  - wording one position as several.
+  - wording one position as several, in the count or in "until it
+    closes".
 
 ## Residual risk
 
@@ -174,13 +186,25 @@ Recorded at the owner's decision to keep no upper limit.
   holds only while the broker answers. A count or close request that fails
   raises the client's exception and leaves the position as it is, as
   before.
+- **What each close request leaves with the broker.** The client's
+  documentation says the broker places an immediate-or-cancel closing
+  order, then a good-till-cancelled one. Whether a request sent while an
+  earlier one's order is still pending adds another, and whether those are
+  cancelled once the position closes, was not observed. Asking again every
+  10 seconds rather than every other second sends a fifth as many; asking
+  only when the broker shows no pending closing order would need a port
+  for pending orders, which no test or observation backs yet.
+- **Nothing says when a close that took a minute ended.** After the one
+  `Still closing:` line, the next lines are the order or
+  `Normal: Unlocked`, with no time.
+- **A restart drops the waiting signals and the close.** The handler
+  threads are not daemons, so a plain stop waits for the loop until Docker
+  kills the process, as before. The bot then stops asking, and an `open`
+  whose close was waiting never places its order.
 - **The broker's answer to a close request is not read.** The client
   returns whether the broker said `ok`; the adapter drops it, as legacy
   did. A refused request is noticed only through the count, and asked
   again 10 s later.
-- **`docker stop` during a close.** The handler threads are not daemons,
-  so the process waits for the loop until the container is killed, as
-  before.
 - **Nothing outside the log is told.** An operator who does not read the
   log does not see the `Still closing:` line.
 
