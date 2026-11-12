@@ -386,6 +386,9 @@ design.
     ([ADR 0025](adr/0025-run-the-broker-client-at-info.md)).
 - `PrintingConsole` implements `OperatorConsole` as the legacy coloured
   stdout lines.
+  - Each line reaches the log when printed, terminal or not: `main()`
+    sets stdout to line buffering before anything else
+    ([ADR 0026](adr/0026-write-stdout-line-by-line.md)).
   - Its `rejected` prints one red line for an `InvalidSignal` or a
     `Refusal`, using the same "found, expected" shape for both.
   - Webhook text in that line is escaped with `repr` and cut after 40
