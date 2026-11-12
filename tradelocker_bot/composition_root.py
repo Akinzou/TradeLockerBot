@@ -14,6 +14,7 @@ import uvicorn
 
 from tradelocker_bot.adapters import ascii_alerts
 from tradelocker_bot.adapters.console import PrintingConsole
+from tradelocker_bot.adapters.password_file import read_password_file
 from tradelocker_bot.adapters.signal_handler import SignalHandler
 from tradelocker_bot.adapters.system_clock import SystemClock
 from tradelocker_bot.adapters.tradelocker_broker import TradeLockerBroker, log_in
@@ -68,43 +69,6 @@ def refuse_password(_value):
     raise argparse.ArgumentTypeError("set password_file or the password environment variable instead")
 
 
-BYTE_ORDER_MARK = chr(0xFEFF)
-
-
-def password_from_file(path) -> Result[str, str]:
-    r"""The one line the file at ``path`` holds, or why it holds none (ADR 0024).
-
-    Read as bytes and decoded here, so a line ending reaches this check as
-    written on any system. One trailing ``\n`` or ``\r\n`` is dropped and
-    nothing else, as nothing is trimmed from the variable (ADR 0018). No
-    message carries the content or the decoding error, which quotes it.
-    """
-    try:
-        with open(path, "rb") as file:
-            content = file.read()
-    except OSError as unread:
-        return Err(f"password_file: the file cannot be read ({unread.strerror})")
-    try:
-        text = content.decode("utf-8")
-    except UnicodeDecodeError:
-        return Err("password_file: the file is not UTF-8 text")
-    # Refused rather than dropped: the last line ending is the only change
-    # the bot makes to the file, so the password is what any editor shows.
-    if text.startswith(BYTE_ORDER_MARK):
-        return Err("password_file: the file starts with a byte order mark; save it without one")
-    for ending in ("\r\n", "\n"):
-        if text.endswith(ending):
-            text = text[: -len(ending)]
-            break
-    # Refused rather than kept: a file of several lines, an env file for one,
-    # would otherwise reach the broker whole as one password.
-    if "\n" in text or "\r" in text:
-        return Err("password_file: the file holds more than one line")
-    if not text:
-        return Err("password_file: the file is empty")
-    return Ok(text)
-
-
 def password_from(env) -> Result[str, str]:
     """The password from exactly one of ``password_file`` and ``password``,
     an empty one counting as not set (ADR 0024)."""
@@ -114,7 +78,7 @@ def password_from(env) -> Result[str, str]:
     if path and variable:
         return Err("set either password_file or the password environment variable, not both")
     if path:
-        return password_from_file(path)
+        return read_password_file(path)
     if variable:
         return Ok(variable)
     return Err("no password: set password_file to a file that holds it, or the password environment variable")

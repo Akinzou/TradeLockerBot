@@ -124,7 +124,7 @@ or `live`):
 
 ```sh
 docker run -d -t --name prod --restart unless-stopped -p 443:443 \
-  -v "$HOME/.tradelocker_password:/run/secrets/tradelocker_password:ro" \
+  --mount type=bind,source="$HOME/.tradelocker_password",target=/run/secrets/tradelocker_password,readonly \
   -e password_file=/run/secrets/tradelocker_password \
   -e username='your_username' \
   -e server='your_server' \
@@ -134,7 +134,9 @@ docker run -d -t --name prod --restart unless-stopped -p 443:443 \
 ```
 
 The file is mounted read-only and read once at startup, so `docker inspect`
-shows only its path
+shows only its path. `--mount` rather than `-v`: for a file that does not
+exist, `-v` creates a directory in its place, owned by root, and `--mount`
+stops with an error
 ([ADR 0024](docs/adr/0024-read-the-password-from-a-file.md)). You can
 instead set `-e password='your_password'`, but not both.
 
@@ -170,7 +172,7 @@ All settings are passed as environment variables (`-e name=value`).
 | Variable   | Required | Default     | Description                                                                                         |
 |------------|----------|-------------|-----------------------------------------------------------------------------------------------------|
 | `username` | yes      |             | TradeLocker username or email.                                                                      |
-| `password_file` | one of the two |  | Path, inside the container, of a file that holds the TradeLocker password on one line, such as a mounted secret (see [Quick start](#quick-start)). One line ending at the end is dropped and nothing else; spaces count. The bot refuses to start if the file cannot be read, is empty, holds more than one line, is not UTF-8 or starts with a byte order mark, and never prints its content ([ADR 0024](docs/adr/0024-read-the-password-from-a-file.md)). Read once at startup: after changing the password, restart the bot. |
+| `password_file` | one of the two |  | Path, inside the container, of a file that holds the TradeLocker password on one line, such as a mounted secret (see [Quick start](#quick-start)). One line ending at the end is dropped and nothing else; spaces count. The bot refuses to start if the file cannot be read, is empty, is longer than 1024 bytes, holds more than one line or a NUL character, is not UTF-8 or starts with a byte order mark, and never prints its content ([ADR 0024](docs/adr/0024-read-the-password-from-a-file.md)). Read once at startup: after changing the password, restart the bot. |
 | `password` | one of the two |       | TradeLocker password, if you do not use `password_file`. Read only from the environment, never from the command line; any character is allowed. `docker inspect` shows it. |
 | `server`   | yes      |             | TradeLocker server name.                                                                            |
 | `env`      | yes      |             | `demo` or `live`.                                                                                   |
@@ -191,7 +193,7 @@ with
 with both, with
 `set either password_file or the password environment variable, not both`.
 Images built before ADR 0024 ignore `password_file`. Images built
-before that change pass the values through an unquoted shell, which splits
+before ADR 0018 pass the values through an unquoted shell, which splits
 or expands a value with spaces, `*`, `?` or `[`; on those, use a password
 without them.
 
@@ -361,8 +363,8 @@ alerts.
 > Since [ADR 0024](docs/adr/0024-read-the-password-from-a-file.md), the
 > password can come from a file instead of the `password` variable. To
 > move to it, create the file as in [Quick start](#quick-start), add the
-> `-v` and `password_file` lines and remove `-e password=...`: with both
-> set, the bot does not start.
+> `--mount` and `password_file` lines and remove `-e password=...`: with
+> both set, the bot does not start.
 
 ## Security
 
@@ -433,8 +435,8 @@ alerts.
 | Bot does not start, login fails             | Wrong credentials or `env`. On images built before [ADR 0018](docs/adr/0018-read-the-settings-from-the-environment.md), also a password with spaces or shell characters (see [Configuration](#configuration)). |
 | Container keeps restarting, `docker logs` shows `no password: set password_file to a file that holds it, or the password environment variable` | Set `password_file` and mount the file (see [Quick start](#quick-start)), or set `password`. An empty value counts as not set. The bot does not read `--password` or `--password_file`. Images built before [ADR 0024](docs/adr/0024-read-the-password-from-a-file.md) show `the password environment variable is not set or is empty` and read only `password`. |
 | Container keeps restarting, `docker logs` shows `set either password_file or the password environment variable, not both` | Remove `password` from the `-e` lines or the env file, keeping the file. |
-| Container keeps restarting, `docker logs` shows `password_file: the file cannot be read (No such file or directory)` | The path in `password_file` names no file inside the container. Check the `-v` mount's right side, or the secret's name in Compose, against `password_file`. With `(Permission denied)` or `(Is a directory)`, check the file on the host. |
-| `docker logs` shows `password_file: the file holds more than one line`, `is empty`, `is not UTF-8 text` or `starts with a byte order mark` | Put the password alone on the file's first line. Save the file as UTF-8 without a byte order mark; Windows PowerShell 5.1 writes `>` as UTF-16. The bot never prints the file's content. |
+| Container keeps restarting, `docker logs` shows `password_file: the file cannot be read (No such file or directory)` | The path in `password_file` names no file inside the container. Check the `--mount` option's `target`, or the secret's name in Compose, against `password_file`. With `(Permission denied)`, check the file on the host. With `(Is a directory)`, a `-v` mount of a file that did not exist made a directory in its place: remove it with `sudo rmdir`, create the file and mount it with `--mount`. |
+| `docker logs` shows `password_file: the file holds more than one line`, `is empty`, `is longer than 1024 bytes`, `holds a NUL character`, `is not UTF-8 text` or `starts with a byte order mark` | Put the password alone on the file's first line, and check that `password_file` names the password file, not the env file. Save the file as UTF-8 without a byte order mark; Windows PowerShell 5.1 writes `>` as UTF-16. The bot never prints the file's content. |
 | `docker logs` shows `the following arguments are required: --server` or `argument --server: must not be empty` | The messages name the option the image fills from the variable of the same name. Set `server` (or the variable named) to a non-empty value. |
 | `Method Not Allowed` in the browser         | Expected; see [Verifying the setup](#verifying-the-setup).                                     |
 | Every alert gets `404 Not Found`            | Each one leaves a `<request line hidden>` line in the log with the status `404 Not Found`. The alert's URL does not match the `url` setting exactly (case included). A trailing `/` counts: `/strategy/` is not `/strategy`. On images built before [ADR 0014](docs/adr/0014-require-a-leading-slash.md), also check that `url` starts with `/`. |

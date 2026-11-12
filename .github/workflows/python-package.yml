@@ -95,19 +95,24 @@ jobs:
           test ! -s out.txt
           tail -n 1 err.txt | grep -q 'error: no password: set password_file to a file that holds it, or the password environment variable$'
       # A secret mounted read-only, as the README shows it (ADR 0024), must get
-      # past the settings. The file is written outside the build context and
-      # after the build, so no image can hold it.
+      # past the settings, and the image's own Python must read it as written,
+      # less the line ending. The file is written outside the build context
+      # and after the build, so no image can hold it.
       - name: Start the image with a password file
         run: |
           printf 'p a $HOME *\n' > "$RUNNER_TEMP/password"
+          mount="type=bind,source=$RUNNER_TEMP/password,target=/run/secrets/password,readonly"
           status=0
           docker run --rm --network none -e username=u -e server=s -e env=demo \
-            -v "$RUNNER_TEMP/password:/run/secrets/password:ro" -e password_file=/run/secrets/password \
+            --mount "$mount" -e password_file=/run/secrets/password \
             tradelocker_bot:ci > out.txt 2> err.txt || status=$?
           cat out.txt err.txt
           test "$status" != 0
           test "$status" != 2
           grep -qF '|_   _| __ __ _' out.txt
+          docker run --rm --network none -e username=u -e server=s -e env=demo \
+            --mount "$mount" -e password_file=/run/secrets/password --entrypoint python tradelocker_bot:ci \
+            -c 'import sys; from tradelocker_bot.composition_root import parse_args; sys.exit(parse_args([]).password != "p a $HOME *")'
       # A path that names no file in the container, a mount left out for one,
       # must stop the bot before any output, with the system's reason.
       - name: Start the image with a password file that is not there

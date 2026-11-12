@@ -37,10 +37,12 @@ def _with_file(tmp_path, content, **environ):
         # of the password; nothing else is trimmed (ADR 0018).
         (b"p\n", "p"),
         (b"p\r\n", "p"),
+        (b"p\r", "p"),
         (b" p a $HOME * ", " p a $HOME * "),
         (b" p \n", " p "),
         (b"p\t", "p\t"),
         ("pässwörd\n".encode(), "pässwörd"),
+        (b"p" * 1024, "p" * 1024),
     ],
 )
 def test_the_files_one_line_reaches_the_login_exactly_as_written(startup, tmp_path, content, password):
@@ -73,8 +75,18 @@ def test_an_empty_password_variable_beside_a_file_counts_as_not_set(startup, tmp
         # otherwise reach the broker as one password.
         (b"password=" + MARKER.encode() + b"\nserver=s\n", "error: password_file: the file holds more than one line"),
         (MARKER.encode() + b"\n\n", "error: password_file: the file holds more than one line"),
-        (MARKER.encode() + b"\r", "error: password_file: the file holds more than one line"),
+        (MARKER.encode() + b"\r\r", "error: password_file: the file holds more than one line"),
         (MARKER.encode() + b"\rx", "error: password_file: the file holds more than one line"),
+        # Every line boundary Python knows, as the webhook body is split.
+        (MARKER.encode() + b"\x0bx", "error: password_file: the file holds more than one line"),
+        (MARKER.encode() + b"\x0cx", "error: password_file: the file holds more than one line"),
+        ((MARKER + "\u2028x").encode(), "error: password_file: the file holds more than one line"),
+        # UTF-16 without a byte order mark decodes as UTF-8, with a NUL after
+        # each letter.
+        (MARKER.encode("utf-16-le"), "error: password_file: the file holds a NUL character; save it as UTF-8"),
+        # Read no further: a device or a large file is not read into memory.
+        (MARKER.encode() * 205, "error: password_file: the file is longer than 1024 bytes"),
+        (b"p" * 1024 + b"\n", "error: password_file: the file is longer than 1024 bytes"),
         # Windows PowerShell 5.1 writes `>` as UTF-16.
         (MARKER.encode("utf-16"), "error: password_file: the file is not UTF-8 text"),
         (MARKER.encode() + b"\xff", "error: password_file: the file is not UTF-8 text"),

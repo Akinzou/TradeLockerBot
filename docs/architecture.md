@@ -436,8 +436,10 @@ layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
 - `password_from` takes the password from exactly one of two sources: the
   file `password_file` names, such as a Docker secret, which keeps it out
   of `docker inspect`, or the `password` variable. Both set stops the bot,
-  as does a file that is not one line of UTF-8 text; one trailing line
-  ending is dropped and nothing else. No message prints the content
+  as does a file that is not one line of UTF-8 text of at most 1024
+  bytes; one trailing line ending is dropped and nothing else. The
+  adapter `password_file` reads the file and checks its bytes. No message
+  prints the content
   ([ADR 0024](adr/0024-read-the-password-from-a-file.md)).
 - It creates the one lock that every request shares.
 - `webhook_url` checks `url` as the settings are read: `generate` or a

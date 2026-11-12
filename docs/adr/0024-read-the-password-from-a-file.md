@@ -39,8 +39,8 @@ flowchart TD
     ENV["the container's environment"] --> BOTH{"password_file and password<br/>both set, neither empty?"}
     BOTH -- yes --> STOP2["exit 2: set either password_file<br/>or the password environment variable, not both"]
     BOTH -- no --> FILE{"password_file set?"}
-    FILE -- yes --> READ["read the file as bytes, once,<br/>before any output"]
-    READ --> CHECK{"readable, UTF-8,<br/>no byte order mark,<br/>one non-empty line?"}
+    FILE -- yes --> READ["read up to 1025 bytes of the file,<br/>once, before any output"]
+    READ --> CHECK{"readable, at most 1024 bytes,<br/>UTF-8, no byte order mark, no NUL,<br/>one non-empty line?"}
     CHECK -- no --> STOP3["exit 2: password_file: the file ...<br/>(the content is never printed)"]
     CHECK -- yes --> LOGIN["log in with the line,<br/>one trailing line ending dropped"]
     FILE -- no --> VAR{"password set?"}
@@ -66,13 +66,21 @@ flowchart TD
 - **What the file must hold: one line.**
   - It is read as bytes and decoded as UTF-8 by the bot, so every system
     reads the same line endings.
-  - One trailing `\n` or `\r\n` is dropped, since `echo` and most editors
-    end a file with one. Nothing else is trimmed, as nothing is trimmed
+  - One trailing `\r\n`, `\n` or `\r` is dropped, since `echo` and most
+    editors end a file with one. Nothing else is trimmed, as nothing is trimmed
     from the variable (ADR 0018): spaces and shell characters reach the
     login as written.
-  - A file that then still holds `\n` or `\r` is refused. An operator
-    who points `password_file` at the env file would otherwise send every
-    line of it to the broker as one password.
+  - A file that then still holds a line boundary is refused: any that
+    Python's `splitlines` knows, as for the webhook body, such as `\n`,
+    `\r`, `\x0b`, `\x0c` or `\u2028`. An operator who points
+    `password_file` at the env file would otherwise send every line of it
+    to the broker as one password.
+  - A file that holds a NUL character is refused. UTF-16 without a byte
+    order mark decodes as UTF-8 with a NUL after each letter, and would
+    fail the login as a wrong password.
+  - A file longer than 1024 bytes, the line ending included, is refused,
+    after a read of 1025 bytes and no more, so a path that names a device
+    or a large file is not read into memory.
   - A file that is not UTF-8 is refused. Windows PowerShell 5.1 writes
     `>` as UTF-16.
   - A file that starts with a byte order mark is refused rather than
@@ -99,15 +107,19 @@ flowchart TD
 | `password_file` set to a file holding `p\n` | ignored; exit `2` without `password` | logs in with `p` |
 | both set | `password_file` ignored | exit `2`, `not both` |
 | neither, or both empty | exit `2`, `the password environment variable is not set or is empty` | exit `2`, `no password: set password_file ...` |
-| a file that is missing, a directory, empty, of two lines, not UTF-8, or with a byte order mark | | exit `2`, `password_file: the file ...`, content not printed |
+| a file that is missing, a directory, empty, longer than 1024 bytes, of two lines, with a NUL, not UTF-8, or with a byte order mark | | exit `2`, `password_file: the file ...`, content not printed |
 | `--password_file` on the command line | unknown argument, not printed | the same |
 
 ## What changes
 
-- `composition_root.password_from` picks the source, and
-  `password_from_file` reads the file. Both return a `Result` with the
+- `composition_root.password_from` picks the source. A new adapter
+  module, `adapters/password_file.py`, reads the file
+  (`read_password_file`) and applies the rules to its bytes
+  (`password_from_bytes`, no I/O). Each returns a `Result` with the
   password or the message, and `parse_args` turns an `Err` into the
-  argparse error and exit status `2`.
+  argparse error and exit status `2`. An adapter module rather than a
+  port: only the composition root asks for the password, so a port would
+  have one implementation and no caller inside the layers.
 - **Tests.** A new `tests/characterization/test_startup_password_file.py`
   pins:
   - the line reaching the login as written, with each line ending;
@@ -118,19 +130,26 @@ flowchart TD
   - both sources set;
   - `--password_file` refused as unknown.
 
+  A unit test, `tests/unit/adapters/test_password_file.py`, pins the
+  bounded read against a file with no end.
+
   The missing-password pin, the `--password` pin and the help text pin
   flip to the new messages.
 - **Mutations.** Each fails at least one test:
   - keeping the byte order mark;
   - stripping every trailing line ending;
-  - stripping `\n` only;
+  - stripping `\n` only, or not a lone `\r`;
   - letting the file win over the variable;
-  - keeping a file of several lines;
+  - keeping a file of several lines, or counting only `\n` and `\r` as
+    line boundaries;
+  - keeping a NUL character;
+  - dropping the size check, or reading the file to its end;
   - showing the decoding error;
   - reading the file in text mode.
 - **CI** starts the built image with a file mounted read-only at
   `/run/secrets/password`, holding `p a $HOME *`: the greeting is
-  printed. The file is written outside the build context, after the
+  printed, and the image's own Python reads exactly `p a $HOME *` from
+  it. The file is written outside the build context, after the
   build, so no image can hold it. It also starts the image with a
   `password_file` that names no file, which must stop it with status `2`
   and `(No such file or directory)`. The step without a password checks
@@ -150,9 +169,9 @@ flowchart TD
   the host decides who can read the password, and the bot cannot see
   that from inside the container. The README tells the operator to make
   the host's file readable only by them.
-- **A file that never ends,** such as a device or a pipe with no writer,
-  keeps the bot from starting, with nothing in the log. Not guarded: it
-  is a path the operator chose.
+- **A pipe with no writer** keeps the bot from starting, with nothing in
+  the log: opening it waits for a writer. Not guarded: it is a path the
+  operator chose. A device or a large file is refused after 1025 bytes.
 - **Images built before this change** ignore `password_file` and stop
   with the old message when `password` is not set.
 
