@@ -19,7 +19,7 @@ migration pull request.
 | 2d | Pin exact call sequences and exception types on raising paths, and inputs legacy never validates                                                            | safety    | done                                 |
 | 2e | Pin whitespace variants of `open`/`close` and the retry line's inverted side                                                                             | safety    | done                                 |
 | 2f | Pin a failure at every broker call: calls made, console lines, lock released, the client's exception re-raised as the same object                        | safety    | done                                 |
-| 2g | Pin the base image `python:3.11-slim` by digest, so a rebuild cannot change the interpreter or system libraries unreviewed                               | safety    | todo                                 |
+| 2g | Pin the base image `python:3.11-slim` by digest, so a rebuild cannot change the interpreter or system libraries unreviewed; Dependabot proposes the tag's new digest, and a weekly check keeps an issue open while the pin is behind ([ADR 0019](adr/0019-pin-the-base-image-by-digest.md)). New pins: every `FROM` has a full digest, the tag matches the lock's Python, and the image runs it | safety | done |
 | 2h | Lift the `tradelocker` client's exact pins on PyJWT, requests and python-dotenv, whose pinned versions have published advisories; install the lock with `--no-deps` and check in CI that it holds what its packages need ([ADR 0017](adr/0017-override-the-clients-vulnerable-pins.md)). No pin changed: the suite passes against the new versions | safety | done |
 | 3  | Validate the whole signal before any broker call, as a Result, and report a rejection by one operator line ([ADR 0008](adr/0008-validate-the-signal-before-any-broker-call.md)). Pins updated: wrong-side and NonInvert-forwarding, invalid-invert-after-close, invalid invert ignored outside `open`, truncated payload, non-numeric take profit and stop loss, unknown action, malformed and nonsensical lot; `close` no longer reads the balance | behaviour | done |
 | 3b | Refuse, before the first close request, what needs the broker's answer: an account state without a balance, an unknown symbol, a quantity that is not finite or not above zero ([ADR 0009](adr/0009-refuse-what-the-broker-rules-out-before-closing.md)). The instrument is looked up once, from the instrument list. Pins updated: missing balance, unknown symbol and unusable quantity refused; second lookup gone; a lookup failure no longer prints `Normal: Locked` | behaviour | done |
@@ -55,18 +55,16 @@ flowchart LR
     S6e --> S6f[6f access log]
     S6f --> S6g[6g settings from the environment]
     S6g --> S6[6 remaining defects]
-    S2af -.-> S2g[2g base image digest]
+    S2af --> S2g[2g base image digest]
     S2af --> S2h[2h patched client pins]
     classDef done fill:#d4edda,stroke:#28a745,color:#155724
     classDef next fill:#fff3cd,stroke:#d39e00,color:#856404
-    classDef todo fill:#f8f9fa,stroke:#6c757d,color:#383d41
-    class S1,S1abc,S2,S2af,S2h,S4,S4b,S3,S3b,S5a,S5,S6a,S6b,S6c,S6d,S6e,S6f,S6g done
+    class S1,S1abc,S2,S2af,S2g,S2h,S4,S4b,S3,S3b,S5a,S5,S6a,S6b,S6c,S6d,S6e,S6f,S6g done
     class S6 next
-    class S2g todo
 ```
 
 Each arrow points from a step to one that builds on it. Green is done,
-yellow is next, grey is still to do. The dotted step blocks nothing.
+yellow is next.
 
 Structure steps must keep `tests/characterization/` green with **unchanged
 assertions**. Only the seam may move, meaning the module the tests import
@@ -178,6 +176,11 @@ Fixed in behaviour steps, never during restructuring.
 
 ## Not covered by tests
 
+- Whether Dependabot proposes the base image's new digest (step 2g). It is
+  read from Dependabot's source, not yet observed; a weekly check opens an
+  issue once the tag has moved past the pin. That check runs only from
+  `master`, so it was run locally before the merge
+  ([ADR 0019](adr/0019-pin-the-base-image-by-digest.md)).
 - Whether the handler thread is a daemon. The test client starts it from its
   own daemon thread, while uvicorn starts it from the main thread, so a pin
   would record the test setup rather than production.

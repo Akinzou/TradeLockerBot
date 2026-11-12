@@ -388,3 +388,4 @@ layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
 | [0016](adr/0016-hide-the-request-line-in-the-access-log.md) | Hide the request line in the access log |
 | [0017](adr/0017-override-the-clients-vulnerable-pins.md) | Override the broker client's pins on vulnerable packages |
 | [0018](adr/0018-read-the-settings-from-the-environment.md) | Read the settings from the environment, not the command line |
+| [0019](adr/0019-pin-the-base-image-by-digest.md) | Pin the base image by digest |

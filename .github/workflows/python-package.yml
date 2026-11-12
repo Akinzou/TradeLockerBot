@@ -115,12 +115,23 @@ jobs:
       # The image must add exactly the locked set to its base; with the fitness tests tying
       # the lock to requirements.txt and to the broker fake's client version,
       # this also proves the image runs the characterized client.
+      # The base image and the lock's Python come from the tests' own reader
+      # (tests/dockerfile.py), so CI and the tests agree on both.
       - name: Check the image's packages against the lock
         run: |
-          base="$(sed -n 's/^FROM \([^ ]*\).*/\1/p' Dockerfile)"
+          base="$(python3 -m tests.dockerfile base)"
           docker run --rm --entrypoint python "$base" -m pip freeze --all > base.txt
           docker run --rm --entrypoint python tradelocker_bot:ci -m pip freeze --all > installed.txt
           python3 -m tests.dependency_lock --freeze installed.txt --base base.txt --exact
+      # The tests check the base image's tag against the lock, but Docker reads
+      # only the digest (ADR 0019): check the interpreter the image runs.
+      - name: Check the image runs the Python the lock was compiled for
+        run: |
+          want="$(python3 -m tests.dockerfile lock-python)"
+          have="$(docker run --rm --entrypoint python tradelocker_bot:ci -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
+          echo "lock: $want, image: $have"
+          test -n "$want"
+          test "$have" = "$want"
 
   # Single required status check for master. Aggregating here means branch
   # protection does not need editing every time a job is added or renamed.

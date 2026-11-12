@@ -14,7 +14,9 @@ jobs:
   dockerloginbuildpush:
     # Publish only master: without the event/branch checks a green pull-request
     # run also republished `latest`, which users run live. workflow_dispatch is
-    # kept so the image can be rebuilt (e.g. base-image CVE) with master unchanged.
+    # kept so a failed publish can be retried with master unchanged. It no
+    # longer picks up a base-image fix: the base is pinned by digest, and a fix
+    # arrives as a reviewed digest bump (ADR 0019).
     if: >
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_branch == 'master' &&

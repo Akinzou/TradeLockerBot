@@ -1,0 +1,63 @@
+# A base-image fix arrives only as a digest bump (ADR 0019). Dependabot
+# proposes one; this checks once a week, outside any pull request, that the
+# pin has followed the tag, and keeps one issue open while it has not. A
+# warning on CI runs would show only when someone pushed, and only in that
+# run; a failed publish went unnoticed for a year that way.
+name: Base image freshness
+
+on:
+  schedule:
+    - cron: "23 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      TITLE: "The base image's pin may be stale"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # The tests' own reader, so the two agree on what the base image is.
+      # Anything that does not read as a digest fails the step: a broken
+      # comparison must not pass for a fresh pin.
+      - name: Compare the pinned digest with the tag's current one
+        run: |
+          base="$(python3 -m tests.dockerfile base)"
+          tag="${base%@*}"
+          pinned="${base#*@}"
+          current="$(docker buildx imagetools inspect "$tag" --format '{{.Manifest.Digest}}')"
+          echo "$tag: pinned $pinned, current $current"
+          echo "$current" | grep -Eqx 'sha256:[0-9a-f]{64}'
+          if [ "$current" = "$pinned" ]; then
+            : > report.md
+          else
+            echo "$tag is now $current; the Dockerfile pins $pinned. Merge Dependabot's bump, or bump the digest by hand as ADR 0019 shows. Found by $RUN_URL" > report.md
+          fi
+      - name: Report a comparison that could not run
+        if: failure()
+        run: |
+          echo "The weekly comparison of the base image's digest could not run, so the pin may be stale: $RUN_URL" > report.md
+      # One issue: opened when the pin falls behind or the check breaks,
+      # commented on each week until then, closed once the pin follows.
+      - name: Open, update or close the issue
+        if: always()
+        run: |
+          number=$(gh issue list --state open --search "in:title \"$TITLE\"" --json number --jq '.[0].number')
+          if [ ! -s report.md ]; then
+            if [ -n "$number" ]; then
+              gh issue close "$number" --comment "The pin has followed the tag: $RUN_URL"
+            fi
+          elif [ -n "$number" ]; then
+            gh issue comment "$number" --body-file report.md
+          else
+            gh issue create --title "$TITLE" --body-file report.md
+          fi

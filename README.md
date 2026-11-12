@@ -373,7 +373,7 @@ both installs again, in this order.
 - Every pull request to `master` must pass the CI gates described in
   [ADR 0002](docs/adr/0002-ci-quality-gates.md): tests on Python 3.11 and
   3.12, Semgrep, and a Docker build with a smoke run and a check of its
-  packages against the lock. The `tests` job also checks that the lock
+  packages and its Python against the lock. The `tests` job also checks that the lock
   holds every package its packages need.
 - The codebase is being migrated, step by step, to a layered architecture; see
   [`docs/architecture.md`](docs/architecture.md), the
@@ -402,6 +402,13 @@ both installs again, in this order.
   ([ADR 0017](docs/adr/0017-override-the-clients-vulnerable-pins.md)).
   When a new client release allows a fixed version, the check fails until
   the override is removed.
+- The image builds on `python:3.11-slim` pinned by digest, so a rebuild
+  of a commit gives the same image
+  ([ADR 0019](docs/adr/0019-pin-the-base-image-by-digest.md)). Dependabot
+  proposes the tag's new digest as a pull request; merge it once CI is
+  green. If it does not, a weekly check opens the issue "The base image's
+  pin may be stale", and the ADR shows how to bump the digest by hand. A newer Python means a new tag, digest
+  and lock in one pull request.
 - The `tradelocker` client is pinned to the version the test suite's broker
   fake mirrors. Moving to a newer release means updating the pin and
   `TRADELOCKER_VERSION` in `tests/characterization/fake_tradelocker.py`, and
