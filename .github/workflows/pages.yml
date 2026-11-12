@@ -13,12 +13,6 @@ on:
 permissions:
   contents: read
 
-# One deploy at a time, and none cancelled halfway: a newer master waits its
-# turn, and publishes after.
-concurrency:
-  group: pages
-  cancel-in-progress: false
-
 jobs:
   # Runs the pip-installed build tools, so it holds no write access; the
   # deploy job below gets that, and runs only GitHub's own action.
@@ -26,13 +20,14 @@ jobs:
     if: >
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_branch == 'master' &&
-      github.event.workflow_run.event == 'push'
+      (github.event.workflow_run.event == 'push' ||
+       github.event.workflow_run.event == 'workflow_dispatch')
     runs-on: ubuntu-latest
     env:
       NO_MKDOCS_2_WARNING: "1"
     steps:
       # Checking out workflow_run.head_sha is safe only because the job-level
-      # `if` admits master push runs alone: code from fork pull requests
+      # `if` admits master push and dispatch runs alone: code from fork pull requests
       # never reaches this job or the deploy after it.
       # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -49,9 +44,17 @@ jobs:
         with:
           path: site
 
+  # Concurrency on this job alone: on the workflow, every CI run, a pull
+  # request's too, would join the group, and the newest pending run cancels
+  # the one before it, a master deploy among them. Never cancelled halfway.
+  # deploy-pages labels the deployment with the tip of master when the run
+  # started, which can be a later commit than the one built (ADR 0031).
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     permissions:
       pages: write
       id-token: write

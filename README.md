@@ -699,15 +699,15 @@ have their own lock, apart from the dev tools. To build it on your machine:
 
 ```sh
 python -m venv .venv-docs
-.venv-docs/bin/python -m pip install --require-hashes -r requirements-docs.txt
-.venv-docs/bin/mkdocs serve     # or: mkdocs build --strict, as CI runs it
+.venv-docs/bin/python -m pip install --require-hashes -r requirements-docs.txt   # Windows: .venv-docs\Scripts\python
+.venv-docs/bin/mkdocs build --strict   # as CI builds it; `serve` instead shows it at http://127.0.0.1:8000
 ```
 
 A new page in `docs/`, such as a decision record, must also be added to
 `nav` in `mkdocs.yml`: the strict build fails on a page left out, and on
 any link or anchor that leads nowhere. After changing
 `requirements-docs.in`, regenerate the lock with the command in its
-header.
+header; a test fails while the lock disagrees with it.
 
 ### Code layout
 

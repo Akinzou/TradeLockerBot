@@ -1,5 +1,7 @@
-# The workflow name is referenced by docker-image.yml (workflow_run trigger).
-# Renaming it without updating that trigger silently stops image publishing.
+# The workflow name is referenced by docker-image.yml and pages.yml
+# (workflow_run trigger). Renaming it without updating both would silently
+# stop publishing; tests/test_workflow_links.py fails a trigger that names
+# no workflow.
 name: Python (3.11, 3.12) ,
 
 on:

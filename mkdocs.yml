@@ -3,10 +3,8 @@ site_description: Automated TradeLocker position management driven by TradingVie
 site_url: https://akinzou.github.io/TradeLockerBot/
 repo_url: https://github.com/Akinzou/TradeLockerBot
 repo_name: Akinzou/TradeLockerBot
-edit_uri: edit/master/docs/
 docs_dir: docs
 site_dir: site
-strict: true
 
 nav:
   - Home: index.md
