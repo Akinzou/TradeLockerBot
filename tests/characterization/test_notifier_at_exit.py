@@ -3,7 +3,9 @@
 The other startup pins replace ``atexit`` and run its functions by hand.
 This one runs a separate Python, so what it pins is Python's own order:
 the exit function runs only once every webhook thread has ended, however
-``main`` ends, so a red line a signal prints late still reaches the chat.
+``main`` ends, so a red line a signal prints late still reaches the chat,
+even after the seconds ``end`` set aside, or with no ``end`` at all
+(ADR 0029).
 """
 
 import subprocess
@@ -24,6 +26,8 @@ class Answer(io.BytesIO):
     status = 200
 
 def urlopen(request, timeout):
+    # As long as a real answer can take, so the stop has to wait for it.
+    time.sleep(0.3)
     print("sent:", json.loads(request.data)["text"], flush=True)
     return Answer(b'{"ok": true}')
 
@@ -35,7 +39,7 @@ def signal_still_running():
     notifier.notify("Broker failed: a call for XAUUSD got no answer")
 
 threading.Thread(target=signal_still_running).start()
-notifier.end(composition_root.STOP_SECONDS)
+END_CALL
 ENDING
 """
 
@@ -46,8 +50,22 @@ ENDING
     ids=["return", "failed login", "Ctrl+C", "exit"],
 )
 def test_a_line_from_a_signal_still_running_when_main_ends_is_sent_before_the_process_ends(ending):
-    run = subprocess.run([sys.executable, "-c", PROGRAM.replace("ENDING", ending)], cwd=ROOT,
-                         capture_output=True, text=True, timeout=60)
+    _assert_sent(PROGRAM.replace("END_CALL", "notifier.end(composition_root.STOP_SECONDS)").replace("ENDING", ending))
 
-    assert "sent: Broker failed: a call for XAUUSD got no answer" in run.stdout, run.stderr
+
+@pytest.mark.parametrize(
+    "end",
+    ["notifier.end(0.0)", ""],
+    ids=["the seconds ran out", "no end"],
+)
+def test_the_line_gets_the_floor_when_the_end_left_it_no_seconds(end):
+    # After a second Ctrl+C the signal can outlast `main`'s seconds, or
+    # `main` can miss its `finally`.
+    _assert_sent(PROGRAM.replace("END_CALL", end).replace("ENDING", "pass"))
+
+
+def _assert_sent(program):
+    run = subprocess.run([sys.executable, "-c", program], cwd=ROOT, capture_output=True, text=True, timeout=60)
+
+    assert "sent: Broker failed: a call for XAUUSD got no answer" in run.stdout, run.stdout + run.stderr
     assert "not sent" not in run.stdout

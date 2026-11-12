@@ -32,11 +32,38 @@ def _deliver(chat):
     return Delivery(chat, clock, reports.append), clock, sleeps, reports
 
 
+def _running():
+    return False
+
+
+def test_no_try_begins_once_the_notifier_has_stopped():
+    # The stop has reported the message as not sent; a try after that
+    # report could send it anyway (ADR 0029).
+    chat = Chat()
+    deliver, _, sleeps, reports = _deliver(chat)
+
+    deliver(TEXT, 0.0, lambda: True)
+
+    assert (chat.sent, sleeps, reports) == ([], [], [])
+
+
+def test_a_stop_during_the_wait_between_tries_ends_the_tries_without_a_report_of_its_own():
+    # The stop's report already counts this message; a second report, after
+    # the last try, would count it twice.
+    stopped = []
+    chat = Chat(Err(SendFailure("HTTP 502", retry=True)), Ok(None))
+    deliver = Delivery(chat, FakeClock(stopped.append), (reports := []).append)
+
+    deliver(TEXT, 0.0, lambda: bool(stopped))
+
+    assert (chat.sent, stopped, reports) == ([TEXT], [("sleep", 2.0)], [])
+
+
 def test_a_sent_message_is_sent_once_and_not_reported():
     chat = Chat(Ok(None))
     deliver, _, sleeps, reports = _deliver(chat)
 
-    deliver(TEXT, 0.0)
+    deliver(TEXT, 0.0, _running)
 
     assert (chat.sent, sleeps, reports) == ([TEXT], [], [])
 
@@ -46,7 +73,7 @@ def test_a_failure_the_chat_may_get_over_is_tried_again_after_a_growing_wait():
                 Ok(None))
     deliver, _, sleeps, reports = _deliver(chat)
 
-    deliver(TEXT, 0.0)
+    deliver(TEXT, 0.0, _running)
 
     assert chat.sent == [TEXT] * 3
     assert sleeps == [("sleep", 2.0), ("sleep", 10.0)]
@@ -60,7 +87,7 @@ def test_the_chats_own_wait_is_kept_up_to_ten_minutes():
                 Err(SendFailure("HTTP 429", retry=True, retry_after=86400.0)), Ok(None))
     deliver, _, sleeps, _ = _deliver(chat)
 
-    deliver(TEXT, 0.0)
+    deliver(TEXT, 0.0, _running)
 
     assert sleeps == [("sleep", 120.0), ("sleep", 600.0)]
 
@@ -70,7 +97,7 @@ def test_a_wait_no_server_means_gets_the_usual_one(asked):
     chat = Chat(Err(SendFailure("HTTP 429", retry=True, retry_after=asked)), Ok(None))
     deliver, _, sleeps, reports = _deliver(chat)
 
-    deliver(TEXT, 0.0)
+    deliver(TEXT, 0.0, _running)
 
     assert (sleeps, reports) == ([("sleep", 2.0)], [])
 
@@ -79,7 +106,7 @@ def test_a_failure_that_lasts_is_reported_once_after_the_last_try():
     chat = Chat(*[Err(SendFailure("HTTP 502", retry=True))] * ATTEMPTS)
     deliver, _, _, reports = _deliver(chat)
 
-    deliver(TEXT, 0.0)
+    deliver(TEXT, 0.0, _running)
 
     assert len(chat.sent) == ATTEMPTS == 3
     assert reports == [f'Telegram: the "Signal rejected" message was not sent after {ATTEMPTS} tries: HTTP 502']
@@ -89,7 +116,7 @@ def test_a_failure_the_same_request_would_get_again_is_reported_at_once():
     chat = Chat(Err(SendFailure("HTTP 403, 'Forbidden: bot was blocked by the user'", retry=False)))
     deliver, _, sleeps, reports = _deliver(chat)
 
-    deliver("Logged in: acc_id 76, acc_num 1", 0.0)
+    deliver("Logged in: acc_id 76, acc_num 1", 0.0, _running)
 
     assert (len(chat.sent), sleeps) == (1, [])
     assert reports == ["Telegram: the \"Logged in\" message was not sent: "
@@ -100,10 +127,10 @@ def test_a_message_sent_a_minute_or_more_after_it_was_logged_says_how_late_it_is
     chat = Chat(Ok(None), Err(SendFailure("HTTP 502", retry=True)), Ok(None))
     deliver, clock, _, _ = _deliver(chat)
     clock.advance(59.9)
-    deliver(TEXT, 0.0)
+    deliver(TEXT, 0.0, _running)
 
     # The last try is the one that goes, after 2 more seconds.
-    deliver(TEXT, 0.0)
+    deliver(TEXT, 0.0, _running)
 
     # First, so the cut to Telegram's longest message never takes it.
     assert chat.sent == [TEXT, TEXT, f"(sent 61 seconds after the bot logged it)\n{TEXT}"]
@@ -114,7 +141,7 @@ def test_the_report_names_the_message_by_its_first_words(text):
     chat = Chat(Err(SendFailure("HTTP 400", retry=False)))
     deliver, _, _, reports = _deliver(chat)
 
-    deliver(text, 0.0)
+    deliver(text, 0.0, _running)
 
     assert reports == ['Telegram: the "Still closing" message was not sent: HTTP 400']
 
@@ -127,6 +154,6 @@ def test_the_closed_line_is_named_by_its_one_word():
     chat = Chat(Err(SendFailure("HTTP 400", retry=False)))
     deliver, _, _, reports = _deliver(chat)
 
-    deliver(texts[0], 0.0)
+    deliver(texts[0], 0.0, _running)
 
     assert reports == ['Telegram: the "Closed" message was not sent: HTTP 400']

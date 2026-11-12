@@ -93,8 +93,13 @@ class Delivery:
         self._clock = clock
         self._report = report
 
-    def __call__(self, text: str, logged_at: float) -> None:
+    def __call__(self, text: str, logged_at: float, stopped: Callable[[], bool]) -> None:
         for attempt in range(1, ATTEMPTS + 1):
+            # The notifier's stop has reported this message as not sent, so
+            # a try after it could only make that report wrong, and a report
+            # of its own here would count the message twice.
+            if stopped():
+                return
             sent = self._chat.send(self._dated(text, logged_at))
             if not isinstance(sent, Err):
                 return
@@ -114,48 +119,69 @@ class Delivery:
         return f"(sent {int(late)} seconds after the bot logged it)\n{text}"
 
 
+def _count_text(dropped: int) -> str:
+    return f"Telegram: the queue was full and dropped {dropped} of the bot's messages; the log has them"
+
+
+@dataclass(frozen=True)
+class _Line:
+    """One of the bot's own lines, which the log already has."""
+
+    text: str
+    logged_at: float
+
+
+@dataclass
+class _Count:
+    """The messages a full queue dropped, told to the chat as one message.
+
+    Mutable on purpose: while it waits, each new drop adds to it rather than
+    queueing a message of its own, so a flood costs the queue one entry.
+    ``logged_at`` is the first drop's, so a lateness note covers them all.
+    """
+
+    logged_at: float
+    dropped: int = 1
+
+
 class BackgroundNotifier:
     """Queues each message for one thread that delivers them in order.
 
     A daemon thread, so a chat that does not answer cannot keep the bot
-    from stopping; ``stop`` gives the queue the seconds ``end`` set aside,
-    then reports what is left.
+    from stopping; ``stop`` gives the queue its seconds, then reports what
+    is left, and the thread sends nothing after that report.
 
     One condition guards everything: the waiting messages, the one being
-    sent and the counts. A queue with a lock of its own beside it was two
-    states to keep in step, and the gaps between them lost messages from
-    the count.
+    sent, the count and the stop. A queue with a lock of its own beside it
+    was two states to keep in step, and the gaps between them lost messages
+    from the count.
     """
 
-    def __init__(self, deliver: Callable[[str, float], None], clock: Clock, report: Callable[[str], None],
-                 capacity: int = CAPACITY):
+    def __init__(self, deliver: Callable[[str, float, Callable[[], bool]], None], clock: Clock,
+                 report: Callable[[str], None], floor: float, capacity: int = CAPACITY):
         self._deliver = deliver
         self._clock = clock
         self._report = report
+        self._floor = floor
         self._capacity = capacity
         self._state = threading.Condition()
-        # Each entry carries how many dropped messages it reports, 0 for the
-        # bot's own lines, rather than the stop telling a count by its text:
-        # the stop then reports a waiting count as a count, not as a line
-        # the log would have.
-        self._waiting = collections.deque()
-        self._sending = None
-        # Apart from the counts already queued, so a drop is reported once:
-        # by the queued count or by this one, never by both or neither.
-        self._dropped = 0
-        self._deadline = None
+        self._waiting: collections.deque[_Line | _Count] = collections.deque()
+        # The count still in the queue, which each drop joins. Once the
+        # thread takes it, the next drop starts another, so each drop is
+        # told once: by the count in flight or by the new one.
+        self._count: _Count | None = None
+        self._sending: _Line | _Count | None = None
+        self._deadline: float | None = None
+        self._stopped = False
 
     def start(self) -> None:
         threading.Thread(target=self._run, name="telegram-notifier", daemon=True).start()
 
     def notify(self, text: str) -> None:
         with self._state:
-            queued = self._queue(text, reports=0)
-            if not queued:
-                self._dropped += 1
-        if not queued:
-            self._report(f'Telegram: the "{_name(text)}" message was not sent: '
-                         f"the queue of {self._capacity} was full")
+            refused = self._queue(text)
+        if refused:
+            self._report(f'Telegram: the "{_name(text)}" message was not sent: {refused}')
 
     def end(self, seconds: float) -> None:
         """Sets aside ``seconds`` from now, the bot's end, for ``stop``: not
@@ -165,58 +191,81 @@ class BackgroundNotifier:
             self._deadline = self._clock.now() + seconds
 
     def stop(self) -> None:
-        """Waits, until the time ``end`` set aside runs out, for every
-        message to be handled, then reports the bot's own lines still
-        pending, which the stop loses, and the dropped messages the chat
-        has not heard of."""
+        """Waits for every message to be handled, until the time ``end`` set
+        aside runs out but never less than the floor, then reports the
+        bot's own lines still pending, which the stop loses, and the dropped
+        messages the chat has not heard of.
+
+        The floor is for a line queued after those seconds ran out, or with
+        no ``end`` at all: both happen only after a second Ctrl+C, on a
+        terminal, which kills nothing after a grace period. Under
+        ``docker stop`` the server waits for every signal, so ``end`` comes
+        after the last line and the floor is never reached.
+        """
         with self._state:
-            left = 0.0 if self._deadline is None else max(self._deadline - self._clock.now(), 0.0)
+            now = self._clock.now()
+            left = self._floor if self._deadline is None else max(self._deadline - now, self._floor)
             self._state.wait_for(lambda: not self._waiting and self._sending is None, left)
             pending = [*self._waiting, *([self._sending] if self._sending else [])]
-            lines = sum(1 for _, _, reports in pending if not reports)
-            dropped = self._dropped + sum(reports for _, _, reports in pending)
-            self._dropped = 0
+            # In the same step as the count, so a line queued from here on
+            # is refused with a report rather than lost without one.
+            self._stopped = True
+            self._state.notify_all()
+        lines = sum(isinstance(message, _Line) for message in pending)
+        dropped = sum(message.dropped for message in pending if isinstance(message, _Count))
         if lines:
             self._report(f"Telegram: the bot stopped with {lines} of its messages not sent; the log has them")
         if dropped:
-            self._report(f"Telegram: the queue was full and dropped {dropped} of the bot's messages; "
-                         "the log has them")
+            self._report(_count_text(dropped))
 
-    def _queue(self, text: str, reports: int) -> bool:
-        # The caller holds the condition, so the room check, the append and
-        # whatever count the caller keeps are one step for every thread.
-        if len(self._waiting) >= self._capacity:
-            return False
-        self._waiting.append((text, self._clock.now(), reports))
-        self._state.notify_all()
-        return True
+    def _queue(self, text: str) -> str | None:
+        # The caller holds the condition, so the checks and the change they
+        # allow are one step for every thread. Returns why the line was
+        # not queued, or None.
+        if self._stopped:
+            return "the bot had stopped"
+        now = self._clock.now()
+        # The count takes no line's slot: the queue holds `capacity` lines
+        # and at most one count beside them.
+        if len(self._waiting) - (self._count is not None) < self._capacity:
+            self._waiting.append(_Line(text, now))
+            self._state.notify_all()
+            return None
+        if self._count is None:
+            # Queued now, behind the lines that filled the queue, rather than
+            # once the queue empties: under steady traffic with a slow chat
+            # that could take hours.
+            self._count = _Count(now)
+            self._waiting.append(self._count)
+            self._state.notify_all()
+        else:
+            self._count.dropped += 1
+        return f"the queue of {self._capacity} was full"
+
+    def _has_stopped(self) -> bool:
+        with self._state:
+            return self._stopped
 
     def _run(self) -> None:
         while True:
             with self._state:
-                self._state.wait_for(lambda: self._waiting)
-                self._sending = self._waiting.popleft()
-            text, logged_at, _ = self._sending
+                self._state.wait_for(lambda: self._waiting or self._stopped)
+                if self._stopped:
+                    return
+                message = self._sending = self._waiting.popleft()
+                if message is self._count:
+                    self._count = None
+                # Read while the condition is held: a count no longer
+                # waiting takes no more drops, so its text is final.
+                text = message.text if isinstance(message, _Line) else _count_text(message.dropped)
             # Any exception, so one message's failure cannot end the thread
             # and silence every message after it. By type alone: its text
             # could hold the request, and the token in it.
             try:
-                self._deliver(text, logged_at)
+                self._deliver(text, message.logged_at, self._has_stopped)
             except Exception as error:
                 self._report(f'Telegram: the "{_name(text)}" message was not sent: '
                              f"an error in the bot ({type(error).__name__})")
             with self._state:
                 self._sending = None
-                self._queue_dropped_count()
                 self._state.notify_all()
-
-    def _queue_dropped_count(self) -> None:
-        # Once the queue is empty, the phone hears that messages were lost,
-        # not only the log: a flood of rejections may have pushed out the one
-        # that needed action. Not while lines wait: in a flood the count
-        # would take every slot that frees up, ahead of the lines themselves.
-        # An empty queue always has room for it.
-        if self._dropped and not self._waiting:
-            text = f"Telegram: the queue was full and dropped {self._dropped} of the bot's messages; the log has them"
-            self._queue(text, reports=self._dropped)
-            self._dropped = 0

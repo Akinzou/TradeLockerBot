@@ -163,6 +163,12 @@ def no_notification(_text: str) -> None:
 # seconds `docker stop` waits after its SIGTERM before it kills the process.
 STOP_SECONDS = 5.0
 
+# What it gets at least, when those seconds ran out before a signal's last
+# line, or `main` never set them (ADR 0029). Only after a second Ctrl+C, on
+# a terminal, which kills nothing; long enough for a try and its answer, and
+# for the stop to return soon to an operator who asked twice.
+STOP_FLOOR_SECONDS = 2.0
+
 
 def start_notifier(settings: TelegramSettings | None, clock) -> BackgroundNotifier | None:
     """Telegram's notifier, started, or ``None`` when its settings are not
@@ -170,7 +176,7 @@ def start_notifier(settings: TelegramSettings | None, clock) -> BackgroundNotifi
     if settings is None:
         return None
     notifier = BackgroundNotifier(Delivery(TelegramChat(settings, urlopen), clock, print_report), clock,
-                                  print_report)
+                                  print_report, floor=STOP_FLOOR_SECONDS)
     notifier.start()
     # At exit rather than after the server: Python runs exit functions only
     # once the webhook's threads have ended, so their last red lines are
