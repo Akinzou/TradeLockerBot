@@ -43,8 +43,9 @@ flowchart LR
 ```
 
 1. A TradingView strategy fires an alert with a seven-line message.
-2. The bot receives it on its webhook URL and replies immediately; the signal
-   is handled in the background.
+2. The bot receives it on its webhook URL and replies `200` at once; the
+   signal is handled in the background. The reply says the alert arrived,
+   not what came of it.
 3. The bot checks the message first. An invalid one is logged and ignored.
 4. Valid signals are handled one at a time:
    - For `close`, the bot looks up the instrument, then closes every open
@@ -217,7 +218,10 @@ What each action does:
 > Signal rejected: the account balance is missing or not a number, expected a number to size the position from
 > ```
 >
-> The webhook still answers `200 OK`, so check the bot's log.
+> The webhook answers `200 OK` all the same, so TradingView's alert log
+> shows the alert as delivered. The answer says the alert arrived, not what
+> came of it; the outcome is in the bot's log only
+> ([ADR 0023](docs/adr/0023-the-webhook-answer-acknowledges-receipt.md)).
 
 ### Dynamic lot size
 
@@ -367,7 +371,7 @@ alerts.
 
 | Symptom                                     | Likely cause                                                                                   |
 |---------------------------------------------|------------------------------------------------------------------------------------------------|
-| No trade after an alert                     | The log shows `Signal rejected:` with the line to fix, or `Order rejected:` with the broker's reason. Otherwise a broker call got no answer, and the log shows the client's error. |
+| No trade after an alert                     | The log shows `Signal rejected:` with the line to fix, or `Order rejected:` with the broker's reason. Otherwise a broker call got no answer, and the log shows the client's error. TradingView shows the webhook as delivered in each case: the bot answers once the alert arrives, not once it is traded. |
 | `Signal rejected: line 1 (symbol) ...`      | The broker lists no instrument with that exact name. Copy it from TradeLocker, case included. If the name is right, restart the bot: it reads the instrument list once at startup, so an instrument added later stays unknown until a restart. |
 | `Signal rejected: line 3 (lot) gives 0.0 ...` | The balance is too small for this lot. Raise the lot or lower the balance step on line 3. |
 | `Signal rejected: the account balance is ...` | The broker reported no balance, a balance that is not a number, or one that is not above zero. Check the account in TradeLocker, then send the alert again. |
@@ -385,8 +389,8 @@ alerts.
 | Container keeps restarting, `docker logs` shows `argument --url: must not contain ?, # or %` | `url` has a `?`, `#` or `%`. Remove it, or make a new path with the command in [Quick start](#quick-start). Alerts must then use the new path. |
 | Error about account number and ID at start  | Both `acc_id` and `acc_num` are set; keep only one.                                            |
 
-Known defects and their planned fixes are listed in the
-[migration roadmap](docs/migration-roadmap.md#known-defects).
+Known defects and their planned fixes, and those kept by decision, are
+listed in the [migration roadmap](docs/migration-roadmap.md#known-defects).
 
 ## Development
 

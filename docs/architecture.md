@@ -133,7 +133,7 @@ on.
 ```mermaid
 flowchart LR
     TV[TradingView alert] -- "POST, 7 lines of text" --> WH[webhook route<br/>adapters.webhook]
-    WH -- "200 OK at once" --> TV
+    WH -- "200 OK at once: received,<br/>not the outcome" --> TV
     WH -- "lines, in a background thread" --> SH[SignalHandler<br/>adapters.signal_handler]
     SH --> P[parse_signal<br/>domain]
     P -- "Err(InvalidSignal)" --> CON[PrintingConsole<br/>stdout]
@@ -299,7 +299,12 @@ stateDiagram-v2
 | Handled  | all                   | replaced or closed | `Normal: Locked` ... `Unlocked` | ends normally |
 
 The webhook answers `200 OK` before any of this, so the caller never learns
-the outcome. That is a known defect, and step 6 changes it.
+the outcome. That is by decision: the answer acknowledges receipt.
+TradingView cancels a request not answered within three seconds, which a
+signal that trades already takes, and sends an alert again after a `5xx`,
+so an answer after handling would be cancelled and one by outcome could run
+the signal twice. Only a body that is not UTF-8 answers otherwise, `500`,
+and it starts no thread ([ADR 0023](adr/0023-the-webhook-answer-acknowledges-receipt.md)).
 
 ## Domain model
 
@@ -392,6 +397,9 @@ design.
   ([ADR 0011](adr/0011-serve-no-api-docs.md)). It redirects nothing: a path
   one slash away answers `404`, because the redirect pointed senders at
   plain `http://` ([ADR 0013](adr/0013-no-trailing-slash-redirect.md)).
+  It answers `200` once the thread has started, without waiting for it,
+  and starts the thread last, so no `5xx`, which TradingView would send
+  again, follows a signal on its way ([ADR 0023](adr/0023-the-webhook-answer-acknowledges-receipt.md)).
 - `server_log_config` (`server_log`) is uvicorn's default log settings with
   an access line that keeps the client and the status but not the request
   line, which holds the secret path. Only the documented `fmt` changes, so
@@ -466,3 +474,4 @@ layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
 | [0020](adr/0020-refuse-query-fragment-and-escape-characters-in-the-webhook-path.md) | Refuse `?`, `#` and `%` in the webhook path |
 | [0021](adr/0021-report-a-rejected-order-and-place-it-once.md) | Report a rejected order in one line and place it once |
 | [0022](adr/0022-pace-the-close-loop-on-a-clock.md) | Pace the close loop on a clock and say when a close takes a minute |
+| [0023](adr/0023-the-webhook-answer-acknowledges-receipt.md) | The webhook's answer acknowledges receipt, not the outcome |

@@ -112,6 +112,34 @@ def test_an_empty_body_is_rejected_as_a_missing_symbol(monkeypatch, capsys):
     assert fake.calls == []
 
 
+@pytest.mark.parametrize(
+    ("outcome", "broker_options", "lines", "last_line"),
+    [
+        ("payload rejected", {}, payload(direction="long"),
+         "Signal rejected: line 2 (direction) is 'long', expected buy or sell"),
+        ("refused once the broker answered", {}, payload(symbol="GBPUSD"),
+         "Signal rejected: line 1 (symbol) is 'GBPUSD', expected an instrument the broker lists"),
+        ("order rejected", {"order_results": (order_rejection(),)}, payload(), "Normal: Unlocked"),
+        ("handled", {}, payload(), "Normal: Unlocked"),
+    ],
+)
+def test_the_answer_is_the_same_whatever_the_signal_comes_to(
+    monkeypatch, capsys, outcome, broker_options, lines, last_line
+):
+    # The answer acknowledges receipt, not the outcome (ADR 0023): a payload
+    # the bot rejects gets the same 200 as a trade, so the operator reads the
+    # outcome in the log. A broker failure answers 200 as well, in
+    # `test_a_broker_failure_ends_the_handler_thread_with_the_clients_exception`.
+    app = serve(monkeypatch, broker(**broker_options))
+    capsys.readouterr()
+
+    response, threads = post(app, "/strategy", "\n".join(lines).encode())
+    finish(threads)
+
+    assert (response.status_code, response.content) == (200, b"null"), outcome
+    assert console_lines(capsys)[-1] == last_line, outcome
+
+
 def test_a_body_that_is_not_utf8_fails_the_request_and_starts_no_thread(monkeypatch, capsys):
     fake = broker()
     app = serve(monkeypatch, fake)

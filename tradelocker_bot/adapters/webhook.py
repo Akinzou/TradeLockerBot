@@ -14,8 +14,10 @@ from fastapi import FastAPI, Request
 def create_app(path: str, handle: Callable[[list[str]], None]) -> FastAPI:
     """The app that serves the webhook at ``path``, and nothing else.
 
-    The request is still answered before ``handle`` finishes, a known defect
-    that changes in a behaviour step of its own (roadmap step 6).
+    The ``200`` acknowledges receipt, not the outcome (ADR 0023): it is sent
+    once the body is decoded and the handler's thread has started, without
+    waiting for it, so a rejected signal, a refusal and a broker failure are
+    reported in the log only.
     """
     # No OpenAPI schema, and with it no /docs or /redoc, which need it: the
     # schema names every route, so serving it would publish the secret path
@@ -34,7 +36,11 @@ def create_app(path: str, handle: Callable[[list[str]], None]) -> FastAPI:
         payload_bytes = await request.body()
         lines = payload_bytes.decode().splitlines()
         # A thread per request, started before the answer: the lock inside
-        # `handle` queues signals, so the sender is never kept waiting on one.
+        # `handle` queues signals, so the sender is never kept waiting on one,
+        # and TradingView cancels a request not answered within 3 seconds.
+        # Started last, so nothing can fail the request once a signal is on
+        # its way: TradingView sends the alert again after a 5xx (504 aside),
+        # and a second send would run the signal twice (ADR 0023).
         threading.Thread(target=handle, args=(lines,)).start()
 
     return app

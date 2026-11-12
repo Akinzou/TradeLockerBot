@@ -35,7 +35,9 @@ pinned what that cost:
    webhook thread ends normally. The owner chose this over also raising: the
    line says everything a traceback would. Only the first line that stops the
    signal is reported. The webhook still answers `200 OK` before handling.
-   Answering the caller is step 6.
+   Answering the caller is step 6. *Update:* step 6k kept the answer as it
+   is: it acknowledges receipt, not the outcome
+   ([ADR 0023](0023-the-webhook-answer-acknowledges-receipt.md)).
 3. **Case and surrounding spaces.** The owner decided that they do not change
    what a direction (line 2) or an action (line 6) means. `Buy`, ` SELL `,
    `Open` and `close ` are accepted. Anything else is rejected. Line 7 was not
