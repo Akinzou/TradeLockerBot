@@ -120,6 +120,9 @@ logged in and raised.
   match nothing or something other than what the operator typed. That is
   the silent-`404` class of ADR 0014, not a pattern, and it is not pinned
   yet.
+
+  *Update:* step 6h ([ADR 0020](0020-refuse-query-fragment-and-escape-characters-in-the-webhook-path.md))
+  refuses all three at startup.
 - **uvicorn's access log** still writes the path of every request.
 
   *Update:* step 6f ([ADR 0016](0016-hide-the-request-line-in-the-access-log.md))
@@ -132,7 +135,8 @@ logged in and raised.
 - Every `url` the bot accepts is one path, not a pattern: the bot handles
   signals on that path and on no other. Starlette compares it with the
   decoded request path, so a `url` with `%`, `?` or `#` can still name a
-  path no sender reaches (see "What this does not cover").
+  path no sender reaches (see "What this does not cover"). *Update:* step
+  6h refuses them too ([ADR 0020](0020-refuse-query-fragment-and-escape-characters-in-the-webhook-path.md)).
 - A broken pattern no longer stops the bot after it has logged in.
 - The README's `url` row and security notes no longer need to explain
   braces.
@@ -152,6 +156,7 @@ logged in and raised.
 - **Refuse everything outside a character allow-list.** Rejected for this
   step: it would also catch `?`, `#` and `%`, a different defect that is
   not pinned, and it could refuse paths that work today for no gain against
-  this defect.
+  this defect. *Update:* step 6h refuses `?`, `#` and `%` by name, not by
+  an allow-list ([ADR 0020](0020-refuse-query-fragment-and-escape-characters-in-the-webhook-path.md)).
 - **Check in the adapter, in `create_app`.** Rejected for the reason
   ADR 0014 gives: by then the bot has logged in.

@@ -223,6 +223,52 @@ def test_a_value_with_a_brace_and_no_leading_slash_gets_the_slash_message(startu
     assert startup.served == []
 
 
+@pytest.mark.parametrize("url", ["/hook?zq7", "/hook#zq7", "/hook%41zq7", "/hook%zq7", "/hook/%"])
+def test_a_path_with_a_query_fragment_or_escape_character_stops_and_is_not_echoed(startup, capsys, url):
+    # ADR 0020: a sender that parses the URL takes `?` as the query's start,
+    # `#` as the fragment's, and `%41` as an escape the server decodes, so the
+    # route was reached only percent-encoded. It now stops like the others.
+    with pytest.raises(SystemExit) as exited:
+        startup.run({**DEMO, "url": url})
+
+    out, err = capsys.readouterr()
+    assert exited.value.code == 2
+    assert out == ""
+    assert err.splitlines()[-1].endswith("error: argument --url: must not contain ?, # or %")
+    assert [part for part in re.split("[/?#%]", url) if part and part in err] == []
+    assert startup.logins == []
+    assert startup.served == []
+
+
+SLASH_MESSAGE = "must start with / or be generate"
+BRACE_MESSAGE = "must not contain { or }"
+
+
+@pytest.mark.parametrize(
+    ("url", "message"),
+    [
+        ("zq7?", SLASH_MESSAGE),
+        ("zq7#", SLASH_MESSAGE),
+        ("zq7%", SLASH_MESSAGE),
+        ("/{zq7}?", BRACE_MESSAGE),
+        ("/{zq7}#", BRACE_MESSAGE),
+        ("/{zq7}%", BRACE_MESSAGE),
+    ],
+)
+def test_a_value_with_several_faults_gets_the_message_of_the_first_check(startup, capsys, url, message):
+    # The slash, then braces, then `?`, `#` and `%`: one message per value.
+    with pytest.raises(SystemExit) as exited:
+        startup.run({**DEMO, "url": url})
+
+    out, err = capsys.readouterr()
+    assert exited.value.code == 2
+    assert out == ""
+    assert err.splitlines()[-1].endswith(f"error: argument --url: {message}")
+    assert "zq7" not in err
+    assert startup.logins == []
+    assert startup.served == []
+
+
 def test_help_lists_every_option_and_exits_cleanly(startup, capsys):
     with pytest.raises(SystemExit) as exited:
         startup.run({}, "--help")

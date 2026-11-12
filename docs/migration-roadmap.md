@@ -34,7 +34,8 @@ migration pull request.
 | 6e | Refuse a `url` with `{` or `}` at startup, with exit status `2` and a message that leaves the value out, so an accepted `url` is one path, not a pattern ([ADR 0015](adr/0015-refuse-braces-in-the-webhook-path.md)). Pins replaced: patterns, broken patterns and literal braces stop the bot before any output, the login and the server; a path set by hand handles no other path | behaviour | done |
 | 6f | Write each request's access line without the request line, keeping the client and the status, so the log never holds the webhook path ([ADR 0016](adr/0016-hide-the-request-line-in-the-access-log.md)). New pin against a real uvicorn server: a hit, a query string, a near miss, a `GET` and a `500` each leave one line with the exact status, and no output names the path | behaviour | done |
 | 6g | Start the image with no shell and no arguments, and read the settings from the environment; the password only from there, `--password` refused without its value ([ADR 0018](adr/0018-read-the-settings-from-the-environment.md)). Pins replaced: the startup pins set the image's variables, the usage line drops `--password`; new pins on verbatim credentials, the option winning over its variable, a missing or empty password, and the image's `CMD` | behaviour | done |
-| 6  | Remaining behaviour changes from the defect list below, one pull request and one ADR each                                                                   | behaviour | next                                 |
+| 6h | Refuse a `url` with `?`, `#` or `%` at startup, with exit status `2` and a message that leaves the value out, so an accepted `url` is reached as typed ([ADR 0020](adr/0020-refuse-query-fragment-and-escape-characters-in-the-webhook-path.md)). New pins: each character stops the bot before any output, the login and the server; the slash, brace and new checks run in that order | behaviour | done |
+| 6  | Remaining behaviour changes, one pull request and one ADR each: the three defects below, then a password file in place of the `password` variable ([ADR 0018](adr/0018-read-the-settings-from-the-environment.md)) | behaviour | next |
 
 ```mermaid
 flowchart LR
@@ -54,12 +55,13 @@ flowchart LR
     S6d --> S6e[6e no braces]
     S6e --> S6f[6f access log]
     S6f --> S6g[6g settings from the environment]
-    S6g --> S6[6 remaining defects]
+    S6g --> S6h["6h no ?, # or %"]
+    S6h --> S6[6 remaining defects]
     S2af --> S2g[2g base image digest]
     S2af --> S2h[2h patched client pins]
     classDef done fill:#d4edda,stroke:#28a745,color:#155724
     classDef next fill:#fff3cd,stroke:#d39e00,color:#856404
-    class S1,S1abc,S2,S2af,S2g,S2h,S4,S4b,S3,S3b,S5a,S5,S6a,S6b,S6c,S6d,S6e,S6f,S6g done
+    class S1,S1abc,S2,S2af,S2g,S2h,S4,S4b,S3,S3b,S5a,S5,S6a,S6b,S6c,S6d,S6e,S6f,S6g,S6h done
     class S6 next
 ```
 
@@ -97,6 +99,14 @@ Fixed in behaviour steps, never during restructuring.
 
 ## Fixed defects
 
+- **A `url` with `?`, `#` or `%` was reached only percent-encoded** (step
+  6h). A sender reads them as the query, the fragment and an escape, and
+  uvicorn decodes the path before it is matched, so every alert sent to
+  the URL as typed got `404`. Any of the three in `url` now stops the bot
+  at startup with exit status `2` and
+  `argument --url: must not contain ?, # or %`, before any output or the
+  login. Images built before step 6h still start with it; there, keep the
+  three out of `url` ([ADR 0020](adr/0020-refuse-query-fragment-and-escape-characters-in-the-webhook-path.md)).
 - **The password and the webhook path were in the command line, through
   an unquoted shell** (step 6g). The image ran `sh -c` over every setting,
   so `ps` on the host showed the password, the username and the webhook

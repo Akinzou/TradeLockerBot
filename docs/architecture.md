@@ -102,7 +102,7 @@ sequenceDiagram
     participant SL as server_log
     participant U as uvicorn
     EP->>CR: main()
-    CR->>CR: parse_args: the environment, then the options<br/>(exit 2 on a bad, missing or empty setting,<br/>--password, a url without a leading / or with a brace)
+    CR->>CR: parse_args: the environment, then the options<br/>(exit 2 on a bad, missing or empty setting,<br/>--password, a url without a leading / or with a brace, ?, # or %)
     opt --url generate
         CR->>CR: print the URL banner and random_webhook_path()
     end
@@ -357,10 +357,12 @@ layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
 - It creates the one lock that every request shares.
 - `webhook_url` checks `url` as the settings are read: `generate` or a
   path that starts with `/` and has no `{` or `}`, so the route is one
-  path, not a pattern. Anything else exits with status `2`, like any bad setting,
+  path, not a pattern, and no `?`, `#` or `%`, so a sender reaches it as
+  typed. Anything else exits with status `2`, like any bad setting,
   and the message leaves the value out
   ([ADR 0014](adr/0014-require-a-leading-slash.md),
-  [ADR 0015](adr/0015-refuse-braces-in-the-webhook-path.md)).
+  [ADR 0015](adr/0015-refuse-braces-in-the-webhook-path.md),
+  [ADR 0020](adr/0020-refuse-query-fragment-and-escape-characters-in-the-webhook-path.md)).
 - `build_signal_handler(client, lock)` builds the console, the broker adapter, the
   use case and the handler once, at startup. The characterization tests
   build theirs through the same function.
@@ -389,3 +391,4 @@ layer ([ADR 0010](adr/0010-webhook-adapter-and-composition-root.md)).
 | [0017](adr/0017-override-the-clients-vulnerable-pins.md) | Override the broker client's pins on vulnerable packages |
 | [0018](adr/0018-read-the-settings-from-the-environment.md) | Read the settings from the environment, not the command line |
 | [0019](adr/0019-pin-the-base-image-by-digest.md) | Pin the base image by digest |
+| [0020](adr/0020-refuse-query-fragment-and-escape-characters-in-the-webhook-path.md) | Refuse `?`, `#` and `%` in the webhook path |
