@@ -332,7 +332,7 @@ design.
     adapter's own handling of the answer raises, so it cannot pose as an
     outage.
   - The client's `TLAPIOrderException`, and `None` for an order, become
-    `OrderRejected` with the broker's `errmsg` alone; every other client
+    `OrderRejected` with the broker's `errmsg`, else its whole answer; every other client
     exception stays a `BrokerFailure` (ADR 0021).
   - `log_in`, in the same module, logs in to the demo or live server, on the account that
     `--acc_num` or `--acc_id` names. It refuses both at once before sending

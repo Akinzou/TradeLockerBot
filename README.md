@@ -56,9 +56,11 @@ flowchart LR
    - If the balance is missing, the size comes out as zero, or the
      instrument is unknown, the signal is logged and ignored before anything
      is closed.
-   - If the broker rejects the order, it is not sent again. The positions
-     stay closed, and the log shows one `Order rejected:` line with the
-     broker's reason and what the broker lists on the instrument afterwards.
+   - If the broker answers the order without creating it, the bot does not
+     send it again. The positions stay closed, and the log shows one
+     `Order rejected:` line with the broker's reason and what the broker
+     lists on the instrument afterwards. A rejection the broker sends as an
+     HTTP error still shows as the client's traceback.
 
 ```mermaid
 flowchart TD
@@ -290,10 +292,13 @@ alerts.
 > instead of a traceback.
 >
 > Since [ADR 0021](docs/adr/0021-report-a-rejected-order-and-place-it-once.md),
-> an order the broker rejects is logged as one `Order rejected:` line instead
-> of a traceback, and is not sent again. The instrument's positions were
-> closed before the order; the line ends with what the broker lists
-> afterwards.
+> an order the broker answers without creating is logged as one
+> `Order rejected:` line instead of a traceback, and the bot does not send
+> it again. The instrument's positions were closed before the order; the
+> line ends with what the broker lists afterwards. The `tradelocker` client
+> itself still resends a request whose connection failed, so an order can
+> fill before a resend is rejected; the line then reports the open
+> position.
 
 ## Security
 

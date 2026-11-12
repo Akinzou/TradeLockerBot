@@ -47,8 +47,10 @@ class SignalHandler:
                     # Kept raising: no answer may still mean a placed order.
                     raise result.error.cause
                 if isinstance(result.error, OrderRejected):
-                    # Already reported by the use case, between the Locked and
-                    # Unlocked lines, so the thread ends without a traceback
+                    # Not raised: the broker answered, the use case reported it
+                    # with the account's state, and a traceback would bury that
+                    # line. Still an `Err`, so a later caller, such as a webhook
+                    # answer, can tell a rejected order from a placed one
                     # (ADR 0021).
                     return
                 # The broker answered and ruled the signal out before any

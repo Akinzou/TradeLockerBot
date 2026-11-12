@@ -95,6 +95,8 @@ class PrintingConsole:
         because the operator reads it to decide whether to act.
         """
         why = "no reason given" if reason is None else _shown(reason, SHOWN_REASON_CHARACTERS)
-        # One print with the reset inside, like `rejected`.
+        # One print with the reset inside, rather than a reset line after: a
+        # payload rejection from another thread can print in between, and it
+        # must not inherit the red.
         print(f"{ascii_alerts.RED}Order rejected: the broker refused to {side.value} {symbol} ({why}); "
               f"{_left_open(symbol, open_positions)}\n{ascii_alerts.RESET}")

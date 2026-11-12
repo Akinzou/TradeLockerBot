@@ -112,14 +112,17 @@ class TradeLockerBroker:
         return Ok(order_id.value)
 
 
-def _rejection_reason(answer: object) -> str | None:
-    # The broker's `errmsg` alone, not the exception's text: that falls back
-    # to the whole answer, and raises on an answer that is a bare string.
+def _rejection_reason(answer: object) -> str:
+    # The broker's `errmsg` when it gave one, else its whole answer: the
+    # traceback this replaces printed that answer, and nothing else logs it,
+    # so dropping it would leave the operator no way to find the cause. Not
+    # the exception's own text, which raises on an answer that is a bare
+    # string.
     if isinstance(answer, dict):
         reason = answer.get("errmsg")
         if isinstance(reason, str) and reason:
             return reason
-    return None
+    return str(answer)
 
 
 # Read-only, so nothing at run time can point the login, and with it the

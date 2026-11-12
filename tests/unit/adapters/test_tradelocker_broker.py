@@ -156,19 +156,20 @@ def test_an_order_id_of_zero_is_an_order_id():
     ("answer", "reason"),
     [
         ({"s": "error", "errmsg": "Not enough margin"}, "Not enough margin"),
-        ({"s": "error"}, None),
-        ({"s": "error", "errmsg": ""}, None),
-        ({"s": "error", "errmsg": None}, None),
-        ({"s": "error", "errmsg": ["Not enough margin"]}, None),
+        ({"s": "error"}, "{'s': 'error'}"),
+        ({"s": "error", "errmsg": ""}, "{'s': 'error', 'errmsg': ''}"),
+        ({"s": "error", "errmsg": None}, "{'s': 'error', 'errmsg': None}"),
+        ({"s": "error", "d": {"code": "MIN_LOT"}}, "{'s': 'error', 'd': {'code': 'MIN_LOT'}}"),
+        ({"s": "error", "errmsg": ["Not enough margin"]}, "{'s': 'error', 'errmsg': ['Not enough margin']}"),
         # The client's own `str()` of the exception raises a TypeError on this one.
-        ("errmsg", None),
-        (["errmsg"], None),
+        ("errmsg", "errmsg"),
+        (["errmsg"], "['errmsg']"),
     ],
 )
-def test_an_order_the_broker_rejects_is_a_rejection_with_the_brokers_reason_only(answer, reason):
+def test_an_order_the_broker_rejects_is_a_rejection_with_its_reason_or_whole_answer(answer, reason):
     # The client raises TLAPIOrderException when the broker answered without
-    # an order id. Only `errmsg` is taken: the rest of the answer, which the
-    # exception's own text prints whole, is not the operator's to read.
+    # an order id. Without a usable `errmsg`, the whole answer is the reason:
+    # the traceback this replaces showed it, and nothing else logs it.
     rejection = TLAPIOrderException({"qty": "0.1"}, answer)
     broker = TradeLockerBroker(client(failures={("create_order", 1): rejection}))
 

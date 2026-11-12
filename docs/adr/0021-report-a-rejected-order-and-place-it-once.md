@@ -22,7 +22,7 @@ in four ways:
 | What happened | What `create_order` does |
 |---|---|
 | The broker created the order | returns its id, an `int` |
-| The broker answered, but with no order id | raises `TLAPIOrderException`, holding the answer; the broker's `errmsg` is its reason |
+| The broker answered, but with no order id | raises `TLAPIOrderException`, holding the answer, whose `errmsg` usually gives the reason |
 | The request failed: no connection, a timeout, an error status (400 or above), an answer that is not JSON | raises `TLAPIException` |
 | Netting, which the bot never enables, left nothing to order | returns `None` |
 
@@ -54,7 +54,7 @@ flowchart TD
     UC["ExecuteSignal: positions closed,<br/>none left on the instrument"] --> P["Broker.place_market_order, once"]
     P --> CL["client create_order"]
     CL -- "order id" --> OK["Ok(id)"]
-    CL -- "TLAPIOrderException:<br/>answered, no order id" --> RJ["Err(OrderRejected(errmsg or None))"]
+    CL -- "TLAPIOrderException:<br/>answered, no order id" --> RJ["Err(OrderRejected(errmsg,<br/>else the whole answer))"]
     CL -- "None: no order created" --> RJ
     CL -- "any other exception:<br/>no answer" --> BF["Err(BrokerFailure(exception))"]
     OK --> PLACED["Order placed successfully, ...<br/>Normal: Unlocked"]
@@ -69,10 +69,13 @@ flowchart TD
   `None`. Every other exception stays a `BrokerFailure`. The port now
   promises an id for every `Ok`:
   `place_market_order -> Result[int, BrokerFailure | OrderRejected]`.
-- **The reason is the broker's `errmsg` and nothing else.** It is used only
-  when it is a non-empty string; otherwise the reason is `None`. The
-  exception's own text is not used: it falls back to printing the whole
-  answer, and it raises a `TypeError` for an answer that is a bare string.
+- **The reason is the broker's `errmsg`, else its whole answer.** `errmsg`
+  is used when it is a non-empty string. Otherwise the answer is shown as
+  it is, escaped and cut like any reason: the traceback this replaces
+  printed it, and nothing else logs it, so dropping it would leave the
+  operator no way to find the cause. The exception's own text is not used:
+  it raises a `TypeError` for an answer that is a bare string. Only the
+  client's `None`, which comes with no answer, gives `(no reason given)`.
 - **The order is placed once.** An id of `0` is a placed order.
 - **The positions are counted again after the rejection.** The close loop
   ended with none on the instrument, but a resent order may have filled,
@@ -141,7 +144,8 @@ The tests changed with it:
   - A row in `test_broker_failures.py` for the recount failing: the line
     says the count got no answer, then the client's exception is raised.
   - Adapter tests that map `TLAPIOrderException` and `None` to
-    `OrderRejected`, take only a non-empty string `errmsg`, and keep an id
+    `OrderRejected`, take a non-empty string `errmsg` or else the whole
+    answer, and keep an id
     of `0`.
   - Console tests for the exact bytes, the escaping, the cut, and each
     state: none open, one, several, and a count that got no answer.
@@ -155,6 +159,7 @@ The tests changed with it:
   - letting `None` through as an id;
   - taking the exception's text as the reason;
   - keeping an empty `errmsg`;
+  - dropping the answer when it has no `errmsg`;
   - passing the rejection to the refusal line;
   - assuming no position instead of counting;
   - swallowing a failed recount;
@@ -174,7 +179,13 @@ The tests changed with it:
   uses for a rejection was not observed.
 - **The client's resend is not changed.** It is inside the client. The
   recount makes the line true about the instrument afterwards, but the
-  resend can still place an order twice when an answer is lost.
+  resend can still place an order twice when an answer is lost. "Placed
+  once" holds for the bot's code, not for the client's resends.
+- **A rejection in another shape still raises.** Only an answer the client
+  raises `TLAPIOrderException` for is a rejection. A rejection sent with an
+  error status, or a `d` that is not an object (the client then raises a
+  `TypeError`), stays a `BrokerFailure` with a traceback, since telling it
+  from an outage would mean matching the client's message.
 - **The count is of rows on the instrument.** It does not say which side
   they are or who opened them.
 - **An order that gets an id but opens no position** still prints
