@@ -45,7 +45,14 @@ jobs:
       - name: Lint (syntax errors and undefined names)
         run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
       - name: Test
-        run: python -m pytest
+        run: python -m coverage run -m pytest
+      # Fails the leg below pyproject.toml's fail_under, the number the
+      # README's badge states (ADR 0030). The table goes to the run's summary,
+      # so a pull request shows which lines its tests left out.
+      - name: Coverage
+        run: |
+          python -m coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY" || true
+          python -m coverage report
 
   semgrep:
     runs-on: ubuntu-latest

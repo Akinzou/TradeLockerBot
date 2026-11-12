@@ -1,6 +1,6 @@
 <div align="center">
 
-# TradeLockerBot
+# TradeLockerBot [![Coverage: 99%](https://img.shields.io/badge/coverage-99%25-brightgreen)](#test-coverage)
 
 **Automated TradeLocker position management driven by TradingView webhook alerts.**
 
@@ -32,6 +32,10 @@
 - [Security](#security)
 - [Troubleshooting](#troubleshooting)
 - [Development](#development)
+  - [Test coverage](#test-coverage)
+  - [CI pipeline](#ci-pipeline)
+  - [Code layout](#code-layout)
+  - [Dependencies](#dependencies)
 - [Community](#community)
 - [License](#license)
 
@@ -351,6 +355,21 @@ When the bot stops, it gives the waiting messages up to 5 seconds, and at
 least 2, then logs how many it could not send and starts no new try. One
 that was being sent at that moment can still arrive.
 
+```mermaid
+flowchart LR
+    L["A line for the chat:<br/>red, Closed or Logged in"] --> LOG[Printed to the log]
+    L --> Q{"Fewer than 100<br/>lines waiting?"}
+    Q -- yes --> W[Queue, in order]
+    Q -- no --> C["A not sent line in the log,<br/>and one more in the waiting<br/>dropped-count message"]
+    C --> W
+    W --> TH["The notifier's own thread,<br/>one message at a time"]
+    TH --> TRY{Sent?}
+    TRY -- yes --> CHAT["Telegram chat<br/>(a minute or more late:<br/>says how late)"]
+    TRY -- "no, and it may pass" --> WAIT["Wait 2 s, then 10 s,<br/>or as long as Telegram asks"] --> TRY
+    TRY -- "refused, or 3 tries failed" --> RED[A not sent line in the log]
+    STOP[The bot stops] --> SW["The queue gets up to 5 s,<br/>at least 2"] --> SR["A line with how many<br/>were not sent; no new try"]
+```
+
 1. In Telegram, open a chat with **@BotFather**, send `/newbot` and
    follow its questions. It answers with the bot's token, such as
    `123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11`. Anyone with the token can
@@ -485,6 +504,19 @@ alerts.
 
 ## Security
 
+What crosses the network, and what guards it:
+
+```mermaid
+flowchart LR
+    subgraph host [A host only you control]
+        RP["Reverse proxy<br/>ends TLS, forwards<br/>only the exact path"] -- plain HTTP --> BOT[TradeLockerBot]
+        SEC[("Password and token files,<br/>mounted read-only")] -. read once at start .-> BOT
+    end
+    TV[TradingView] -- "HTTPS, to the secret path" --> RP
+    BOT -- HTTPS --> TL[(TradeLocker API)]
+    BOT -- "HTTPS, when set up" --> TGM[(Telegram)]
+```
+
 - **Keep the webhook path secret.** It is the only thing protecting the
   endpoint: anyone who knows it can open and close trades on your account.
   Create it with a cryptographically secure generator, as in
@@ -616,26 +648,79 @@ python-dotenv that the `tradelocker` client pins, as the image does
 Installing `requirements.txt` again brings the pinned versions back, so run
 both installs again, in this order.
 
-- Every pull request to `master` must pass the CI gates described in
-  [ADR 0002](docs/adr/0002-ci-quality-gates.md): tests on Python 3.11 and
-  3.12, Semgrep, and a Docker build with a smoke run and a check of its
-  packages and its Python against the lock. The `tests` job also checks that the lock
-  holds every package its packages need.
-- The codebase is being migrated, step by step, to a layered architecture; see
-  [`docs/architecture.md`](docs/architecture.md), the
-  [decision records](docs/adr) and the
-  [migration roadmap](docs/migration-roadmap.md).
-- `main_without_ssl.py` keeps its name because the image runs it, but it only
-  calls `main()` in `tradelocker_bot/composition_root.py`. That module reads
-  the settings and wires the adapters to the use case
-  ([ADR 0010](docs/adr/0010-webhook-adapter-and-composition-root.md)).
-  Everything else lives in the `tradelocker_bot` package:
+### Test coverage
 
-  | Package       | Holds                                                               |
-  |---------------|---------------------------------------------------------------------|
-  | `domain`      | trading rules                                                       |
-  | `application` | the use case and its ports                                          |
-  | `adapters`    | the TradeLocker client and login, the webhook, the operator console, the system clock |
+CI measures which lines and branches of the `tradelocker_bot` package the
+tests run, and fails a pull request below 99% on either Python. The badge
+beside the title states that floor, not the last run's figure, and a test
+fails if the two disagree
+([ADR 0030](docs/adr/0030-gate-the-test-coverage.md)). Each run's summary
+lists the lines the tests left out. To measure on your machine:
+
+```sh
+.venv/bin/python -m coverage run -m pytest
+.venv/bin/python -m coverage report
+```
+
+`main_without_ssl.py` is not measured: it only calls `main()`, and CI
+starts it inside the image instead.
+
+### CI pipeline
+
+Every pull request to `master` must pass the CI gates described in
+[ADR 0002](docs/adr/0002-ci-quality-gates.md): tests and the coverage floor
+on Python 3.11 and 3.12, Semgrep, and a Docker build with a smoke run and a
+check of its packages and its Python against the lock. The `tests` job also
+checks that the lock holds every package its packages need. Only a green
+run on `master` publishes the image.
+
+```mermaid
+flowchart LR
+    PR[Pull request,<br/>or push to master] --> T & S & D
+    T["tests, on 3.11 and 3.12<br/>lock checks, flake8,<br/>pytest, coverage of 99% or more"]
+    S["semgrep<br/>ERROR findings block,<br/>the rest go to the summary"]
+    D["docker-build<br/>build, start without a network,<br/>packages and Python against the lock"]
+    T & S & D --> OK{ci-ok}
+    OK -- "pull request, all green" --> M[Ready to merge]
+    OK -- "push to master, all green" --> P["Docker Image CI<br/>publishes the validated commit<br/>to ghcr.io"]
+```
+
+### Code layout
+
+The codebase is being migrated, step by step, to a layered architecture;
+see [`docs/architecture.md`](docs/architecture.md), the
+[decision records](docs/adr) and the
+[migration roadmap](docs/migration-roadmap.md).
+
+`main_without_ssl.py` keeps its name because the image runs it, but it only
+calls `main()` in `tradelocker_bot/composition_root.py`. That module reads
+the settings and wires the adapters to the use case
+([ADR 0010](docs/adr/0010-webhook-adapter-and-composition-root.md)).
+Everything else lives in the `tradelocker_bot` package:
+
+| Package       | Holds                                                               |
+|---------------|---------------------------------------------------------------------|
+| `domain`      | trading rules: the signal, lot sizing, the `Result` type            |
+| `application` | the use case and its ports                                          |
+| `adapters`    | the TradeLocker client and login, the webhook, its path and its log, the signal handler, the operator console, the system clock, the secret files, and the Telegram chat with its notifier |
+
+```mermaid
+flowchart TB
+    EP[main_without_ssl.py] --> CR["composition_root<br/>reads the settings,<br/>wires everything"]
+    CR --> AD["adapters<br/>TradeLocker, webhook, console,<br/>clock, Telegram"]
+    CR --> APP
+    AD --> APP["application<br/>ExecuteSignal and its ports"]
+    AD --> DOM
+    APP --> DOM["domain<br/>signal, lot sizing, Result"]
+```
+
+Each arrow points the way the imports go; nothing points back out.
+`tests/test_layer_dependencies.py` fails a `domain` or `application` module
+that imports an outer layer, a third-party package or a module that does
+I/O.
+
+### Dependencies
+
 - The image installs `requirements-lock.txt`: every runtime package at one
   version, verified by hash ([ADR 0007](docs/adr/0007-locked-runtime-dependencies.md)).
   After changing `requirements.txt`, or to take dependency updates,

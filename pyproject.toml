@@ -2,3 +2,16 @@
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-ra --strict-markers"
+
+# Measured in CI on every pull request. The README's badge states fail_under,
+# and a test ties the two together, so the badge never claims more than CI
+# enforces (ADR 0030).
+[tool.coverage.run]
+branch = true
+source = ["tradelocker_bot"]
+
+[tool.coverage.report]
+fail_under = 99
+precision = 2
+show_missing = true
+skip_covered = true

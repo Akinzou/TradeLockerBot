@@ -10,3 +10,6 @@ packaging==26.3
 # Starlette's TestClient, for the webhook route pins. httpx2 rather than httpx:
 # Starlette 1.10 deprecates httpx for its test client.
 httpx2==2.16.0
+# Measures the tests' line and branch coverage; CI fails below the floor in
+# pyproject.toml, which the README's badge states (ADR 0030).
+coverage==7.17.3
