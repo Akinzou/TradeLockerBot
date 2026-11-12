@@ -31,7 +31,7 @@ the log to see whether that worked.
   `Still closing:`:**
 
   ```text
-  Closed after 138 seconds: the broker lists no open XAUUSD position
+  Closed after 138 seconds from the first close request: the broker lists no open XAUUSD position
   ```
 
 - **Only after the warning.** A close that fills within the minute, which
@@ -40,9 +40,12 @@ the log to see whether that worked.
   matters, in the log and in the chat.
 - **The seconds run from the first close request to the count that lists
   none.** That is the same start as `Still closing:`, so the two lines
-  read as one story. The clock is read at that count, not taken from an
-  earlier reading. The seconds are whole, cut like those of
-  `Still closing:`.
+  read as one story, and the line names that start: a bare
+  "Closed after 138 seconds" could be read as counted from the alert or
+  from the `Still closing:` message, and the chat may show it late, with
+  a lateness note of its own. The clock is read at that count, and only
+  for a close that warned, not taken from the poll before it. The seconds
+  are whole, cut like those of `Still closing:`.
 - **Green, and handed to Telegram too.** It asks nothing of the operator,
   so it is not red. It still goes to the chat: the chat holds the
   `Still closing:` message it answers. It goes through the same `notify`
@@ -60,10 +63,13 @@ the log to see whether that worked.
   case decides when; the console decides the words, as for
   `still_closing`.
 - **Its green line leaves in one `print`, reset included**, like
-  `print_red`. The notifier's thread prints too, and a line printed between
-  a colour and its reset would take the colour
-  ([ADR 0026](0026-write-stdout-line-by-line.md)). `order_placed` keeps
-  its two legacy prints.
+  `print_red`: both now go through one helper. The notifier's thread
+  prints too, and a line printed between a colour and its reset would
+  take the colour ([ADR 0026](0026-write-stdout-line-by-line.md)).
+  `order_placed` keeps its two legacy prints.
+- **A green line that Telegram did not take is still reported in red.**
+  The line asks nothing of the operator, but a chat that cannot be
+  reached does: the next message may be one that does.
 
 ```mermaid
 flowchart TD
@@ -86,8 +92,8 @@ flowchart TD
 | | Before | After |
 |---|---|---|
 | A close that fills within the minute | `Closing:` lines, then the order or `Normal: Unlocked` | the same |
-| A close that logged `Still closing:`, then fills | more `Closing:` lines, then the order or `Normal: Unlocked` | the same, with one green `Closed after N seconds: ...` line before them |
-| The same, with Telegram on | the chat gets `Still closing:` only | the chat gets `Still closing:`, then `Closed after N seconds: ...` |
+| A close that logged `Still closing:`, then fills | more `Closing:` lines, then the order or `Normal: Unlocked` | the same, with one green `Closed after N seconds from the first close request: ...` line before them |
+| The same, with Telegram on | the chat gets `Still closing:` only | the chat gets `Still closing:`, then `Closed after N seconds from the first close request: ...` |
 | A broker failure after `Still closing:` | `Broker failed:`, then the traceback | the same, with no `Closed after` line |
 | The startup line with Telegram on | `Telegram: on; the account line and every red line also go to the chat` | `Telegram: on; the account line, every red line and each Closed after line also go to the chat` |
 
@@ -119,13 +125,16 @@ Each of these mutations of the code fails at least one test:
 - a line for every close;
 - a line once a minute has passed, warned or not;
 - the seconds from the last request rather than the first;
-- the seconds from the clock read before the count;
+- the seconds from the poll before the count;
+- the line without the start of its seconds;
 - a line when a count fails after the warning;
 - a line when a close request fails after the warning;
 - the seconds not cut to whole ones;
 - the line in red;
 - the line not handed to `notify`;
-- `print_green`, or `print_red`, printing the reset in a second call;
+- the shared helper printing the reset in a second call, and the same
+  for `print_red` alone, checked by hand;
+- `print_green` printing red;
 - the old startup line.
 
 ## What this does not cover

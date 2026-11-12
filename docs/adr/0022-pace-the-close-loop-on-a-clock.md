@@ -198,7 +198,7 @@ Recorded at the owner's decision to keep no upper limit.
   `Still closing:` line, the next lines are the order or
   `Normal: Unlocked`, with no time.
   *Update:* such a close now ends with one green
-  `Closed after N seconds: ...` line, also sent to Telegram
+  `Closed after N seconds from the first close request: ...` line, also sent to Telegram
   ([ADR 0028](0028-say-when-a-slow-close-ended.md)).
 - **A restart drops the waiting signals and the close.** The handler
   threads are not daemons, so a plain stop waits for the loop until Docker

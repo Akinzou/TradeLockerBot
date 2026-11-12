@@ -261,7 +261,7 @@ have passed on the `Clock`. A minute after the first request it prints one
 red `Still closing:` line. A count or request that gets no answer still
 ends the loop as a `BrokerFailure`
 ([ADR 0022](adr/0022-pace-the-close-loop-on-a-clock.md)). A close that
-printed that line ends with one green `Closed after N seconds:` line, at
+printed that line ends with one green `Closed after N seconds from the first close request:` line, at
 the count that lists no position; one that failed does not
 ([ADR 0028](adr/0028-say-when-a-slow-close-ended.md)).
 

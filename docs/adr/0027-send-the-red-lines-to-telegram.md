@@ -88,7 +88,7 @@ flowchart LR
   line would bury those. The account line goes first, at each start, so a
   wrong chat, or a bot the operator never started a chat with, shows up in
   the log at startup rather than on the first alert that needed it.
-  *Update:* the green `Closed after N seconds:` line that ends a
+  *Update:* the green `Closed after N seconds from the first close request:` line that ends a
   `Still closing:` one goes too, since it answers a message the chat
   already holds ([ADR 0028](0028-say-when-a-slow-close-ended.md)).
 - **The broker failure gets its own red line, and so does any other

@@ -1,5 +1,5 @@
 """The ``closed`` line that ends a close which logged ``Still closing:``
-(ADR 0022, update in step 6p): once, at the count that finds no position,
+(ADR 0028): once, at the count that finds no position,
 and only after that warning."""
 
 import pytest
